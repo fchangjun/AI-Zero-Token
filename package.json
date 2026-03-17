@@ -2,9 +2,16 @@
   "name": "ai-zero-token",
   "version": "1.0.0",
   "description": "A local-first single-user AI CLI and gateway with OpenAI Codex OAuth support.",
-  "private": true,
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fchangjun/AI-Zero-Token.git"
+  },
+  "homepage": "https://github.com/fchangjun/AI-Zero-Token#readme",
+  "bugs": {
+    "url": "https://github.com/fchangjun/AI-Zero-Token/issues"
+  },
   "bin": {
     "azt": "dist/cli.js",
     "ai-zero-token": "dist/cli.js"

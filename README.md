@@ -51,9 +51,11 @@ AI Zero Token 就是围绕这些问题设计的。
 
 ### 从源码运行
 
-安装依赖：
+克隆仓库并安装依赖：
 
 ```bash
+git clone https://github.com/fchangjun/AI-Zero-Token.git
+cd AI-Zero-Token
 npm install
 ```
 
@@ -63,11 +65,25 @@ npm install
 bun src/cli.ts help
 ```
 
-### 作为 CLI 使用
+### 从 npm 安装 CLI
+
+如果你只是想把它当作本地 CLI 和本地网关使用，可以直接全局安装：
+
+```bash
+npm install -g ai-zero-token
+```
+
+安装后验证：
+
+```bash
+azt help
+```
+
+如果你是为了开发、构建、`npm link`、`npm pack` 或准备发布，单独看：
+
+- `BUILD_CLI.md`
 
 ## 快速开始
-安装cli
-
 
 登录：
 ```bash
@@ -244,4 +260,3 @@ curl http://127.0.0.1:8787/v1/responses \
   OpenAI Codex provider 实现
 - `src/server/`
   本地 HTTP 网关
-
