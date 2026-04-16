@@ -9,6 +9,7 @@ export async function runServeCommand(args: string[]): Promise<void> {
   const server = await startServer({ host, port });
   console.log("本地网关已启动。");
   console.log(`url: http://${server.host}:${server.port}`);
+  console.log(`corsOrigin: ${server.corsOrigin}`);
   console.log(`activeProvider: ${status.activeProvider ?? "none"}`);
   console.log(`defaultModel: ${status.defaultModel}`);
 }

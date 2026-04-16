@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import cors from "@fastify/cors";
 import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
 
@@ -41,11 +42,18 @@ function extractTextInput(input: z.infer<typeof responsesBodySchema>["input"]): 
   return chunks.join("\n").trim();
 }
 
-export function createApp() {
+export function createApp(params?: {
+  corsOrigin?: true | string | RegExp | Array<string | RegExp>;
+}) {
   const app = Fastify({
     logger: false,
   });
   const ctx = createGatewayContext();
+
+  void app.register(cors, {
+    origin: params?.corsOrigin ?? true,
+    methods: ["GET", "POST", "OPTIONS"],
+  });
 
   app.get("/_gateway/health", async () => ({ ok: true }));
 

@@ -120,6 +120,20 @@ azt ask --model gpt-5.3-codex "请只回复 OK"
 azt serve
 ```
 
+如果你要让本地网页直接从浏览器请求这个网关，现在已经默认开启 CORS。
+
+如需限制来源，可以在启动前指定：
+
+```bash
+AZT_CORS_ORIGIN=http://127.0.0.1:8124 azt serve
+```
+
+多个来源可用英文逗号分隔：
+
+```bash
+AZT_CORS_ORIGIN=http://127.0.0.1:8124,http://localhost:3000 azt serve
+```
+
 清空本地状态：
 
 ```bash
@@ -162,6 +176,12 @@ CLI 一旦执行 `serve`，就会进入本地网关模式。
 
 ```text
 http://127.0.0.1:8787
+```
+
+默认 CORS 来源：
+
+```text
+*
 ```
 
 ### 3. 先确认网关状态

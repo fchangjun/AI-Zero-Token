@@ -1,6 +1,6 @@
 {
   "name": "ai-zero-token",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A local-first single-user AI CLI and gateway with OpenAI Codex OAuth support.",
   "license": "MIT",
   "type": "module",
@@ -37,6 +37,7 @@
     "pack:dry": "npm pack --dry-run"
   },
   "dependencies": {
+    "@fastify/cors": "^11.1.0",
     "fastify": "^5.8.2",
     "zod": "^4.3.6"
   },
