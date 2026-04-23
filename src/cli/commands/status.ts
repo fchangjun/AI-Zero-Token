@@ -16,6 +16,7 @@ export async function runStatusCommand(): Promise<void> {
   console.log("当前登录状态:");
   console.log(`provider: ${status.activeProvider}`);
   console.log(`profileId: ${status.activeProfileId}`);
+  console.log(`profileCount: ${status.profileCount}`);
   console.log(`defaultModel: ${status.defaultModel}`);
   console.log(`serverHost: ${status.serverHost}`);
   console.log(`serverPort: ${status.serverPort}`);

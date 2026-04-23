@@ -6,7 +6,7 @@ export default defineConfig({
   format: ["esm"],
   target: "node22",
   splitting: false,
-  sourcemap: true,
+  sourcemap: false,
   bundle: false,
   clean: true,
   banner: {

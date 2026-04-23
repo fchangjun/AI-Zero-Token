@@ -13,7 +13,7 @@ export function createDefaultSettings(): GatewaySettings {
     defaultProvider: "openai-codex",
     defaultModel: "gpt-5.4",
     server: {
-      host: "127.0.0.1",
+      host: "0.0.0.0",
       port: 8787,
     },
   };

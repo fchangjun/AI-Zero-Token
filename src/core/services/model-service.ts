@@ -28,13 +28,21 @@ export class ModelService {
     return this.configService.getDefaultModel(provider);
   }
 
-  async resolveModel(provider: ProviderId = "openai-codex", requested?: string): Promise<string> {
+  async resolveModel(
+    provider: ProviderId = "openai-codex",
+    requested?: string,
+    options?: { allowUnknown?: boolean },
+  ): Promise<string> {
     if (provider !== "openai-codex") {
       throw new Error(`暂不支持 provider: ${provider}`);
     }
 
     if (!requested) {
       return this.configService.getDefaultModel(provider);
+    }
+
+    if (options?.allowUnknown) {
+      return requested;
     }
 
     if (!isSupportedCodexModel(requested)) {

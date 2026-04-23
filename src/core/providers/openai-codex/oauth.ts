@@ -13,6 +13,7 @@ const TOKEN_URL = "https://auth.openai.com/oauth/token";
 const REDIRECT_URI = "http://localhost:1455/auth/callback";
 const SCOPE = "openid profile email offline_access";
 const JWT_CLAIM_PATH = "https://api.openai.com/auth";
+const PROFILE_CLAIM_PATH = "https://api.openai.com/profile";
 const SUCCESS_HTML = `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -57,6 +58,21 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
   }
 }
 
+function extractEmailFromPayload(payload: Record<string, unknown> | null): string | undefined {
+  const profileClaim = payload?.[PROFILE_CLAIM_PATH] as Record<string, unknown> | undefined;
+  const nestedEmail = profileClaim?.email;
+  if (typeof nestedEmail === "string" && nestedEmail.trim()) {
+    return nestedEmail.trim();
+  }
+
+  const topLevelEmail = payload?.email;
+  if (typeof topLevelEmail === "string" && topLevelEmail.trim()) {
+    return topLevelEmail.trim();
+  }
+
+  return undefined;
+}
+
 function parseAuthorizationInput(value: string): AuthorizationResult {
   const trimmed = value.trim();
   if (!trimmed) {
@@ -97,12 +113,11 @@ function extractProfile(accessToken: string, refreshToken: string, expires: numb
     throw new Error("无法从 access token 中提取 accountId。");
   }
 
-  const email = typeof payload?.email === "string" && payload.email.trim() ? payload.email.trim() : undefined;
-  const profileKey = email ?? accountId;
+  const email = extractEmailFromPayload(payload);
 
   return {
     provider: "openai-codex",
-    profileId: `openai-codex:${profileKey}`,
+    profileId: `openai-codex:${accountId}`,
     mode: "oauth_account",
     access: accessToken,
     refresh: refreshToken,

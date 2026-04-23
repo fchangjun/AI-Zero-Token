@@ -12,12 +12,46 @@ type DemoStore = {
 const projectDir = path.dirname(fileURLToPath(new URL("../../../package.json", import.meta.url)));
 const stateDir = path.join(projectDir, ".state");
 const storePath = path.join(stateDir, "store.json");
+const PROFILE_CLAIM_PATH = "https://api.openai.com/profile";
 
 function createEmptyStore(): DemoStore {
   return {
     version: 1,
     profiles: {},
   };
+}
+
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) {
+      return null;
+    }
+
+    const payload = parts[1] ?? "";
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+    const decoded = Buffer.from(normalized + padding, "base64").toString("utf8");
+    return JSON.parse(decoded) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function extractEmailFromAccessToken(token: string): string | undefined {
+  const payload = decodeJwtPayload(token);
+  const profileClaim = payload?.[PROFILE_CLAIM_PATH] as Record<string, unknown> | undefined;
+  const email = profileClaim?.email;
+  if (typeof email === "string" && email.trim()) {
+    return email.trim();
+  }
+
+  const topLevelEmail = payload?.email;
+  if (typeof topLevelEmail === "string" && topLevelEmail.trim()) {
+    return topLevelEmail.trim();
+  }
+
+  return undefined;
 }
 
 export function getStateDir(): string {
@@ -35,10 +69,18 @@ export async function loadStore(): Promise<DemoStore> {
     const normalizedProfiles = Object.fromEntries(
       Object.entries(parsed.profiles ?? {}).map(([profileId, profile]) => [
         profileId,
-        {
-          ...profile,
-          mode: "oauth_account" as const,
-        },
+        (() => {
+          const recoveredEmail =
+            typeof profile.email === "string" && profile.email.trim()
+              ? profile.email.trim()
+              : extractEmailFromAccessToken(profile.access);
+
+          return {
+            ...profile,
+            mode: "oauth_account" as const,
+            email: recoveredEmail,
+          };
+        })(),
       ]),
     );
     return {
@@ -63,6 +105,39 @@ export async function saveProfile(profile: OAuthProfile): Promise<void> {
   await saveStore(store);
 }
 
+export async function updateProfile(
+  profileId: string,
+  updater: (profile: OAuthProfile) => OAuthProfile,
+): Promise<OAuthProfile | null> {
+  const store = await loadStore();
+  const profile = store.profiles[profileId];
+  if (!profile) {
+    return null;
+  }
+
+  const updated = updater(profile);
+  store.profiles[profileId] = updated;
+  await saveStore(store);
+  return updated;
+}
+
+export async function listProfiles(): Promise<OAuthProfile[]> {
+  const store = await loadStore();
+  return Object.values(store.profiles);
+}
+
+export async function setActiveProfile(profileId: string): Promise<OAuthProfile | null> {
+  const store = await loadStore();
+  const profile = store.profiles[profileId];
+  if (!profile) {
+    return null;
+  }
+
+  store.activeProfileId = profileId;
+  await saveStore(store);
+  return profile;
+}
+
 export async function getActiveProfile(): Promise<OAuthProfile | null> {
   const store = await loadStore();
   const activeId = store.activeProfileId?.trim();
@@ -72,6 +147,22 @@ export async function getActiveProfile(): Promise<OAuthProfile | null> {
 
   const first = Object.values(store.profiles)[0];
   return first ?? null;
+}
+
+export async function removeProfile(profileId: string): Promise<OAuthProfile | null> {
+  const store = await loadStore();
+  if (!store.profiles[profileId]) {
+    return null;
+  }
+
+  delete store.profiles[profileId];
+
+  if (store.activeProfileId === profileId) {
+    store.activeProfileId = Object.keys(store.profiles)[0];
+  }
+
+  await saveStore(store);
+  return store.activeProfileId ? store.profiles[store.activeProfileId] ?? null : null;
 }
 
 export async function clearStore(): Promise<void> {

@@ -13,20 +13,31 @@ export class ChatService {
 
   async chat(request: ChatRequest): Promise<ChatResult> {
     const provider = request.provider ?? "openai-codex";
-    const model = await this.deps.modelService.resolveModel(provider, request.model);
-    const profile = await this.deps.authService.requireUsableProfile(provider);
-    const result = await askOpenAICodex({
-      profile,
-      prompt: request.input,
-      model,
-      system: request.system,
+    const model = await this.deps.modelService.resolveModel(provider, request.model, {
+      allowUnknown: request.experimental?.allowUnknownModel,
     });
+    const profile = await this.deps.authService.requireUsableProfile(provider);
+    try {
+      const result = await askOpenAICodex({
+        profile,
+        prompt: request.input,
+        model,
+        system: request.system,
+        bodyOverride: request.experimental?.codexBody,
+      });
+      await this.deps.authService.updateProfileQuota(profile.profileId, result.quota, provider);
 
-    return {
-      provider,
-      model,
-      text: result.text,
-      raw: result.raw,
-    };
+      return {
+        provider,
+        model,
+        text: result.text,
+        raw: result.raw,
+        artifacts: result.artifacts,
+      };
+    } catch (error) {
+      const quota = (error as { quota?: import("../types.js").CodexQuotaSnapshot }).quota;
+      await this.deps.authService.updateProfileQuota(profile.profileId, quota, provider);
+      throw error;
+    }
   }
 }

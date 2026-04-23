@@ -1,7 +1,7 @@
 {
   "name": "ai-zero-token",
-  "version": "1.0.1",
-  "description": "A local-first single-user AI CLI and gateway with OpenAI Codex OAuth support.",
+  "version": "1.0.2",
+  "description": "Local-first OpenAI-compatible AI CLI and gateway with Codex OAuth, multi-account management, and gpt-image-2 image generation.",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -22,7 +22,14 @@
     "gateway",
     "oauth",
     "openai",
-    "codex"
+    "codex",
+    "openai-compatible",
+    "chatgpt",
+    "gpt-image-2",
+    "image-generation",
+    "images-generations",
+    "local-gateway",
+    "multi-account"
   ],
   "engines": {
     "node": ">=22"
@@ -31,9 +38,11 @@
     "login": "bun src/cli.ts login",
     "status": "bun src/cli.ts status",
     "ask": "bun src/cli.ts ask",
+    "start": "bun src/cli.ts start",
     "serve": "bun src/cli.ts serve",
     "build": "tsup",
     "typecheck": "bunx tsc -p tsconfig.json --noEmit",
+    "prepack": "npm run build",
     "pack:dry": "npm pack --dry-run"
   },
   "dependencies": {

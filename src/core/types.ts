@@ -2,6 +2,27 @@ export type ProviderId = "openai-codex";
 
 export type AuthMode = "oauth_account";
 
+export type CodexQuotaSnapshot = {
+  capturedAt: number;
+  sourceRequestId?: string;
+  activeLimit?: string;
+  planType?: string;
+  primaryUsedPercent?: number;
+  secondaryUsedPercent?: number;
+  primaryWindowMinutes?: number;
+  secondaryWindowMinutes?: number;
+  primaryResetAfterSeconds?: number;
+  secondaryResetAfterSeconds?: number;
+  primaryResetAt?: number;
+  secondaryResetAt?: number;
+  primaryOverSecondaryLimitPercent?: number;
+  creditsHasCredits?: boolean;
+  creditsUnlimited?: boolean;
+  creditsBalance?: string;
+  promoCampaignId?: string;
+  promoMessage?: string;
+};
+
 export type OAuthProfile = {
   provider: ProviderId;
   profileId: string;
@@ -11,6 +32,19 @@ export type OAuthProfile = {
   expires: number;
   accountId: string;
   email?: string;
+  quota?: CodexQuotaSnapshot;
+};
+
+export type ProfileSummary = {
+  provider: ProviderId;
+  profileId: string;
+  accountId: string;
+  email?: string;
+  expiresAt: number;
+  accessTokenPreview: string;
+  refreshTokenPreview: string;
+  isActive: boolean;
+  quota?: CodexQuotaSnapshot;
 };
 
 export type ModelInfo = {
@@ -25,8 +59,20 @@ export type ModelInfo = {
 export type ChatRequest = {
   provider?: ProviderId;
   model?: string;
-  input: string;
+  input?: string;
   system?: string;
+  experimental?: {
+    codexBody?: Record<string, unknown>;
+    allowUnknownModel?: boolean;
+  };
+};
+
+export type ArtifactCandidate = {
+  source: "event" | "response";
+  path: string;
+  key: string;
+  kind: "url" | "reference";
+  value: string;
 };
 
 export type ChatResult = {
@@ -34,6 +80,7 @@ export type ChatResult = {
   model: string;
   text: string;
   raw: unknown;
+  artifacts: ArtifactCandidate[];
 };
 
 export type GatewayStatus = {
@@ -43,6 +90,7 @@ export type GatewayStatus = {
   defaultModel: string;
   loggedIn: boolean;
   expiresAt?: number;
+  profileCount: number;
   serverHost: string;
   serverPort: number;
 };

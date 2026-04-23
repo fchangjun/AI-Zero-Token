@@ -4,6 +4,7 @@ import { printHelp } from "./commands/help.js";
 import { runLoginCommand } from "./commands/login.js";
 import { runModelsCommand } from "./commands/models.js";
 import { runServeCommand } from "./commands/serve.js";
+import { runStartCommand } from "./commands/start.js";
 import { runStatusCommand } from "./commands/status.js";
 
 export async function runCli(argv: string[] = process.argv.slice(2)): Promise<void> {
@@ -24,6 +25,9 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<vo
       return;
     case "serve":
       await runServeCommand(rest);
+      return;
+    case "start":
+      await runStartCommand(rest);
       return;
     case "clear":
       await runClearCommand();
