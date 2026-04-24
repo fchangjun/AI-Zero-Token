@@ -1,11 +1,10 @@
 import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { GatewaySettings } from "../types.js";
-
-const projectDir = path.dirname(fileURLToPath(new URL("../../../package.json", import.meta.url)));
-const stateDir = path.join(projectDir, ".state");
-const settingsPath = path.join(stateDir, "settings.json");
+import {
+  ensureStateMigrated,
+  getSettingsPath,
+  getStateDir,
+} from "./state-paths.js";
 
 export function createDefaultSettings(): GatewaySettings {
   return {
@@ -19,13 +18,10 @@ export function createDefaultSettings(): GatewaySettings {
   };
 }
 
-export function getSettingsPath(): string {
-  return settingsPath;
-}
-
 export async function loadSettings(): Promise<GatewaySettings> {
   try {
-    const raw = await fs.readFile(settingsPath, "utf8");
+    await ensureStateMigrated();
+    const raw = await fs.readFile(getSettingsPath(), "utf8");
     const parsed = JSON.parse(raw) as Partial<GatewaySettings>;
     const defaults = createDefaultSettings();
     return {
@@ -43,6 +39,9 @@ export async function loadSettings(): Promise<GatewaySettings> {
 }
 
 export async function saveSettings(settings: GatewaySettings): Promise<void> {
-  await fs.mkdir(stateDir, { recursive: true });
-  await fs.writeFile(settingsPath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  await ensureStateMigrated();
+  await fs.mkdir(getStateDir(), { recursive: true });
+  await fs.writeFile(getSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`, "utf8");
 }
+
+export { getSettingsPath };

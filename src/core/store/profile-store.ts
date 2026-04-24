@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { OAuthProfile } from "../types.js";
+import {
+  ensureStateMigrated,
+  getStateDir,
+  getStorePath,
+} from "./state-paths.js";
 
 type DemoStore = {
   version: 1;
@@ -9,9 +12,6 @@ type DemoStore = {
   profiles: Record<string, OAuthProfile>;
 };
 
-const projectDir = path.dirname(fileURLToPath(new URL("../../../package.json", import.meta.url)));
-const stateDir = path.join(projectDir, ".state");
-const storePath = path.join(stateDir, "store.json");
 const PROFILE_CLAIM_PATH = "https://api.openai.com/profile";
 
 function createEmptyStore(): DemoStore {
@@ -54,17 +54,10 @@ function extractEmailFromAccessToken(token: string): string | undefined {
   return undefined;
 }
 
-export function getStateDir(): string {
-  return stateDir;
-}
-
-export function getStorePath(): string {
-  return storePath;
-}
-
 export async function loadStore(): Promise<DemoStore> {
   try {
-    const raw = await fs.readFile(storePath, "utf8");
+    await ensureStateMigrated();
+    const raw = await fs.readFile(getStorePath(), "utf8");
     const parsed = JSON.parse(raw) as Partial<DemoStore>;
     const normalizedProfiles = Object.fromEntries(
       Object.entries(parsed.profiles ?? {}).map(([profileId, profile]) => [
@@ -94,8 +87,9 @@ export async function loadStore(): Promise<DemoStore> {
 }
 
 export async function saveStore(store: DemoStore): Promise<void> {
-  await fs.mkdir(stateDir, { recursive: true });
-  await fs.writeFile(storePath, `${JSON.stringify(store, null, 2)}\n`, "utf8");
+  await ensureStateMigrated();
+  await fs.mkdir(getStateDir(), { recursive: true });
+  await fs.writeFile(getStorePath(), `${JSON.stringify(store, null, 2)}\n`, "utf8");
 }
 
 export async function saveProfile(profile: OAuthProfile): Promise<void> {
@@ -166,5 +160,7 @@ export async function removeProfile(profileId: string): Promise<OAuthProfile | n
 }
 
 export async function clearStore(): Promise<void> {
-  await fs.rm(stateDir, { recursive: true, force: true });
+  await fs.rm(getStateDir(), { recursive: true, force: true });
 }
+
+export { getStateDir, getStorePath };

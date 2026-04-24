@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.4 - 2026-04-24
+
+- Moved persistent account and settings state to the user home directory at `~/.ai-zero-token/.state`.
+- Added automatic one-time migration from the old package-local `.state` directory when available.
+- Added `AI_ZERO_TOKEN_HOME` support for overriding the persistent state location.
+- Fixed repeated login prompts after npm upgrades or global package reinstalls.
+
 ## 1.0.3 - 2026-04-24
 
 - Added dynamic Codex model discovery from the local `~/.codex/models_cache.json` cache, with static model fallback when the cache is unavailable.
@@ -11,4 +18,3 @@
 - Improved image generation error handling with transient retries and clearer failure details.
 - Preserved response headers when using the curl HTTP fallback so quota metadata can still be captured.
 - Added Vibe Coding / OpenAI-compatible client integration documentation.
-
