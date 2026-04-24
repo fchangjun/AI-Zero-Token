@@ -378,7 +378,12 @@ function normalizeError(error: unknown): Error {
 }
 
 function getErrorStatusCode(error: unknown): number {
-  const message = normalizeError(error).message;
+  const normalized = normalizeError(error) as Error & { statusCode?: number };
+  if (typeof normalized.statusCode === "number") {
+    return normalized.statusCode;
+  }
+
+  const message = normalized.message;
   if (
     message.includes("缺少") ||
     message.includes("格式错误") ||
@@ -429,9 +434,11 @@ export function createApp(params?: {
   });
 
   async function buildAdminConfig(request: FastifyRequest) {
-    const [status, models, settings, profile, profiles] = await Promise.all([
+    const [status, models, modelCatalog, versionStatus, settings, profile, profiles] = await Promise.all([
       ctx.authService.getStatus(),
       ctx.modelService.listModels(),
+      ctx.modelService.getCatalog(),
+      ctx.versionService.getVersionStatus(),
       ctx.configService.getSettings(),
       ctx.authService.getActiveProfile(),
       ctx.authService.listProfiles(),
@@ -442,6 +449,8 @@ export function createApp(params?: {
       status,
       settings,
       models,
+      modelCatalog,
+      versionStatus,
       profile: serializeProfile(profile),
       profiles: profiles.map((item) => serializeManagedProfile(item)),
       adminUrl: `${origin}/`,
@@ -487,12 +496,37 @@ export function createApp(params?: {
 
   app.get("/_gateway/models", async () => ({
     data: await ctx.modelService.listModels(),
+    catalog: await ctx.modelService.getCatalog(),
   }));
+
+  app.post("/_gateway/models/refresh", async () => {
+    const result = await ctx.modelService.refreshModels();
+    return {
+      data: result.models,
+      catalog: result.catalog,
+    };
+  });
+
+  app.post("/_gateway/admin/runtime-refresh", async (request) => {
+    await Promise.all([
+      ctx.authService.syncActiveProfileQuota("openai-codex", {
+        suppressErrors: true,
+      }),
+      ctx.versionService.getVersionStatus({
+        force: true,
+      }),
+    ]);
+
+    return buildAdminConfig(request);
+  });
 
   app.get("/_gateway/admin/config", async (request) => buildAdminConfig(request));
 
   app.post("/_gateway/admin/login", async (request) => {
     await ctx.authService.login("openai-codex");
+    await ctx.authService.syncActiveProfileQuota("openai-codex", {
+      suppressErrors: true,
+    });
     return buildAdminConfig(request);
   });
 
@@ -514,6 +548,14 @@ export function createApp(params?: {
     }
 
     await ctx.authService.activateProfile(parsed.data.profileId);
+    await ctx.authService.syncActiveProfileQuota("openai-codex", {
+      suppressErrors: true,
+    });
+    return buildAdminConfig(request);
+  });
+
+  app.post("/_gateway/admin/profiles/sync-quota", async (request) => {
+    await ctx.authService.syncActiveProfileQuota("openai-codex");
     return buildAdminConfig(request);
   });
 

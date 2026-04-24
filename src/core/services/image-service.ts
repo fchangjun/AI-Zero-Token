@@ -52,6 +52,13 @@ type ImageGenerationOutput = {
   size?: string;
 };
 
+type ImageFailureDetails = {
+  code?: string;
+  message: string;
+  requestId?: string;
+  transient: boolean;
+};
+
 const SUPPORTED_IMAGE_MODELS = new Set([
   "gpt-image-1",
   "gpt-image-1-mini",
@@ -81,6 +88,9 @@ const SUPPORTED_IMAGE_BACKGROUNDS = new Set([
   "transparent",
   "opaque",
 ]);
+
+const IMAGE_GENERATION_MAX_ATTEMPTS = 3;
+const IMAGE_GENERATION_RETRY_DELAYS_MS = [1500, 4000];
 
 function truncateForLog(value: string, max = 160): string {
   if (value.length <= max) {
@@ -275,7 +285,36 @@ function summarizeImageDebug(raw: unknown): Record<string, unknown> {
   };
 }
 
-function extractImageFailureMessage(raw: unknown): string | null {
+function extractRequestIdFromMessage(message: string): string | undefined {
+  const match = message.match(/request ID ([a-z0-9-]+)/i);
+  return match?.[1];
+}
+
+function createImageFailureDetails(code: unknown, message: unknown): ImageFailureDetails | null {
+  const normalizedMessage =
+    typeof message === "string" && message.trim()
+      ? message.trim()
+      : typeof code === "string" && code.trim()
+        ? code.trim()
+        : null;
+
+  if (!normalizedMessage) {
+    return null;
+  }
+
+  const normalizedCode = typeof code === "string" && code.trim() ? code.trim() : undefined;
+  return {
+    code: normalizedCode,
+    message: normalizedMessage,
+    requestId: extractRequestIdFromMessage(normalizedMessage),
+    transient:
+      normalizedCode === "server_error" ||
+      /retry your request/i.test(normalizedMessage) ||
+      /temporar/i.test(normalizedMessage),
+  };
+}
+
+function extractImageFailureDetails(raw: unknown): ImageFailureDetails | null {
   if (!isRecord(raw)) {
     return null;
   }
@@ -284,14 +323,9 @@ function extractImageFailureMessage(raw: unknown): string | null {
   if (response) {
     const responseError = isRecord(response.error) ? response.error : null;
     const responseStatus = typeof response.status === "string" ? response.status : undefined;
-    const responseMessage =
-      typeof responseError?.message === "string"
-        ? responseError.message
-        : typeof responseError?.code === "string"
-          ? responseError.code
-          : null;
-    if (responseStatus === "failed" && responseMessage) {
-      return responseMessage;
+    const details = createImageFailureDetails(responseError?.code, responseError?.message);
+    if (responseStatus === "failed" && details) {
+      return details;
     }
   }
 
@@ -303,32 +337,32 @@ function extractImageFailureMessage(raw: unknown): string | null {
 
     if (event.type === "error") {
       const eventError = isRecord(event.error) ? event.error : event;
-      const message =
-        typeof eventError.message === "string"
-          ? eventError.message
-          : typeof eventError.code === "string"
-            ? eventError.code
-            : null;
-      if (message) {
-        return message;
+      const details = createImageFailureDetails(eventError.code, eventError.message);
+      if (details) {
+        return details;
       }
     }
 
     if (event.type === "response.failed" && isRecord(event.response)) {
       const responseError = isRecord(event.response.error) ? event.response.error : null;
-      const message =
-        typeof responseError?.message === "string"
-          ? responseError.message
-          : typeof responseError?.code === "string"
-            ? responseError.code
-            : null;
-      if (message) {
-        return message;
+      const details = createImageFailureDetails(responseError?.code, responseError?.message);
+      if (details) {
+        return details;
       }
     }
   }
 
   return null;
+}
+
+function createError(message: string, statusCode: number): Error & { statusCode: number } {
+  const error = new Error(message) as Error & { statusCode: number };
+  error.statusCode = statusCode;
+  return error;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function extractImageUsage(raw: unknown): ImageResult["usage"] | undefined {
@@ -436,82 +470,103 @@ export class ImageService {
       tool.moderation = request.moderation;
     }
 
-    let result;
-    try {
-      result = await askOpenAICodex({
-        profile,
-        model: orchestratorModel,
-        bodyOverride: {
+    for (let attempt = 1; attempt <= IMAGE_GENERATION_MAX_ATTEMPTS; attempt += 1) {
+      let result;
+      try {
+        result = await askOpenAICodex({
+          profile,
           model: orchestratorModel,
-          input: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "input_text",
-                  text: request.prompt,
-                },
-              ],
+          bodyOverride: {
+            model: orchestratorModel,
+            input: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "input_text",
+                    text: request.prompt,
+                  },
+                ],
+              },
+            ],
+            tools: [tool],
+            tool_choice: {
+              type: "image_generation",
             },
-          ],
-          tools: [tool],
-          tool_choice: {
-            type: "image_generation",
+            include: ["reasoning.encrypted_content"],
           },
-          include: ["reasoning.encrypted_content"],
-        },
-      });
-      await this.deps.authService.updateProfileQuota(profile.profileId, result.quota, "openai-codex");
-    } catch (error) {
-      const quota = (error as { quota?: import("../types.js").CodexQuotaSnapshot }).quota;
-      await this.deps.authService.updateProfileQuota(profile.profileId, quota, "openai-codex");
-      throw error;
-    }
+        });
+        await this.deps.authService.updateProfileQuota(profile.profileId, result.quota, "openai-codex");
+      } catch (error) {
+        const quota = (error as { quota?: import("../types.js").CodexQuotaSnapshot }).quota;
+        await this.deps.authService.updateProfileQuota(profile.profileId, quota, "openai-codex");
+        throw error;
+      }
 
-    const raw = isRecord(result.raw) ? result.raw : {};
-    const response = isRecord(raw.response) ? raw.response : null;
-    const images = collectImageGenerationOutputs(raw);
-    const debugSummary = summarizeImageDebug(raw);
-    if (images.length === 0) {
-      const upstreamFailure = extractImageFailureMessage(raw);
-      console.error("[gateway:image] parse failure", {
+      const raw = isRecord(result.raw) ? result.raw : {};
+      const response = isRecord(raw.response) ? raw.response : null;
+      const images = collectImageGenerationOutputs(raw);
+      const debugSummary = summarizeImageDebug(raw);
+      if (images.length === 0) {
+        const upstreamFailure = extractImageFailureDetails(raw);
+        console.error("[gateway:image] parse failure", {
+          ...requestSummary,
+          attempt,
+          upstreamFailure,
+          debug: debugSummary,
+        });
+
+        if (upstreamFailure?.transient && attempt < IMAGE_GENERATION_MAX_ATTEMPTS) {
+          const retryDelayMs = IMAGE_GENERATION_RETRY_DELAYS_MS[attempt - 1] ?? 4000;
+          console.warn("[gateway:image] transient upstream failure, retrying", {
+            ...requestSummary,
+            attempt,
+            retryDelayMs,
+            code: upstreamFailure.code,
+            requestId: upstreamFailure.requestId,
+          });
+          await sleep(retryDelayMs);
+          continue;
+        }
+
+        if (upstreamFailure) {
+          const reason = upstreamFailure.code ? `${upstreamFailure.code}: ${upstreamFailure.message}` : upstreamFailure.message;
+          throw createError(`上游图片生成失败: ${reason}`, upstreamFailure.transient ? 503 : 502);
+        }
+        throw createError("图片生成请求已完成，但没有解析出 image_generation_call 结果。", 502);
+      }
+
+      const first = images[0];
+      const imageResult = {
+        created:
+          typeof response?.created_at === "number"
+            ? response.created_at
+            : Math.floor(Date.now() / 1000),
+        data: images.map((image) => ({
+          b64_json: image.result ?? "",
+          ...(image.revised_prompt ? { revised_prompt: image.revised_prompt } : {}),
+        })),
+        background: normalizeReturnedBackground(first.background),
+        output_format: normalizeReturnedFormat(first.output_format),
+        quality: normalizeReturnedQuality(first.quality),
+        size: normalizeReturnedSize(first.size, request.size),
+        usage: extractImageUsage(raw),
+      };
+
+      console.info("[gateway:image] upstream response", {
         ...requestSummary,
-        upstreamFailure,
+        attempt,
+        imageCount: imageResult.data.length,
+        firstImageBase64Length: imageResult.data[0]?.b64_json.length ?? 0,
+        outputFormat: imageResult.output_format ?? request.outputFormat ?? "unknown",
+        quality: imageResult.quality ?? request.quality ?? "unknown",
+        size: imageResult.size ?? request.size ?? "unknown",
         debug: debugSummary,
       });
-      if (upstreamFailure) {
-        throw new Error(`上游图片生成失败: ${upstreamFailure}`);
-      }
-      throw new Error("图片生成请求已完成，但没有解析出 image_generation_call 结果。");
+
+      return imageResult;
     }
 
-    const first = images[0];
-    const imageResult = {
-      created:
-        typeof response?.created_at === "number"
-          ? response.created_at
-          : Math.floor(Date.now() / 1000),
-      data: images.map((image) => ({
-        b64_json: image.result ?? "",
-        ...(image.revised_prompt ? { revised_prompt: image.revised_prompt } : {}),
-      })),
-      background: normalizeReturnedBackground(first.background),
-      output_format: normalizeReturnedFormat(first.output_format),
-      quality: normalizeReturnedQuality(first.quality),
-      size: normalizeReturnedSize(first.size, request.size),
-      usage: extractImageUsage(raw),
-    };
-
-    console.info("[gateway:image] upstream response", {
-      ...requestSummary,
-      imageCount: imageResult.data.length,
-      firstImageBase64Length: imageResult.data[0]?.b64_json.length ?? 0,
-      outputFormat: imageResult.output_format ?? request.outputFormat ?? "unknown",
-      quality: imageResult.quality ?? request.quality ?? "unknown",
-      size: imageResult.size ?? request.size ?? "unknown",
-      debug: debugSummary,
-    });
-
-    return imageResult;
+    throw createError("图片生成失败：超过最大重试次数。", 503);
   }
 }

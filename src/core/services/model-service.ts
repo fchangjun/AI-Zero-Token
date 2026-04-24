@@ -1,8 +1,8 @@
 import {
-  CODEX_MODEL_INFOS,
-  isSupportedCodexModel,
+  getCodexModelCatalog,
+  hasCodexModel,
 } from "../models/openai-codex-models.js";
-import type { ModelInfo, ProviderId } from "../types.js";
+import type { ModelCatalogInfo, ModelInfo, ProviderId } from "../types.js";
 import { ConfigService } from "./config-service.js";
 
 export class ModelService {
@@ -13,11 +13,44 @@ export class ModelService {
       throw new Error(`暂不支持 provider: ${provider}`);
     }
 
-    const defaultModel = await this.configService.getDefaultModel(provider);
-    return CODEX_MODEL_INFOS.map((model) => ({
+    const [{ models }, defaultModel] = await Promise.all([
+      getCodexModelCatalog(),
+      this.configService.getDefaultModel(provider),
+    ]);
+    return models.map((model) => ({
       ...model,
       isDefault: model.id === defaultModel,
     }));
+  }
+
+  async getCatalog(provider: ProviderId = "openai-codex"): Promise<ModelCatalogInfo> {
+    if (provider !== "openai-codex") {
+      throw new Error(`暂不支持 provider: ${provider}`);
+    }
+
+    return (await getCodexModelCatalog()).catalog;
+  }
+
+  async refreshModels(provider: ProviderId = "openai-codex"): Promise<{
+    models: ModelInfo[];
+    catalog: ModelCatalogInfo;
+  }> {
+    if (provider !== "openai-codex") {
+      throw new Error(`暂不支持 provider: ${provider}`);
+    }
+
+    const [{ models, catalog }, defaultModel] = await Promise.all([
+      getCodexModelCatalog(),
+      this.configService.getDefaultModel(provider),
+    ]);
+
+    return {
+      models: models.map((model) => ({
+        ...model,
+        isDefault: model.id === defaultModel,
+      })),
+      catalog,
+    };
   }
 
   async getDefaultModel(provider: ProviderId = "openai-codex"): Promise<string> {
@@ -45,8 +78,8 @@ export class ModelService {
       return requested;
     }
 
-    if (!isSupportedCodexModel(requested)) {
-      throw new Error(`当前 demo 未内置模型: ${requested}`);
+    if (!(await hasCodexModel(requested))) {
+      throw new Error(`当前网关未找到可用模型: ${requested}`);
     }
 
     return requested;

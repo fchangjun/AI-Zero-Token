@@ -23,6 +23,7 @@ type TextRequestInit = {
 };
 
 const CURL_STATUS_MARKER = "\n__CURL_STATUS__:";
+const CURL_HEADERS_MARKER = "\n__CURL_HEADERS__:";
 let requestSequence = 0;
 
 function nextRequestId(): string {
@@ -74,6 +75,29 @@ function normalizeHeaders(headers: Headers): Record<string, string> {
   return normalized;
 }
 
+function normalizeCurlHeaders(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).flatMap(([key, rawValue]) => {
+      if (typeof rawValue === "string" && rawValue.trim()) {
+        return [[key.toLowerCase(), rawValue.trim()]];
+      }
+
+      if (Array.isArray(rawValue)) {
+        const joined = rawValue
+          .filter((item) => typeof item === "string" && item.trim())
+          .join(", ");
+        return joined ? [[key.toLowerCase(), joined]] : [];
+      }
+
+      return [];
+    }),
+  );
+}
+
 async function runCurlRequest(
   init: TextRequestInit,
   params?: { requestId?: string; fallbackFrom?: "fetch" },
@@ -88,7 +112,7 @@ async function runCurlRequest(
     init.method,
     init.url,
     "--write-out",
-    `${CURL_STATUS_MARKER}%{http_code}`,
+    `${CURL_STATUS_MARKER}%{http_code}${CURL_HEADERS_MARKER}%{header_json}`,
   ];
 
   for (const [key, value] of Object.entries(init.headers ?? {})) {
@@ -131,16 +155,34 @@ async function runCurlRequest(
   }
 
   const parseStartedAt = performance.now();
-  const markerIndex = stdout.lastIndexOf(CURL_STATUS_MARKER);
-  if (markerIndex === -1) {
+  const statusMarkerIndex = stdout.lastIndexOf(CURL_STATUS_MARKER);
+  const headersMarkerIndex = stdout.lastIndexOf(CURL_HEADERS_MARKER);
+  if (statusMarkerIndex === -1) {
     throw new Error("curl 响应缺少状态码标记。");
   }
+  if (headersMarkerIndex === -1 || headersMarkerIndex < statusMarkerIndex) {
+    throw new Error("curl 响应缺少响应头标记。");
+  }
 
-  const body = stdout.slice(0, markerIndex);
-  const statusText = stdout.slice(markerIndex + CURL_STATUS_MARKER.length).trim();
+  const body = stdout.slice(0, statusMarkerIndex);
+  const statusText = stdout.slice(statusMarkerIndex + CURL_STATUS_MARKER.length, headersMarkerIndex).trim();
   const status = Number.parseInt(statusText, 10);
   if (!Number.isFinite(status)) {
     throw new Error(`无法解析 curl 状态码: ${statusText}`);
+  }
+
+  const headersText = stdout.slice(headersMarkerIndex + CURL_HEADERS_MARKER.length).trim();
+  let headers: Record<string, string> = {};
+  if (headersText) {
+    try {
+      headers = normalizeCurlHeaders(JSON.parse(headersText));
+    } catch (error) {
+      console.warn("[http] failed to parse curl response headers", {
+        requestId,
+        url: init.url,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   phases.parseResponseMs = performance.now() - parseStartedAt;
@@ -162,7 +204,7 @@ async function runCurlRequest(
     transport: "curl",
     timing,
     requestId,
-    headers: {},
+    headers,
   };
 }
 

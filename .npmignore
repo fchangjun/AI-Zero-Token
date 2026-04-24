@@ -1,8 +1,11 @@
 .DS_Store
+.npmrc
 .state/
 node_modules/
 artifacts/
 design/
+ai_zero_token_*/
+ai_zero_token_*.zip
 codex-raw.json
 codex-body.json
 .env

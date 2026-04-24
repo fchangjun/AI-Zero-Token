@@ -143,6 +143,7 @@ npm link
 azt help
 azt status
 azt models
+azt models --refresh
 ```
 
 如果你同时保留了长命令，也可以验证：

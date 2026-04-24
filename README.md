@@ -18,6 +18,8 @@ AI Zero Token 是一个本地优先的单用户 AI CLI 和本地网关。
 - 直接代理 `gpt-image-2`，把图片生成能力暴露成 OpenAI 风格 `images.generations` 接口
 - 启动 `azt start` 后即可获得本地管理页和本地网关，适合脚本、前端和自动化流程接入
 - 支持多账号保存、切换当前账号、查看账号套餐 plan，以及当前账号是否支持生图
+- 模型列表会优先同步本机 `~/.codex/models_cache.json`，不需要每次为新模型重新 build
+- 管理页会每 10 分钟自动同步额度快照和版本状态，并提示当前版本是否可更新
 - `free` 账号会在管理页直接预警，并在网关层明确拦截生图请求
 
 如果你只关心一句话，可以把这个项目理解为：
@@ -78,6 +80,7 @@ AI Zero Token 就是围绕这些问题设计的。
 - 在 token 过期时自动刷新
 - 通过 `azt start` 一键启动本地 HTTP 网关和管理页面
 - 在管理页面里完成多账号登录、查看账号状态、切换当前账号、切换默认模型、测试接口
+- 模型列表优先读取本机 Codex 最新缓存，并支持在 CLI / 管理页手动同步
 - 暴露 OpenAI 风格接口：
   - `GET /v1/models`
   - `POST /v1/responses`
@@ -131,6 +134,7 @@ npm install -g ai-zero-token
 
 ```bash
 azt start
+azt models --refresh
 ```
 
 如果你是为了开发、构建、`npm link`、`npm pack` 或准备发布，单独看：
@@ -173,6 +177,10 @@ http://127.0.0.1:8787
 ```text
 http://127.0.0.1:8787/v1
 ```
+
+Vibe Coding、OpenAI-compatible SDK 和脚本接入可以参考：
+
+- [API 使用说明](docs/API_USAGE.md)
 
 如果你要让本地网页直接从浏览器请求这个网关，现在已经默认开启 CORS。
 
@@ -320,6 +328,7 @@ curl http://127.0.0.1:8787/v1/images/generations \
 - `GET /_gateway/health`
 - `GET /_gateway/status`
 - `GET /_gateway/models`
+- `POST /_gateway/models/refresh`
 - `GET /_gateway/admin/config`
 - `POST /_gateway/admin/login`
 - `POST /_gateway/admin/logout`

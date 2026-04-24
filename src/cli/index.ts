@@ -18,7 +18,7 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<vo
       await runStatusCommand();
       return;
     case "models":
-      await runModelsCommand();
+      await runModelsCommand(rest);
       return;
     case "ask":
       await runAskCommand(rest);

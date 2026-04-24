@@ -1,5 +1,5 @@
 import type { GatewaySettings, ProviderId } from "../types.js";
-import { DEFAULT_CODEX_MODEL, isSupportedCodexModel } from "../models/openai-codex-models.js";
+import { getPreferredCodexModel, hasCodexModel } from "../models/openai-codex-models.js";
 import {
   createDefaultSettings,
   loadSettings,
@@ -27,15 +27,15 @@ export class ConfigService {
     if (provider !== "openai-codex") {
       throw new Error(`暂不支持 provider: ${provider}`);
     }
-    return isSupportedCodexModel(settings.defaultModel) ? settings.defaultModel : DEFAULT_CODEX_MODEL;
+    return (await hasCodexModel(settings.defaultModel)) ? settings.defaultModel : getPreferredCodexModel();
   }
 
   async setDefaultModel(model: string, provider: ProviderId = "openai-codex"): Promise<GatewaySettings> {
     if (provider !== "openai-codex") {
       throw new Error(`暂不支持 provider: ${provider}`);
     }
-    if (!isSupportedCodexModel(model)) {
-      throw new Error(`当前 demo 未内置模型: ${model}`);
+    if (!(await hasCodexModel(model))) {
+      throw new Error(`当前网关未找到可用模型: ${model}`);
     }
 
     const settings = await this.getSettings();

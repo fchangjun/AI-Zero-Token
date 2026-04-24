@@ -207,9 +207,22 @@ export function renderAdminPage(): string {
       gap: 10px;
     }
 
+    .service-list.compact {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 12px;
+    }
+
     .service-row {
       display: grid;
       gap: 4px;
+    }
+
+    .service-row.compact {
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      min-width: 0;
     }
 
     .service-row label {
@@ -271,6 +284,54 @@ export function renderAdminPage(): string {
       gap: 14px;
     }
 
+    .update-panel {
+      display: none;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 18px;
+      padding: 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(245, 158, 11, 0.32);
+      background:
+        linear-gradient(135deg, rgba(255, 247, 237, 0.98), rgba(255, 251, 235, 0.92)),
+        var(--panel);
+      box-shadow: 0 18px 42px rgba(180, 83, 9, 0.12);
+    }
+
+    .update-panel.is-visible {
+      display: grid;
+    }
+
+    .update-copy {
+      display: grid;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .update-copy strong {
+      color: #9a3412;
+      font-size: 16px;
+      line-height: 1.35;
+    }
+
+    .update-copy span {
+      color: #7c2d12;
+      font-size: 13px;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+    }
+
+    .update-command {
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(180, 83, 9, 0.22);
+      background: rgba(255, 255, 255, 0.78);
+      color: #7c2d12;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+
     .summary-card {
       border-radius: 16px;
       padding: 18px;
@@ -308,7 +369,7 @@ export function renderAdminPage(): string {
 
     .main-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(380px, 430px);
+      grid-template-columns: minmax(0, 1fr) minmax(460px, 560px);
       gap: 20px;
       align-items: start;
     }
@@ -587,17 +648,33 @@ export function renderAdminPage(): string {
 
     .account-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       grid-auto-rows: 1fr;
       gap: 16px;
+      justify-content: start;
+    }
+
+    .account-grid.profile-count-1 {
+      grid-template-columns: minmax(300px, 440px);
+    }
+
+    .account-grid.profile-count-2 {
+      grid-template-columns: repeat(2, minmax(280px, 360px));
+    }
+
+    .account-grid.profile-count-3 {
+      grid-template-columns: repeat(3, minmax(260px, 320px));
+    }
+
+    .account-grid.profile-count-many {
+      grid-template-columns: repeat(auto-fit, minmax(250px, 300px));
     }
 
     .account-card {
-      border-radius: 18px;
-      padding: 16px;
+      border-radius: 16px;
+      padding: 14px;
       display: grid;
       grid-template-rows: auto auto auto 1fr auto;
-      gap: 14px;
+      gap: 12px;
       min-width: 0;
       height: 100%;
     }
@@ -611,34 +688,34 @@ export function renderAdminPage(): string {
 
     .account-title {
       display: grid;
-      gap: 8px;
+      gap: 6px;
       min-width: 0;
     }
 
     .account-name {
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       min-width: 0;
     }
 
     .avatar {
-      width: 28px;
-      height: 28px;
+      width: 24px;
+      height: 24px;
       border-radius: 999px;
       background: var(--panel-soft);
       border: 1px solid var(--line);
       display: grid;
       place-items: center;
-      font-size: 12px;
+      font-size: 11px;
       color: var(--brand);
       font-weight: 700;
       flex: 0 0 auto;
     }
 
     .account-name strong {
-      font-size: 14px;
-      line-height: 1.4;
+      font-size: 13px;
+      line-height: 1.35;
       min-width: 0;
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -652,17 +729,17 @@ export function renderAdminPage(): string {
     .badge-row {
       display: flex;
       flex-wrap: wrap;
-      gap: 8px;
+      gap: 6px;
     }
 
     .badge {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 24px;
-      padding: 0 10px;
+      min-height: 22px;
+      padding: 0 8px;
       border-radius: 999px;
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       white-space: nowrap;
     }
@@ -694,26 +771,36 @@ export function renderAdminPage(): string {
 
     .account-metrics {
       display: grid;
-      gap: 12px;
+      gap: 10px;
     }
 
     .quota-row {
       display: grid;
-      gap: 8px;
+      gap: 6px;
     }
 
     .quota-line {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
+      gap: 10px;
       color: var(--text-soft);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .quota-line span {
+      min-width: 0;
+    }
+
+    .quota-line strong {
+      flex-shrink: 0;
+      color: var(--text);
       font-size: 12px;
-      line-height: 1.5;
     }
 
     .progress-track {
-      height: 6px;
+      height: 5px;
       width: 100%;
       border-radius: 999px;
       background: #eef2f7;
@@ -745,26 +832,26 @@ export function renderAdminPage(): string {
     .meta-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px 14px;
+      gap: 8px 12px;
     }
 
     .meta-item {
       display: grid;
-      gap: 4px;
+      gap: 3px;
       min-width: 0;
     }
 
     .meta-item label {
       color: var(--text-muted);
-      font-size: 11px;
+      font-size: 10px;
       line-height: 1.4;
     }
 
     .meta-item strong,
     .meta-item span,
     .meta-item code {
-      font-size: 12px;
-      line-height: 1.5;
+      font-size: 11px;
+      line-height: 1.45;
       color: var(--text-soft);
       word-break: break-word;
       overflow-wrap: anywhere;
@@ -773,13 +860,30 @@ export function renderAdminPage(): string {
     .account-actions {
       display: flex;
       flex-wrap: wrap;
-      gap: 10px;
+      gap: 8px;
       margin-top: auto;
     }
 
     .account-actions .btn-secondary,
     .account-actions .btn-danger {
       flex: 1 1 120px;
+      min-height: 36px;
+      padding: 0 12px;
+      border-radius: 10px;
+      font-size: 12px;
+    }
+
+    .account-status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 0 12px;
+      border-radius: 10px;
+      background: var(--panel-soft);
+      border: 1px solid var(--line);
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
     }
 
     .empty-state {
@@ -888,7 +992,8 @@ export function renderAdminPage(): string {
     .pre {
       margin: 0;
       padding: 14px;
-      min-height: 184px;
+      min-height: 280px;
+      max-height: 460px;
       overflow: auto;
       background: #0f172a;
       border-color: #0f172a;
@@ -907,9 +1012,44 @@ export function renderAdminPage(): string {
       line-height: 1.6;
     }
 
+    .tester-result {
+      display: grid;
+      gap: 12px;
+    }
+
+    .tester-result-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tester-result-tabs .tab-btn {
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .tester-panel {
+      display: none;
+      gap: 12px;
+    }
+
+    .tester-panel.is-active {
+      display: grid;
+    }
+
+    .preview-empty {
+      border: 1px dashed var(--line-strong);
+      border-radius: 14px;
+      padding: 18px;
+      background: var(--panel-soft);
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
     .preview-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 12px;
     }
 
@@ -926,11 +1066,12 @@ export function renderAdminPage(): string {
     .preview-card img {
       display: block;
       width: 100%;
-      aspect-ratio: 1 / 1;
-      object-fit: cover;
+      aspect-ratio: 4 / 3;
+      object-fit: contain;
       border-radius: 10px;
       border: 1px solid var(--line);
       background: var(--panel-soft);
+      cursor: zoom-in;
     }
 
     .preview-card figcaption {
@@ -958,6 +1099,48 @@ export function renderAdminPage(): string {
       justify-content: center;
       font-size: 12px;
       font-weight: 600;
+    }
+
+    .preview-modal-card {
+      width: min(1120px, calc(100vw - 32px));
+    }
+
+    .preview-modal-body {
+      padding: 18px 20px 20px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .preview-modal-stage {
+      display: grid;
+      place-items: center;
+      min-height: 420px;
+      max-height: calc(100vh - 240px);
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background:
+        linear-gradient(135deg, rgba(99, 91, 255, 0.06), transparent 42%),
+        var(--panel-soft);
+      padding: 16px;
+    }
+
+    .preview-modal-stage img {
+      display: block;
+      max-width: 100%;
+      max-height: calc(100vh - 280px);
+      width: auto;
+      height: auto;
+      border-radius: 14px;
+      background: #fff;
+      box-shadow: var(--shadow);
+    }
+
+    .preview-modal-meta {
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.7;
+      word-break: break-word;
     }
 
     .log-table-wrap {
@@ -1060,6 +1243,11 @@ export function renderAdminPage(): string {
 
       .summary-grid,
       .account-grid,
+      .account-grid.profile-count-1,
+      .account-grid.profile-count-2,
+      .account-grid.profile-count-3,
+      .account-grid.profile-count-many,
+      .preview-grid,
       .meta-grid,
       .trend-labels {
         grid-template-columns: 1fr;
@@ -1149,12 +1337,20 @@ export function renderAdminPage(): string {
         <div class="top-actions">
           <a class="btn-link" href="https://github.com/fchangjun/AI-Zero-Token" target="_blank" rel="noreferrer">GitHub 仓库</a>
           <button class="btn-secondary" id="contactBtn" type="button">交流反馈</button>
-          <button class="btn-secondary" id="toggleEmailBtn" type="button">查看邮箱</button>
+          <button class="btn-secondary" id="toggleEmailBtn" type="button">脱敏模式</button>
           <button class="btn-primary" id="loginBtn" type="button">+ 新增账号</button>
           <button class="btn-secondary" id="refreshBtn" type="button">刷新状态</button>
           <button class="btn-danger" id="logoutBtn" type="button">清空账号</button>
         </div>
       </header>
+
+      <section class="update-panel" id="updatePanel" aria-live="polite">
+        <div class="update-copy">
+          <strong id="updatePanelTitle">发现新版本</strong>
+          <span id="updatePanelDetail"></span>
+        </div>
+        <code class="update-command" id="updatePanelCommand">npm install -g ai-zero-token@latest</code>
+      </section>
 
       <section class="summary-grid" id="summaryGrid"></section>
 
@@ -1182,7 +1378,7 @@ export function renderAdminPage(): string {
               </select>
               <select class="control" id="profileSort">
                 <option value="quota-desc">按主额度排序</option>
-                <option value="latency-asc">按耗时排序</option>
+                <option value="latency-asc">按额度更新时间</option>
                 <option value="expiry-asc">按过期时间</option>
                 <option value="name-asc">按邮箱排序</option>
               </select>
@@ -1261,7 +1457,9 @@ export function renderAdminPage(): string {
               <label for="defaultModel">默认模型</label>
               <select class="control" id="defaultModel"></select>
               <p class="hint">切换后会影响未显式传 <code>model</code> 的请求。</p>
+              <p class="hint" id="modelCatalogHint"></p>
               <div class="actions">
+                <button class="btn-secondary" id="refreshModelsBtn" type="button">同步 Codex 模型</button>
                 <button class="btn-primary" id="saveModelBtn" type="button">保存默认模型</button>
               </div>
             </div>
@@ -1283,31 +1481,70 @@ export function renderAdminPage(): string {
 
             <p class="status-inline" id="authStatus"></p>
 
-            <div class="field">
-              <label for="responseBody">响应结果</label>
-              <pre class="pre" id="responseBody">等待请求…</pre>
-            </div>
+            <div class="tester-result">
+              <div class="tester-result-tabs">
+                <button class="tab-btn is-active" type="button" data-result-tab="response">响应 JSON</button>
+                <button class="tab-btn" type="button" data-result-tab="timing">耗时日志</button>
+                <button class="tab-btn" type="button" data-result-tab="preview">图片预览</button>
+              </div>
 
-            <div class="field">
-              <label for="timingBody">耗时日志</label>
-              <pre class="pre" id="timingBody">等待请求…</pre>
-            </div>
+              <div class="tester-panel is-active" data-result-panel="response">
+                <div class="field">
+                  <label for="responseBody">响应结果</label>
+                  <pre class="pre" id="responseBody">等待请求…</pre>
+                </div>
+              </div>
 
-            <div class="preview-grid" id="responsePreview" hidden></div>
+              <div class="tester-panel" data-result-panel="timing">
+                <div class="field">
+                  <label for="timingBody">耗时日志</label>
+                  <pre class="pre" id="timingBody">等待请求…</pre>
+                </div>
+              </div>
+
+              <div class="tester-panel" data-result-panel="preview">
+                <div class="field">
+                  <label>图片预览</label>
+                  <div class="preview-empty" id="responsePreviewEmpty">图片结果会显示在这里。点击缩略图可查看大图。</div>
+                  <div class="preview-grid" id="responsePreview"></div>
+                </div>
+              </div>
+            </div>
           </section>
 
-          <section class="card">
+          <section class="card service-card">
             <div class="section-head" style="margin-bottom: 12px;">
               <div>
-                <h2>接口信息</h2>
+                <h2>连接信息</h2>
                 <p>管理页和 API Base 可直接复制到 SDK 或测试工具。</p>
               </div>
             </div>
-            <div class="service-list" id="endpointInfo"></div>
+            <div class="service-list compact" id="endpointInfo"></div>
           </section>
         </aside>
       </section>
     </main>
+  </div>
+
+  <div class="modal-backdrop" id="imagePreviewModal" aria-hidden="true">
+    <section class="modal-card preview-modal-card" role="dialog" aria-modal="true" aria-labelledby="imagePreviewTitle">
+      <div class="modal-head">
+        <div>
+          <h3 id="imagePreviewTitle">图片预览</h3>
+          <p>查看生图结果的更大版本，避免在侧栏内滚动查看。</p>
+        </div>
+        <div class="actions">
+          <a class="btn-secondary" id="downloadPreviewBtn" href="#" download="generated-image.png">下载图片</a>
+          <button class="btn-secondary" id="closeImagePreviewBtn" type="button">关闭</button>
+        </div>
+      </div>
+      <div class="preview-modal-body">
+        <div class="preview-modal-stage">
+          <img id="previewModalImage" src="" alt="生成图片预览" />
+        </div>
+        <div class="preview-modal-meta" id="previewModalMeta">等待图片结果…</div>
+      </div>
+    </section>
   </div>
 
   <div class="modal-backdrop" id="contactModal" aria-hidden="true">
@@ -1343,6 +1580,8 @@ export function renderAdminPage(): string {
   </div>
 
   <script>
+    const RUNTIME_AUTO_REFRESH_MS = 10 * 60 * 1000;
+
     const state = {
       config: null,
       recentRequests: [],
@@ -1352,6 +1591,7 @@ export function renderAdminPage(): string {
         status: "all",
         sort: "quota-desc",
       },
+      testerResultTab: "response",
     };
 
     const endpointMeta = {
@@ -1381,6 +1621,7 @@ export function renderAdminPage(): string {
     const requestBody = document.getElementById("requestBody");
     const responseBody = document.getElementById("responseBody");
     const responsePreview = document.getElementById("responsePreview");
+    const responsePreviewEmpty = document.getElementById("responsePreviewEmpty");
     const timingBody = document.getElementById("timingBody");
     const testerMeta = document.getElementById("testerMeta");
     const authStatus = document.getElementById("authStatus");
@@ -1388,7 +1629,11 @@ export function renderAdminPage(): string {
     const runTestBtn = document.getElementById("runTestBtn");
     const toggleEmailBtn = document.getElementById("toggleEmailBtn");
     const contactModal = document.getElementById("contactModal");
+    const imagePreviewModal = document.getElementById("imagePreviewModal");
     const contactBtn = document.getElementById("contactBtn");
+    const previewModalImage = document.getElementById("previewModalImage");
+    const previewModalMeta = document.getElementById("previewModalMeta");
+    const downloadPreviewBtn = document.getElementById("downloadPreviewBtn");
     const profileSearch = document.getElementById("profileSearch");
     const profileStatusFilter = document.getElementById("profileStatusFilter");
     const profileSort = document.getElementById("profileSort");
@@ -1495,6 +1740,81 @@ export function renderAdminPage(): string {
         : "unknown";
     }
 
+    function getQuotaSnapshotTime(profile) {
+      return profile && profile.quota && typeof profile.quota.capturedAt === "number"
+        ? profile.quota.capturedAt
+        : 0;
+    }
+
+    function describeQuotaSnapshot(profile) {
+      const capturedAt = getQuotaSnapshotTime(profile);
+      return capturedAt > 0 ? formatTime(capturedAt) : "未同步";
+    }
+
+    function describeQuotaLimit(profile) {
+      const quota = profile && profile.quota ? profile.quota : null;
+      if (!quota) {
+        return "等待刷新额度";
+      }
+
+      const parts = [];
+      if (typeof quota.activeLimit === "string" && quota.activeLimit) {
+        parts.push(quota.activeLimit);
+      }
+      if (typeof quota.creditsBalance === "string" && quota.creditsBalance) {
+        parts.push("余额 " + quota.creditsBalance);
+      }
+      if (typeof quota.primaryOverSecondaryLimitPercent === "number") {
+        parts.push("共享上限 " + Math.round(quota.primaryOverSecondaryLimitPercent) + "%");
+      }
+
+      return parts.length > 0 ? parts.join(" · ") : "来自 Codex 响应头";
+    }
+
+    function getVersionValue(config) {
+      if (!config || !config.versionStatus) {
+        return "--";
+      }
+
+      return config.versionStatus.currentVersion || "--";
+    }
+
+    function getVersionDetail(config) {
+      if (!config || !config.versionStatus) {
+        return "版本状态未知";
+      }
+
+      const versionStatus = config.versionStatus;
+      if (versionStatus.status === "update-available" && versionStatus.latestVersion) {
+        return "可更新到 " + versionStatus.latestVersion;
+      }
+      if (versionStatus.status === "ok" && versionStatus.latestVersion) {
+        return "已检查，当前已是最新版本";
+      }
+      return versionStatus.error
+        ? "版本检查失败: " + versionStatus.error
+        : "暂未拿到远端版本信息";
+    }
+
+    function renderUpdatePanel(config) {
+      const panel = document.getElementById("updatePanel");
+      const title = document.getElementById("updatePanelTitle");
+      const detail = document.getElementById("updatePanelDetail");
+      const command = document.getElementById("updatePanelCommand");
+      const versionStatus = config && config.versionStatus ? config.versionStatus : null;
+
+      if (!versionStatus || !versionStatus.needsUpdate || !versionStatus.latestVersion) {
+        panel.classList.remove("is-visible");
+        return;
+      }
+
+      title.textContent = "发现新版本可更新";
+      detail.textContent = "当前版本 " + versionStatus.currentVersion + "，最新版本 "
+        + versionStatus.latestVersion + "。更新后可获得最新模型列表逻辑、管理页体验和接口修复。";
+      command.textContent = "npm install -g " + versionStatus.packageName + "@latest";
+      panel.classList.add("is-visible");
+    }
+
     function supportsImageGeneration(profile) {
       return getPlanType(profile) !== "free";
     }
@@ -1546,6 +1866,23 @@ export function renderAdminPage(): string {
       return local.slice(0, 2) + "***" + local.slice(-1) + "@" + domain;
     }
 
+    function maskIdentifier(value) {
+      if (typeof value !== "string" || !value.trim()) {
+        return value || "";
+      }
+
+      const trimmed = value.trim();
+      const parts = trimmed.split(":");
+      const suffix = parts.length > 1 ? parts.pop() || "" : trimmed;
+      const prefix = parts.length > 0 ? parts.join(":") + ":" : "";
+
+      if (suffix.length <= 10) {
+        return prefix + suffix.slice(0, 2) + "****";
+      }
+
+      return prefix + suffix.slice(0, 5) + "****" + suffix.slice(-5);
+    }
+
     function getProfileDisplayLabel(profile) {
       if (!profile) {
         return "未登录";
@@ -1553,11 +1890,12 @@ export function renderAdminPage(): string {
       if (profile.email) {
         return state.showEmails ? profile.email : maskEmail(profile.email);
       }
-      return profile.accountId || profile.profileId || "未命名账号";
+      const fallback = profile.accountId || profile.profileId || "未命名账号";
+      return state.showEmails ? fallback : maskIdentifier(fallback);
     }
 
     function updateEmailToggleButton() {
-      toggleEmailBtn.textContent = state.showEmails ? "隐藏邮箱" : "查看邮箱";
+      toggleEmailBtn.textContent = state.showEmails ? "明文模式" : "脱敏模式";
     }
 
     function getProfileInitial(profile) {
@@ -1572,7 +1910,8 @@ export function renderAdminPage(): string {
       if (item.accountEmail) {
         return state.showEmails ? item.accountEmail : maskEmail(item.accountEmail);
       }
-      return item.accountFallback || item.account || "未登录";
+      const fallback = item.accountFallback || item.account || "未登录";
+      return state.showEmails ? fallback : maskIdentifier(fallback);
     }
 
     function getPrimaryUsage(profile) {
@@ -1587,16 +1926,6 @@ export function renderAdminPage(): string {
         ? profile.quota.secondaryUsedPercent
         : 0;
       return Math.max(0, Math.min(100, value));
-    }
-
-    function getEstimatedLatencySeconds(profile) {
-      if (!profile || !profile.quota) {
-        return 0;
-      }
-      const primary = getPrimaryUsage(profile);
-      const secondary = getSecondaryUsage(profile);
-      const baseline = 0.62 + primary / 110 + secondary / 260;
-      return Math.round(baseline * 100) / 100;
     }
 
     function getProfileHealth(profile) {
@@ -1654,10 +1983,31 @@ export function renderAdminPage(): string {
       return "未知";
     }
 
-    function formatQuotaValue(percent, profile, slot) {
+    function getQuotaWindowLabel(profile, slot) {
       const quota = profile && profile.quota ? profile.quota : null;
+      if (!quota) {
+        return "未同步额度";
+      }
       const field = slot === "primary" ? "primaryWindowMinutes" : "secondaryWindowMinutes";
-      return Math.round(percent) + "% · " + formatWindowLabel(quota && quota[field]);
+      return formatWindowLabel(quota && quota[field]);
+    }
+
+    function formatQuotaUsage(percent, profile, slot) {
+      if (!profile || !profile.quota) {
+        return "等待刷新";
+      }
+
+      const used = Math.round(percent);
+      const remaining = Math.max(0, 100 - used);
+      return getQuotaWindowLabel(profile, slot) + " · 已用 " + used + "% / 剩余 " + remaining + "%";
+    }
+
+    function formatQuotaRemaining(percent, profile) {
+      if (!profile || !profile.quota) {
+        return "--";
+      }
+
+      return "剩余 " + String(Math.max(0, 100 - Math.round(percent))) + "%";
     }
 
     function createTimingTracker() {
@@ -1721,9 +2071,37 @@ export function renderAdminPage(): string {
       return result;
     }
 
+    function setTesterResultTab(tab) {
+      state.testerResultTab = tab;
+      document.querySelectorAll("[data-result-tab]").forEach(function (button) {
+        button.classList.toggle("is-active", button.getAttribute("data-result-tab") === tab);
+      });
+      document.querySelectorAll("[data-result-panel]").forEach(function (panel) {
+        panel.classList.toggle("is-active", panel.getAttribute("data-result-panel") === tab);
+      });
+    }
+
+    function openImagePreviewModal(src, meta, filename) {
+      previewModalImage.src = src;
+      previewModalMeta.textContent = meta || "图片预览";
+      downloadPreviewBtn.href = src;
+      downloadPreviewBtn.download = filename || "generated-image.png";
+      imagePreviewModal.classList.add("is-open");
+      imagePreviewModal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeImagePreviewModal() {
+      imagePreviewModal.classList.remove("is-open");
+      imagePreviewModal.setAttribute("aria-hidden", "true");
+      previewModalImage.src = "";
+      previewModalMeta.textContent = "等待图片结果…";
+      downloadPreviewBtn.href = "#";
+      downloadPreviewBtn.download = "generated-image.png";
+    }
+
     function clearPreview() {
-      responsePreview.hidden = true;
       responsePreview.innerHTML = "";
+      responsePreviewEmpty.hidden = false;
     }
 
     function renderPreview(payload) {
@@ -1754,9 +2132,6 @@ export function renderAdminPage(): string {
         const image = document.createElement("img");
         image.alt = "生成图片 " + String(index + 1);
         image.src = "data:" + mime + ";base64," + item.b64_json;
-        card.appendChild(image);
-
-        const caption = document.createElement("figcaption");
         const lines = [
           "图片 " + String(index + 1),
           payload.size ? "尺寸: " + payload.size : "",
@@ -1764,11 +2139,35 @@ export function renderAdminPage(): string {
           item.b64_json ? "base64 长度: " + String(item.b64_json.length) : "",
           item.revised_prompt ? "重写提示词: " + item.revised_prompt : "",
         ].filter(Boolean);
-        caption.textContent = lines.join(" | ");
+        const captionText = lines.join(" | ");
+        image.addEventListener("click", function () {
+          openImagePreviewModal(
+            image.src,
+            captionText,
+            "generated-image-" + String(index + 1) + "." + format,
+          );
+        });
+        card.appendChild(image);
+
+        const caption = document.createElement("figcaption");
+        caption.textContent = captionText;
         card.appendChild(caption);
 
         const actions = document.createElement("div");
         actions.className = "preview-actions";
+
+        const view = document.createElement("button");
+        view.type = "button";
+        view.className = "btn-secondary";
+        view.textContent = "查看大图";
+        view.addEventListener("click", function () {
+          openImagePreviewModal(
+            image.src,
+            captionText,
+            "generated-image-" + String(index + 1) + "." + format,
+          );
+        });
+        actions.appendChild(view);
 
         const download = document.createElement("a");
         download.href = image.src;
@@ -1780,7 +2179,7 @@ export function renderAdminPage(): string {
         responsePreview.appendChild(card);
       });
 
-      responsePreview.hidden = false;
+      responsePreviewEmpty.hidden = true;
     }
 
     function buildExample(endpoint) {
@@ -1841,6 +2240,12 @@ export function renderAdminPage(): string {
           label: "默认模型",
           value: config.settings.defaultModel || "-",
           detail: "未显式指定 model 时生效",
+          compact: true,
+        },
+        {
+          label: "当前版本",
+          value: getVersionValue(config),
+          detail: getVersionDetail(config),
           compact: true,
         },
         {
@@ -1912,9 +2317,9 @@ export function renderAdminPage(): string {
 
       filtered.sort(function (a, b) {
         if (sort === "latency-asc") {
-          const aLatency = getEstimatedLatencySeconds(a) || 9999;
-          const bLatency = getEstimatedLatencySeconds(b) || 9999;
-          return aLatency - bLatency;
+          const aCapturedAt = getQuotaSnapshotTime(a) || 0;
+          const bCapturedAt = getQuotaSnapshotTime(b) || 0;
+          return bCapturedAt - aCapturedAt;
         }
         if (sort === "expiry-asc") {
           const aExpiry = a.expiresAt || Number.MAX_SAFE_INTEGER;
@@ -1933,6 +2338,16 @@ export function renderAdminPage(): string {
     function renderProfiles(config) {
       const container = document.getElementById("profileList");
       const profiles = getFilteredProfiles(config);
+      const gridClass = profiles.length <= 0
+        ? ""
+        : profiles.length === 1
+          ? "profile-count-1"
+          : profiles.length === 2
+            ? "profile-count-2"
+            : profiles.length === 3
+              ? "profile-count-3"
+              : "profile-count-many";
+      container.className = gridClass ? "account-grid " + gridClass : "account-grid";
 
       if (profiles.length === 0) {
         container.innerHTML = '<div class="empty-state">当前筛选条件下没有匹配账号。你可以清空筛选，或者先新增一个账号。</div>';
@@ -1940,6 +2355,7 @@ export function renderAdminPage(): string {
       }
 
       container.innerHTML = profiles.map(function (profile) {
+        const isSingleProfile = profiles.length === 1;
         const health = getProfileHealth(profile);
         const planType = getPlanType(profile);
         const imageCapability = getImageCapability(profile);
@@ -1948,7 +2364,9 @@ export function renderAdminPage(): string {
         const primaryClass = health.barClass || "blue";
         const secondaryClass = secondary >= 85 ? "orange" : "blue";
         const actionButton = profile.isActive
-          ? '<button class="btn-secondary" type="button" disabled>当前使用中</button>'
+          ? (isSingleProfile
+            ? '<span class="account-status">当前使用中</span>'
+            : '<button class="btn-secondary" type="button" disabled>当前使用中</button>')
           : '<button class="btn-secondary" type="button" data-profile-action="activate" data-profile-id="' + escapeHtml(profile.profileId) + '">切换</button>';
 
         return ""
@@ -1969,11 +2387,11 @@ export function renderAdminPage(): string {
           +   "</div>"
           +   '<div class="account-metrics">'
           +     '<div class="quota-row">'
-          +       '<div class="quota-line"><span>' + escapeHtml(formatQuotaValue(primary, profile, "primary")) + '</span><strong>' + escapeHtml(Math.round(primary) + "%") + "</strong></div>"
+          +       '<div class="quota-line"><span>' + escapeHtml(formatQuotaUsage(primary, profile, "primary")) + '</span><strong>' + escapeHtml(formatQuotaRemaining(primary, profile)) + "</strong></div>"
           +       '<div class="progress-track"><div class="progress-bar ' + escapeHtml(primaryClass) + '" style="width:' + escapeHtml(String(primary)) + '%"></div></div>'
           +     "</div>"
           +     '<div class="quota-row">'
-          +       '<div class="quota-line"><span>' + escapeHtml(formatQuotaValue(secondary, profile, "secondary")) + '</span><strong>' + escapeHtml(Math.round(secondary) + "%") + "</strong></div>"
+          +       '<div class="quota-line"><span>' + escapeHtml(formatQuotaUsage(secondary, profile, "secondary")) + '</span><strong>' + escapeHtml(formatQuotaRemaining(secondary, profile)) + "</strong></div>"
           +       '<div class="progress-track"><div class="progress-bar ' + escapeHtml(secondaryClass) + '" style="width:' + escapeHtml(String(secondary)) + '%"></div></div>'
           +     "</div>"
           +   "</div>"
@@ -1981,8 +2399,9 @@ export function renderAdminPage(): string {
           +     '<div class="meta-item"><label>套餐</label><strong>' + escapeHtml(planType) + "</strong></div>"
           +     '<div class="meta-item"><label>生图能力</label><strong>' + escapeHtml(imageCapability.detail) + "</strong></div>"
           +     '<div class="meta-item"><label>重置时间</label><strong>' + escapeHtml(describeReset(profile, "primary")) + "</strong></div>"
-          +     '<div class="meta-item"><label>最近请求耗时</label><strong>' + escapeHtml(profile.quota && typeof profile.quota.capturedAt === "number" ? formatRequestSeconds(getEstimatedLatencySeconds(profile)) : "--") + "</strong></div>"
-          +     '<div class="meta-item"><label>Account ID</label><code>' + escapeHtml(profile.accountId || "未提供") + "</code></div>"
+          +     '<div class="meta-item"><label>额度快照</label><strong>' + escapeHtml(describeQuotaSnapshot(profile)) + "</strong></div>"
+          +     '<div class="meta-item"><label>额度限制</label><strong>' + escapeHtml(describeQuotaLimit(profile)) + "</strong></div>"
+          +     '<div class="meta-item"><label>Account ID</label><code>' + escapeHtml(state.showEmails ? (profile.accountId || "未提供") : maskIdentifier(profile.accountId || "未提供")) + "</code></div>"
           +     '<div class="meta-item"><label>过期时间</label><span>' + escapeHtml(formatTime(profile.expiresAt)) + "</span></div>"
           +   "</div>"
           +   '<div class="account-actions">'
@@ -2147,6 +2566,7 @@ export function renderAdminPage(): string {
         ["Base URL", config.baseUrl],
         ["Provider", config.status.activeProvider || "openai-codex"],
         ["默认模型", config.settings.defaultModel],
+        ["当前版本", getVersionValue(config)],
         ["当前套餐", config.profile ? getPlanType(config.profile) : "未登录"],
         ["生图能力", getImageCapability(config.profile).detail],
         ["账号状态", loggedIn ? "已登录" : "未登录"],
@@ -2161,19 +2581,19 @@ export function renderAdminPage(): string {
       }).join("");
 
       const endpointRows = [
-        ["管理页地址", config.adminUrl],
         ["API Base URL", config.baseUrl],
-        ["兼容接口", config.supportedEndpoints.map(function (item) { return item.path; }).join("，")],
         ["当前账号", getProfileDisplayLabel(config.profile)],
+        ["默认模型", config.settings.defaultModel],
+        ["版本状态", getVersionDetail(config)],
         ["当前套餐", config.profile ? getPlanType(config.profile) : "未登录"],
         ["生图能力", getImageCapability(config.profile).detail],
-        ["Access Token", config.profile ? config.profile.accessTokenPreview : "未登录"],
-        ["Refresh Token", config.profile ? config.profile.refreshTokenPreview : "未登录"],
+        ["兼容接口", config.supportedEndpoints.map(function (item) { return item.path; }).join("，")],
+        ["令牌预览", config.profile ? config.profile.accessTokenPreview : "未登录"],
       ];
 
       endpointInfo.innerHTML = endpointRows.map(function (row) {
         return ""
-          + '<div class="service-row">'
+          + '<div class="service-row compact">'
           +   "<label>" + escapeHtml(row[0]) + "</label>"
           +   '<code class="mono">' + escapeHtml(row[1]) + "</code>"
           + "</div>";
@@ -2198,6 +2618,25 @@ export function renderAdminPage(): string {
         const selected = model.id === config.settings.defaultModel ? " selected" : "";
         return '<option value="' + escapeHtml(model.id) + '"' + selected + ">" + escapeHtml(model.name + " (" + model.id + ")") + "</option>";
       }).join("");
+    }
+
+    function renderModelCatalogStatus(config) {
+      const hint = document.getElementById("modelCatalogHint");
+      if (!config || !config.modelCatalog) {
+        hint.textContent = "模型目录状态未知。";
+        return;
+      }
+
+      const parts = [
+        config.modelCatalog.source === "codex-cache" ? "当前读取 Codex 本地模型缓存" : "当前使用项目内置模型回退列表",
+        "共 " + String(config.modelCatalog.modelCount) + " 个模型",
+      ];
+
+      if (config.modelCatalog.fetchedAt) {
+        parts.push("Codex 更新时间 " + new Date(config.modelCatalog.fetchedAt).toLocaleString("zh-CN", { hour12: false }));
+      }
+
+      hint.textContent = parts.join("，") + "。";
     }
 
     function syncHero(config) {
@@ -2235,6 +2674,8 @@ export function renderAdminPage(): string {
       renderOverview(config);
       renderProfiles(config);
       renderModelOptions(config);
+      renderModelCatalogStatus(config);
+      renderUpdatePanel(config);
       renderEndpoints(config);
       renderServiceInfo(config);
       renderTrend(config);
@@ -2286,23 +2727,76 @@ export function renderAdminPage(): string {
       return body;
     }
 
-    async function refreshConfig() {
-      testerMeta.textContent = "刷新管理状态";
-      const config = await fetchJson("/_gateway/admin/config");
+    async function refreshConfig(options) {
+      const syncRuntime = !!(options && options.syncRuntime);
+      const silent = !!(options && options.silent);
+      const url = syncRuntime ? "/_gateway/admin/runtime-refresh" : "/_gateway/admin/config";
+      const requestOptions = syncRuntime ? { method: "POST" } : undefined;
+
+      if (!silent) {
+        testerMeta.textContent = syncRuntime ? "同步额度与版本状态" : "刷新管理状态";
+      }
+
+      const config = await fetchJson(url, requestOptions);
       renderConfig(config);
-      testerMeta.textContent = "准备就绪";
+
+      if (!silent) {
+        testerMeta.textContent = "准备就绪";
+      }
+
+      return config;
+    }
+
+    function scheduleRuntimeRefresh() {
+      window.setInterval(function () {
+        if (document.hidden) {
+          return;
+        }
+
+        refreshConfig({
+          syncRuntime: true,
+          silent: true,
+        }).catch(function (error) {
+          console.warn("[admin] auto runtime refresh failed", error && error.message ? error.message : String(error));
+        });
+      }, RUNTIME_AUTO_REFRESH_MS);
+    }
+
+    async function syncQuotaAfterProfileChange(config, sourceLabel) {
+      if (!config || !config.profile || config.profile.quota) {
+        return config;
+      }
+
+      authStatus.textContent = "正在同步新账号的额度信息...";
+      try {
+        const refreshedConfig = await fetchJson("/_gateway/admin/profiles/sync-quota", {
+          method: "POST",
+        });
+        renderConfig(refreshedConfig);
+        authStatus.textContent = refreshedConfig.profile && refreshedConfig.profile.quota
+          ? sourceLabel + "，额度信息已同步。"
+          : sourceLabel + "，但暂未获取到额度头信息。";
+        return refreshedConfig;
+      } catch (error) {
+        authStatus.textContent = sourceLabel + "，但额度同步失败: " + (error && error.message ? error.message : String(error));
+        return config;
+      }
     }
 
     async function login() {
       const button = document.getElementById("loginBtn");
       setBusy(button, true);
-      authStatus.textContent = "正在新增账号并等待 OAuth 完成...";
+      authStatus.textContent = "正在新增账号、等待 OAuth 完成，并同步额度信息...";
       try {
-        const config = await fetchJson("/_gateway/admin/login", {
+        let config = await fetchJson("/_gateway/admin/login", {
           method: "POST",
         });
         renderConfig(config);
-        authStatus.textContent = "账号已保存，并已切换为当前使用账号: " + getProfileDisplayLabel(config.profile);
+        const baseMessage = "账号已保存，并已切换为当前使用账号: " + getProfileDisplayLabel(config.profile);
+        config = await syncQuotaAfterProfileChange(config, baseMessage);
+        if (config.profile && config.profile.quota) {
+          authStatus.textContent = "账号已保存，已切换为当前使用账号并同步额度信息: " + getProfileDisplayLabel(config.profile);
+        }
       } catch (error) {
         authStatus.textContent = error.message;
       } finally {
@@ -2332,7 +2826,7 @@ export function renderAdminPage(): string {
       setBusy(button, true);
       authStatus.textContent = action === "activate" ? "正在切换当前账号..." : "正在删除账号...";
       try {
-        const config = await fetchJson(
+        let config = await fetchJson(
           action === "activate" ? "/_gateway/admin/profiles/activate" : "/_gateway/admin/profiles/remove",
           {
             method: "POST",
@@ -2345,9 +2839,15 @@ export function renderAdminPage(): string {
           },
         );
         renderConfig(config);
-        authStatus.textContent = action === "activate"
-          ? "当前账号已切换为: " + getProfileDisplayLabel(config.profile)
-          : "账号已删除。";
+        if (action === "activate") {
+          const baseMessage = "当前账号已切换为: " + getProfileDisplayLabel(config.profile);
+          config = await syncQuotaAfterProfileChange(config, baseMessage);
+          if (config.profile && config.profile.quota) {
+            authStatus.textContent = baseMessage + "，额度信息已同步。";
+          }
+        } else {
+          authStatus.textContent = "账号已删除。";
+        }
       } catch (error) {
         authStatus.textContent = error.message;
       } finally {
@@ -2379,6 +2879,24 @@ export function renderAdminPage(): string {
       }
     }
 
+    async function refreshModels() {
+      const button = document.getElementById("refreshModelsBtn");
+      setBusy(button, true);
+      authStatus.textContent = "正在同步 Codex 模型列表...";
+      try {
+        await fetchJson("/_gateway/models/refresh", {
+          method: "POST",
+        });
+        const config = await fetchJson("/_gateway/admin/config");
+        renderConfig(config);
+        authStatus.textContent = "Codex 模型列表已同步。";
+      } catch (error) {
+        authStatus.textContent = error.message;
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
     function extractModelFromPayload(payload) {
       if (!payload || typeof payload !== "object") {
         return state.config ? state.config.settings.defaultModel : "-";
@@ -2395,6 +2913,7 @@ export function renderAdminPage(): string {
       const button = document.getElementById("runTestBtn");
       const tracker = createTimingTracker();
       setBusy(button, true);
+      setTesterResultTab("response");
       testerMeta.textContent = "请求中: " + meta.method + " " + endpoint;
       responseBody.textContent = "请求发送中...";
       timingBody.textContent = "请求发送中...";
@@ -2439,6 +2958,10 @@ export function renderAdminPage(): string {
           tracker,
           ["HTTP 状态: " + response.status + " " + response.statusText],
         );
+        if (typeof parsed !== "string" && parsed && Array.isArray(parsed.data)
+          && parsed.data.some(function (item) { return item && typeof item.b64_json === "string" && item.b64_json.length > 0; })) {
+          setTesterResultTab("preview");
+        }
         testerMeta.textContent = (response.ok ? "成功" : "失败") + ": HTTP " + response.status + " " + meta.method + " " + endpoint;
 
         upsertRequestLog({
@@ -2494,12 +3017,28 @@ export function renderAdminPage(): string {
     }
 
     document.getElementById("loginBtn").addEventListener("click", login);
-    document.getElementById("refreshBtn").addEventListener("click", refreshConfig);
+    document.getElementById("refreshBtn").addEventListener("click", function () {
+      authStatus.textContent = "正在同步额度与版本状态...";
+      refreshConfig({
+        syncRuntime: true,
+      }).then(function () {
+        authStatus.textContent = "额度与版本状态已刷新。";
+      }).catch(function (error) {
+        authStatus.textContent = error && error.message ? error.message : String(error);
+      });
+    });
     document.getElementById("logoutBtn").addEventListener("click", logout);
     contactBtn.addEventListener("click", openContactModal);
     document.getElementById("closeContactBtn").addEventListener("click", closeContactModal);
+    document.getElementById("closeImagePreviewBtn").addEventListener("click", closeImagePreviewModal);
+    document.getElementById("refreshModelsBtn").addEventListener("click", refreshModels);
     document.getElementById("saveModelBtn").addEventListener("click", saveModel);
     runTestBtn.addEventListener("click", runTest);
+    document.querySelectorAll("[data-result-tab]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        setTesterResultTab(button.getAttribute("data-result-tab"));
+      });
+    });
     toggleEmailBtn.addEventListener("click", function () {
       state.showEmails = !state.showEmails;
       updateEmailToggleButton();
@@ -2594,12 +3133,23 @@ export function renderAdminPage(): string {
       }
     });
 
+    imagePreviewModal.addEventListener("click", function (event) {
+      if (event.target === imagePreviewModal) {
+        closeImagePreviewModal();
+      }
+    });
+
     document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && imagePreviewModal.classList.contains("is-open")) {
+        closeImagePreviewModal();
+      }
       if (event.key === "Escape" && contactModal.classList.contains("is-open")) {
         closeContactModal();
       }
     });
 
+    setTesterResultTab(state.testerResultTab);
+    scheduleRuntimeRefresh();
     refreshConfig().catch(function (error) {
       authStatus.textContent = error && error.message ? error.message : String(error);
       testerMeta.textContent = "加载失败";

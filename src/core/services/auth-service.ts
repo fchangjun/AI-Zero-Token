@@ -12,6 +12,7 @@ import {
   loginOpenAICodex,
   refreshOpenAICodexToken,
 } from "../providers/openai-codex/oauth.js";
+import { askOpenAICodex } from "../providers/openai-codex/chat.js";
 import { ConfigService } from "./config-service.js";
 
 export class AuthService {
@@ -128,6 +129,48 @@ export class AuthService {
 
   async logoutAll(): Promise<void> {
     await clearStore();
+  }
+
+  async syncActiveProfileQuota(
+    provider: ProviderId = "openai-codex",
+    options?: { suppressErrors?: boolean },
+  ): Promise<void> {
+    let profile: OAuthProfile;
+    try {
+      profile = await this.requireUsableProfile(provider);
+    } catch (error) {
+      if (options?.suppressErrors) {
+        return;
+      }
+      throw error;
+    }
+    const model = await this.configService.getDefaultModel(provider);
+
+    try {
+      const result = await askOpenAICodex({
+        profile,
+        model,
+        system: "Reply with OK only.",
+        prompt: "ping",
+        bodyOverride: {
+          text: { verbosity: "low" },
+        },
+      });
+      await this.updateProfileQuota(profile.profileId, result.quota, provider);
+    } catch (error) {
+      const quota = (error as { quota?: CodexQuotaSnapshot }).quota;
+      await this.updateProfileQuota(profile.profileId, quota, provider);
+
+      if (!options?.suppressErrors) {
+        throw error;
+      }
+
+      console.warn("[auth] sync active profile quota failed", {
+        provider,
+        profileId: profile.profileId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
   }
 
   async updateProfileQuota(

@@ -1,4 +1,5 @@
 .DS_Store
+.npmrc
 .state/
 dist/
 node_modules/
@@ -12,4 +13,6 @@ design/
 CODEX_REVERSE_ENGINEERING.md
 codex-raw.json
 codex-body.json
+ai_zero_token_*/
+ai_zero_token_*.zip
 *.log

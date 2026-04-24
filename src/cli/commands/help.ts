@@ -3,6 +3,7 @@ export function printHelp(): void {
 
   azt login
   azt models
+  azt models --refresh
   azt status
   azt ask "你好，请简单介绍一下自己"
   azt ask --model gpt-5.3-codex "你好"
@@ -15,7 +16,7 @@ export function printHelp(): void {
 说明:
 
   login   走真实 OpenAI Codex OAuth，新增并保存一个账号 profile
-  models  查看这个 demo 当前内置支持的模型列表
+  models  查看当前可用模型列表；优先读取 ~/.codex/models_cache.json，--refresh 可手动重读
   status  查看当前 demo 当前激活账号、账号数量和过期时间
   ask     用保存的 token 调真实 Codex Responses API
           实验模式可用 --payload-file 透传额外请求体，配合 --dump-raw / --print-raw 观察 SSE 原始事件

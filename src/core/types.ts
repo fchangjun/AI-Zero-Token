@@ -52,8 +52,15 @@ export type ModelInfo = {
   id: string;
   name: string;
   input: Array<"text" | "image">;
-  source: "static";
+  source: "static" | "codex-cache";
   isDefault?: boolean;
+};
+
+export type ModelCatalogInfo = {
+  source: "static-fallback" | "codex-cache";
+  cachePath: string;
+  fetchedAt?: string;
+  modelCount: number;
 };
 
 export type ChatRequest = {
@@ -103,4 +110,15 @@ export type GatewaySettings = {
     host: string;
     port: number;
   };
+};
+
+export type VersionStatus = {
+  packageName: string;
+  currentVersion: string;
+  latestVersion?: string;
+  checkedAt: number;
+  needsUpdate: boolean;
+  registryUrl: string;
+  status: "ok" | "update-available" | "error";
+  error?: string;
 };
