@@ -91,7 +91,14 @@ const chatCompletionsBodySchema = z
   .passthrough();
 
 const settingsUpdateSchema = z.object({
-  defaultModel: z.string().min(1),
+  defaultModel: z.string().min(1).optional(),
+  networkProxy: z
+    .object({
+      enabled: z.boolean(),
+      url: z.string().optional(),
+      noProxy: z.string().optional(),
+    })
+    .optional(),
 });
 
 const profileActionSchema = z.object({
@@ -104,7 +111,7 @@ const imageGenerationsBodySchema = z
     model: z.string().optional(),
     n: z.number().int().positive().optional(),
     quality: z.enum(["low", "medium", "high", "auto"]).optional(),
-    size: z.enum(["1024x1024", "1024x1536", "1536x1024", "auto"]).optional(),
+    size: z.string().min(1).optional(),
     background: z.enum(["transparent", "opaque", "auto"]).optional(),
     output_format: z.enum(["png", "webp", "jpeg"]).optional(),
     output_compression: z.number().int().min(0).max(100).optional(),
@@ -587,7 +594,12 @@ export function createApp(params?: {
       };
     }
 
-    await ctx.configService.setDefaultModel(parsed.data.defaultModel);
+    if (parsed.data.defaultModel) {
+      await ctx.configService.setDefaultModel(parsed.data.defaultModel);
+    }
+    if (parsed.data.networkProxy) {
+      await ctx.configService.setNetworkProxy(parsed.data.networkProxy);
+    }
     return buildAdminConfig(request);
   });
 

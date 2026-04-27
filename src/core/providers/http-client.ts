@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { loadSettings } from "../store/settings-store.js";
+import type { GatewaySettings } from "../types.js";
 
 type HttpTiming = {
   phasesMs: Record<string, number>;
@@ -21,6 +23,8 @@ type TextRequestInit = {
   timeoutMs?: number;
   url: string;
 };
+
+type NetworkProxySettings = GatewaySettings["networkProxy"];
 
 const CURL_STATUS_MARKER = "\n__CURL_STATUS__:";
 const CURL_HEADERS_MARKER = "\n__CURL_HEADERS__:";
@@ -100,7 +104,7 @@ function normalizeCurlHeaders(value: unknown): Record<string, string> {
 
 async function runCurlRequest(
   init: TextRequestInit,
-  params?: { requestId?: string; fallbackFrom?: "fetch" },
+  params?: { requestId?: string; fallbackFrom?: "fetch"; proxy?: NetworkProxySettings },
 ): Promise<HttpTextResponse> {
   const requestId = params?.requestId ?? nextRequestId();
   const startedAt = performance.now();
@@ -114,6 +118,13 @@ async function runCurlRequest(
     "--write-out",
     `${CURL_STATUS_MARKER}%{http_code}${CURL_HEADERS_MARKER}%{header_json}`,
   ];
+
+  if (params?.proxy?.enabled && params.proxy.url.trim()) {
+    args.push("--proxy", params.proxy.url.trim());
+    if (params.proxy.noProxy.trim()) {
+      args.push("--noproxy", params.proxy.noProxy.trim());
+    }
+  }
 
   for (const [key, value] of Object.entries(init.headers ?? {})) {
     args.push("--header", `${key}: ${value}`);
@@ -208,16 +219,30 @@ async function runCurlRequest(
   };
 }
 
+async function loadNetworkProxySettings(): Promise<NetworkProxySettings | undefined> {
+  try {
+    const settings = await loadSettings();
+    return settings.networkProxy;
+  } catch (error) {
+    console.warn("[http] failed to load network proxy settings", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return undefined;
+  }
+}
+
 export async function requestText(init: TextRequestInit): Promise<HttpTextResponse> {
   const requestId = nextRequestId();
+  const proxy = await loadNetworkProxySettings();
   const useCurlOnly = process.env.OAUTH_DEMO_USE_CURL === "1";
+  const useConfiguredProxy = !!proxy?.enabled && !!proxy.url.trim();
   const timeoutMs = init.timeoutMs;
   const signal =
     typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
       ? AbortSignal.timeout(timeoutMs)
       : undefined;
 
-  if (!useCurlOnly) {
+  if (!useCurlOnly && !useConfiguredProxy) {
     const startedAt = performance.now();
     const phases: Record<string, number> = {};
     try {
@@ -265,6 +290,7 @@ export async function requestText(init: TextRequestInit): Promise<HttpTextRespon
 
   return runCurlRequest(init, {
     requestId,
-    fallbackFrom: useCurlOnly ? undefined : "fetch",
+    fallbackFrom: useCurlOnly || useConfiguredProxy ? undefined : "fetch",
+    proxy,
   });
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.5 - 2026-04-27
+
+- Added management-page proxy configuration for upstream requests, persisted in local settings.
+- Routed upstream requests through configured curl proxy settings when enabled.
+- Removed the local fixed-size allowlist for image generation `size`, allowing upstream validation to decide supported values.
+- Documented the proxy configuration workflow without including a specific proxy address.
+
 ## 1.0.4 - 2026-04-24
 
 - Moved persistent account and settings state to the user home directory at `~/.ai-zero-token/.state`.

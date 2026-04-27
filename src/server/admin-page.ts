@@ -989,6 +989,21 @@ export function renderAdminPage(): string {
       color: var(--text-soft);
     }
 
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text-soft);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .checkbox-row input {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--brand);
+    }
+
     .pre {
       margin: 0;
       padding: 14px;
@@ -1465,6 +1480,21 @@ export function renderAdminPage(): string {
             </div>
 
             <div class="field">
+              <label class="checkbox-row" for="proxyEnabled">
+                <input id="proxyEnabled" type="checkbox" />
+                启用上游代理
+              </label>
+              <label for="proxyUrl">代理地址</label>
+              <input class="input" id="proxyUrl" type="text" placeholder="填写你的代理地址" />
+              <label for="proxyNoProxy">直连地址</label>
+              <input class="input" id="proxyNoProxy" type="text" placeholder="localhost,127.0.0.1,::1" />
+              <p class="hint">启用后，OAuth 换取 token、模型刷新和接口转发会通过此代理访问海外上游。</p>
+              <div class="actions">
+                <button class="btn-primary" id="saveProxyBtn" type="button">保存代理配置</button>
+              </div>
+            </div>
+
+            <div class="field">
               <label for="requestBody">请求体 JSON</label>
               <textarea class="textarea" id="requestBody" spellcheck="false"></textarea>
               <p class="hint"><code>GET /v1/models</code> 无需请求体；图片接口会自动渲染预览，并折叠 <code>b64_json</code> 文本。</p>
@@ -1637,6 +1667,9 @@ export function renderAdminPage(): string {
     const profileSearch = document.getElementById("profileSearch");
     const profileStatusFilter = document.getElementById("profileStatusFilter");
     const profileSort = document.getElementById("profileSort");
+    const proxyEnabled = document.getElementById("proxyEnabled");
+    const proxyUrl = document.getElementById("proxyUrl");
+    const proxyNoProxy = document.getElementById("proxyNoProxy");
 
     function setBusy(button, busy) {
       if (button) {
@@ -2566,6 +2599,7 @@ export function renderAdminPage(): string {
         ["Base URL", config.baseUrl],
         ["Provider", config.status.activeProvider || "openai-codex"],
         ["默认模型", config.settings.defaultModel],
+        ["上游代理", config.settings.networkProxy && config.settings.networkProxy.enabled ? "已启用" : "未启用"],
         ["当前版本", getVersionValue(config)],
         ["当前套餐", config.profile ? getPlanType(config.profile) : "未登录"],
         ["生图能力", getImageCapability(config.profile).detail],
@@ -2584,6 +2618,7 @@ export function renderAdminPage(): string {
         ["API Base URL", config.baseUrl],
         ["当前账号", getProfileDisplayLabel(config.profile)],
         ["默认模型", config.settings.defaultModel],
+        ["上游代理", config.settings.networkProxy && config.settings.networkProxy.enabled ? config.settings.networkProxy.url : "未启用"],
         ["版本状态", getVersionDetail(config)],
         ["当前套餐", config.profile ? getPlanType(config.profile) : "未登录"],
         ["生图能力", getImageCapability(config.profile).detail],
@@ -2639,6 +2674,17 @@ export function renderAdminPage(): string {
       hint.textContent = parts.join("，") + "。";
     }
 
+    function renderProxySettings(config) {
+      const proxy = config.settings.networkProxy || {
+        enabled: false,
+        url: "",
+        noProxy: "localhost,127.0.0.1,::1",
+      };
+      proxyEnabled.checked = !!proxy.enabled;
+      proxyUrl.value = proxy.url || "";
+      proxyNoProxy.value = proxy.noProxy || "localhost,127.0.0.1,::1";
+    }
+
     function syncHero(config) {
       const profileText = config.profile
         ? "当前账号为 " + getProfileDisplayLabel(config.profile) + "，套餐 " + getPlanType(config.profile) + "，可在右侧完成模型切换和接口调试。"
@@ -2675,6 +2721,7 @@ export function renderAdminPage(): string {
       renderProfiles(config);
       renderModelOptions(config);
       renderModelCatalogStatus(config);
+      renderProxySettings(config);
       renderUpdatePanel(config);
       renderEndpoints(config);
       renderServiceInfo(config);
@@ -2879,6 +2926,33 @@ export function renderAdminPage(): string {
       }
     }
 
+    async function saveProxy() {
+      const button = document.getElementById("saveProxyBtn");
+      setBusy(button, true);
+      authStatus.textContent = "正在保存代理配置...";
+      try {
+        const config = await fetchJson("/_gateway/admin/settings", {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: formatJson({
+            networkProxy: {
+              enabled: proxyEnabled.checked,
+              url: proxyUrl.value,
+              noProxy: proxyNoProxy.value,
+            },
+          }),
+        });
+        renderConfig(config);
+        authStatus.textContent = proxyEnabled.checked ? "代理配置已启用。" : "代理配置已关闭。";
+      } catch (error) {
+        authStatus.textContent = error.message;
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
     async function refreshModels() {
       const button = document.getElementById("refreshModelsBtn");
       setBusy(button, true);
@@ -3033,6 +3107,7 @@ export function renderAdminPage(): string {
     document.getElementById("closeImagePreviewBtn").addEventListener("click", closeImagePreviewModal);
     document.getElementById("refreshModelsBtn").addEventListener("click", refreshModels);
     document.getElementById("saveModelBtn").addEventListener("click", saveModel);
+    document.getElementById("saveProxyBtn").addEventListener("click", saveProxy);
     runTestBtn.addEventListener("click", runTest);
     document.querySelectorAll("[data-result-tab]").forEach(function (button) {
       button.addEventListener("click", function () {

@@ -7,7 +7,7 @@ type ImageRequest = {
   prompt: string;
   model?: string;
   n?: number;
-  size?: "1024x1024" | "1024x1536" | "1536x1024" | "auto";
+  size?: string;
   quality?: "low" | "medium" | "high" | "auto";
   background?: "transparent" | "opaque" | "auto";
   outputFormat?: "png" | "webp" | "jpeg";
@@ -24,7 +24,7 @@ type ImageResult = {
   background?: "transparent" | "opaque";
   output_format?: "png" | "webp" | "jpeg";
   quality?: "low" | "medium" | "high";
-  size?: "1024x1024" | "1024x1536" | "1536x1024";
+  size?: string;
   usage?: {
     input_tokens: number;
     input_tokens_details?: {
@@ -64,12 +64,6 @@ const SUPPORTED_IMAGE_MODELS = new Set([
   "gpt-image-1-mini",
   "gpt-image-1.5",
   "gpt-image-2",
-]);
-
-const SUPPORTED_IMAGE_SIZES = new Set([
-  "1024x1024",
-  "1024x1536",
-  "1536x1024",
 ]);
 
 const SUPPORTED_IMAGE_QUALITIES = new Set([
@@ -136,12 +130,12 @@ function toImageGenerationEventOutput(value: unknown): ImageGenerationOutput | n
 }
 
 function normalizeReturnedSize(size: unknown, fallback?: string): ImageResult["size"] | undefined {
-  if (typeof size === "string" && SUPPORTED_IMAGE_SIZES.has(size)) {
-    return size as ImageResult["size"];
+  if (typeof size === "string" && size.trim()) {
+    return size.trim();
   }
 
-  if (typeof fallback === "string" && SUPPORTED_IMAGE_SIZES.has(fallback)) {
-    return fallback as ImageResult["size"];
+  if (typeof fallback === "string" && fallback.trim()) {
+    return fallback.trim();
   }
 
   return undefined;

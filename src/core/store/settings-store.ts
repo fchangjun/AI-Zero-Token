@@ -11,6 +11,11 @@ export function createDefaultSettings(): GatewaySettings {
     version: 1,
     defaultProvider: "openai-codex",
     defaultModel: "gpt-5.4",
+    networkProxy: {
+      enabled: false,
+      url: "",
+      noProxy: "localhost,127.0.0.1,::1",
+    },
     server: {
       host: "0.0.0.0",
       port: 8787,
@@ -28,6 +33,11 @@ export async function loadSettings(): Promise<GatewaySettings> {
       version: 1,
       defaultProvider: parsed.defaultProvider ?? defaults.defaultProvider,
       defaultModel: parsed.defaultModel ?? defaults.defaultModel,
+      networkProxy: {
+        enabled: parsed.networkProxy?.enabled ?? defaults.networkProxy.enabled,
+        url: parsed.networkProxy?.url ?? defaults.networkProxy.url,
+        noProxy: parsed.networkProxy?.noProxy ?? defaults.networkProxy.noProxy,
+      },
       server: {
         host: parsed.server?.host ?? defaults.server.host,
         port: parsed.server?.port ?? defaults.server.port,

@@ -106,6 +106,11 @@ export type GatewaySettings = {
   version: 1;
   defaultProvider: ProviderId;
   defaultModel: string;
+  networkProxy: {
+    enabled: boolean;
+    url: string;
+    noProxy: string;
+  };
   server: {
     host: string;
     port: number;

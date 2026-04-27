@@ -48,6 +48,45 @@ export class ConfigService {
     return next;
   }
 
+  async setNetworkProxy(params: {
+    enabled: boolean;
+    url?: string;
+    noProxy?: string;
+  }): Promise<GatewaySettings> {
+    const url = params.url?.trim() ?? "";
+    const noProxy = params.noProxy?.trim() || "localhost,127.0.0.1,::1";
+
+    if (params.enabled) {
+      if (!url) {
+        throw new Error("启用代理时必须填写代理地址。");
+      }
+
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        throw new Error("代理地址格式错误，请填写完整的代理 URL。");
+      }
+
+      const supportedProtocols = new Set(["http:", "https:", "socks4:", "socks4a:", "socks5:", "socks5h:"]);
+      if (!supportedProtocols.has(parsed.protocol)) {
+        throw new Error("代理地址仅支持 http、https、socks4、socks4a、socks5 或 socks5h。");
+      }
+    }
+
+    const settings = await this.getSettings();
+    const next = {
+      ...settings,
+      networkProxy: {
+        enabled: params.enabled,
+        url,
+        noProxy,
+      },
+    };
+    await saveSettings(next);
+    return next;
+  }
+
   async getServerConfig(): Promise<{ host: string; port: number }> {
     const settings = await this.getSettings();
     return settings.server;
