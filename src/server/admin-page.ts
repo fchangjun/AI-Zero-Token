@@ -646,6 +646,19 @@ export function renderAdminPage(): string {
       min-width: 156px;
     }
 
+    .account-selected-count {
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .account-modal-body .textarea {
+      min-height: 280px;
+    }
+
     .account-grid {
       display: grid;
       grid-auto-rows: 1fr;
@@ -690,6 +703,30 @@ export function renderAdminPage(): string {
       display: grid;
       gap: 6px;
       min-width: 0;
+      flex: 1;
+    }
+
+    .account-select {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .account-select input {
+      width: 14px;
+      height: 14px;
+      margin: 0;
     }
 
     .account-name {
@@ -1364,7 +1401,7 @@ export function renderAdminPage(): string {
           <strong id="updatePanelTitle">发现新版本</strong>
           <span id="updatePanelDetail"></span>
         </div>
-        <code class="update-command" id="updatePanelCommand">npm install -g ai-zero-token@latest</code>
+        <code class="update-command" id="updatePanelCommand">npm install -g ai-zero-token</code>
       </section>
 
       <section class="summary-grid" id="summaryGrid"></section>
@@ -1379,6 +1416,7 @@ export function renderAdminPage(): string {
               </div>
               <div class="actions">
                 <button class="btn-secondary" type="button" id="activateCurrentBtn">定位当前账号</button>
+                <button class="btn-secondary" type="button" id="exportSelectedProfilesBtn">导出所选</button>
               </div>
             </div>
 
@@ -1397,8 +1435,8 @@ export function renderAdminPage(): string {
                 <option value="expiry-asc">按过期时间</option>
                 <option value="name-asc">按邮箱排序</option>
               </select>
+              <span class="account-selected-count" id="selectedProfileCount">已选择 0 个</span>
             </div>
-
             <div class="account-grid" id="profileList"></div>
           </section>
 
@@ -1577,6 +1615,41 @@ export function renderAdminPage(): string {
     </section>
   </div>
 
+  <div class="modal-backdrop" id="accountModal" aria-hidden="true">
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="accountModalTitle">
+      <div class="modal-head">
+        <div>
+          <h3 id="accountModalTitle">新增账号</h3>
+          <p>选择 OAuth 登录，或粘贴单个/批量账号 JSON 导入。</p>
+        </div>
+        <div class="actions">
+          <button class="btn-secondary" id="closeAccountModalBtn" type="button">关闭</button>
+        </div>
+      </div>
+      <div class="modal-body account-modal-body">
+        <div class="contact-notes">
+          <div class="contact-note">
+            <strong>登录新增</strong>
+            <span>打开 OpenAI OAuth 授权流程，登录成功后自动保存并切换为当前账号。</span>
+            <button class="btn-primary" id="oauthLoginBtn" type="button">登录</button>
+          </div>
+          <div class="contact-note">
+            <strong>批量导入</strong>
+            <span>支持单个对象、对象数组，或包含 profiles 数组的对象。导入后最后一个账号会成为当前账号。</span>
+            <div class="actions">
+              <button class="btn-secondary" id="loadImportTemplateBtn" type="button">填入参考格式</button>
+              <button class="btn-primary" id="importProfileBtn" type="button">导入</button>
+            </div>
+          </div>
+        </div>
+        <div>
+          <textarea class="textarea" id="profileImportJson" spellcheck="false" placeholder='粘贴账号 JSON，支持 { "profiles": [...] } 批量导入'></textarea>
+          <p class="hint">导入和导出的 JSON 都包含完整 access token 和 refresh token，请只在可信环境中处理。</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
   <div class="modal-backdrop" id="contactModal" aria-hidden="true">
     <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="contactModalTitle">
       <div class="modal-head">
@@ -1621,6 +1694,7 @@ export function renderAdminPage(): string {
         status: "all",
         sort: "quota-desc",
       },
+      selectedProfileIds: {},
       testerResultTab: "response",
     };
 
@@ -1658,6 +1732,7 @@ export function renderAdminPage(): string {
     const imageCapabilityHint = document.getElementById("imageCapabilityHint");
     const runTestBtn = document.getElementById("runTestBtn");
     const toggleEmailBtn = document.getElementById("toggleEmailBtn");
+    const accountModal = document.getElementById("accountModal");
     const contactModal = document.getElementById("contactModal");
     const imagePreviewModal = document.getElementById("imagePreviewModal");
     const contactBtn = document.getElementById("contactBtn");
@@ -1667,6 +1742,12 @@ export function renderAdminPage(): string {
     const profileSearch = document.getElementById("profileSearch");
     const profileStatusFilter = document.getElementById("profileStatusFilter");
     const profileSort = document.getElementById("profileSort");
+    const profileImportJson = document.getElementById("profileImportJson");
+    const importProfileBtn = document.getElementById("importProfileBtn");
+    const oauthLoginBtn = document.getElementById("oauthLoginBtn");
+    const loadImportTemplateBtn = document.getElementById("loadImportTemplateBtn");
+    const exportSelectedProfilesBtn = document.getElementById("exportSelectedProfilesBtn");
+    const selectedProfileCount = document.getElementById("selectedProfileCount");
     const proxyEnabled = document.getElementById("proxyEnabled");
     const proxyUrl = document.getElementById("proxyUrl");
     const proxyNoProxy = document.getElementById("proxyNoProxy");
@@ -2368,8 +2449,35 @@ export function renderAdminPage(): string {
       return filtered;
     }
 
+    function getSelectedProfileIds() {
+      return Object.keys(state.selectedProfileIds).filter(function (profileId) {
+        return !!state.selectedProfileIds[profileId];
+      });
+    }
+
+    function syncSelectedProfiles(config) {
+      const profiles = Array.isArray(config.profiles) ? config.profiles : [];
+      const availableIds = profiles.reduce(function (result, profile) {
+        result[profile.profileId] = true;
+        return result;
+      }, {});
+      getSelectedProfileIds().forEach(function (profileId) {
+        if (!availableIds[profileId]) {
+          delete state.selectedProfileIds[profileId];
+        }
+      });
+    }
+
+    function updateSelectedProfileControls() {
+      const count = getSelectedProfileIds().length;
+      selectedProfileCount.textContent = "已选择 " + String(count) + " 个";
+      exportSelectedProfilesBtn.disabled = count === 0;
+    }
+
     function renderProfiles(config) {
       const container = document.getElementById("profileList");
+      syncSelectedProfiles(config);
+      updateSelectedProfileControls();
       const profiles = getFilteredProfiles(config);
       const gridClass = profiles.length <= 0
         ? ""
@@ -2388,6 +2496,7 @@ export function renderAdminPage(): string {
       }
 
       container.innerHTML = profiles.map(function (profile) {
+        const selected = !!state.selectedProfileIds[profile.profileId];
         const isSingleProfile = profiles.length === 1;
         const health = getProfileHealth(profile);
         const planType = getPlanType(profile);
@@ -2417,6 +2526,7 @@ export function renderAdminPage(): string {
           +         '<span class="badge ' + escapeHtml(imageCapability.badgeClass) + '">' + escapeHtml(imageCapability.label) + "</span>"
           +       "</div>"
           +     "</div>"
+          +     '<label class="account-select"><input type="checkbox" data-profile-select data-profile-id="' + escapeHtml(profile.profileId) + '"' + (selected ? " checked" : "") + " /><span>选择</span></label>"
           +   "</div>"
           +   '<div class="account-metrics">'
           +     '<div class="quota-row">'
@@ -2439,6 +2549,7 @@ export function renderAdminPage(): string {
           +   "</div>"
           +   '<div class="account-actions">'
           +     actionButton
+          +     '<button class="btn-secondary" type="button" data-profile-action="export" data-profile-id="' + escapeHtml(profile.profileId) + '">导出</button>'
           +     '<button class="btn-danger" type="button" data-profile-action="remove" data-profile-id="' + escapeHtml(profile.profileId) + '">删除</button>'
           +   "</div>"
           + "</article>";
@@ -2831,7 +2942,7 @@ export function renderAdminPage(): string {
     }
 
     async function login() {
-      const button = document.getElementById("loginBtn");
+      const button = oauthLoginBtn;
       setBusy(button, true);
       authStatus.textContent = "正在新增账号、等待 OAuth 完成，并同步额度信息...";
       try {
@@ -2844,6 +2955,7 @@ export function renderAdminPage(): string {
         if (config.profile && config.profile.quota) {
           authStatus.textContent = "账号已保存，已切换为当前使用账号并同步额度信息: " + getProfileDisplayLabel(config.profile);
         }
+        closeAccountModal();
       } catch (error) {
         authStatus.textContent = error.message;
       } finally {
@@ -2870,6 +2982,11 @@ export function renderAdminPage(): string {
     }
 
     async function runProfileAction(action, profileId, button) {
+      if (action === "export") {
+        await exportProfile(profileId, button);
+        return;
+      }
+
       setBusy(button, true);
       authStatus.textContent = action === "activate" ? "正在切换当前账号..." : "正在删除账号...";
       try {
@@ -2900,6 +3017,116 @@ export function renderAdminPage(): string {
       } finally {
         setBusy(button, false);
       }
+    }
+
+    function downloadJsonFile(fileName, value) {
+      const blob = new Blob([formatJson(value) + "\\n"], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importProfile() {
+      const raw = profileImportJson.value.trim();
+      if (!raw) {
+        authStatus.textContent = "请先粘贴要导入的账号 JSON。";
+        return;
+      }
+
+      let payload;
+      try {
+        payload = JSON.parse(raw);
+      } catch (_error) {
+        authStatus.textContent = "导入失败: JSON 格式不正确。";
+        return;
+      }
+
+      setBusy(importProfileBtn, true);
+      authStatus.textContent = "正在导入账号并同步额度信息...";
+      try {
+        let config = await fetchJson("/_gateway/admin/profiles/import", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: formatJson({
+            profile: payload,
+          }),
+        });
+        renderConfig(config);
+        const count = config.importedProfileCount || 1;
+        const baseMessage = "已导入 " + String(count) + " 个账号，并已切换为当前使用账号: " + getProfileDisplayLabel(config.profile);
+        config = await syncQuotaAfterProfileChange(config, baseMessage);
+        if (config.profile && config.profile.quota) {
+          authStatus.textContent = "已导入 " + String(count) + " 个账号，额度信息已同步: " + getProfileDisplayLabel(config.profile);
+        }
+        profileImportJson.value = "";
+        closeAccountModal();
+      } catch (error) {
+        authStatus.textContent = error.message;
+      } finally {
+        setBusy(importProfileBtn, false);
+      }
+    }
+
+    async function loadImportTemplate() {
+      setBusy(loadImportTemplateBtn, true);
+      authStatus.textContent = "正在读取导入参考格式...";
+      try {
+        const result = await fetchJson("/_gateway/admin/profiles/import-template");
+        profileImportJson.value = formatJson(result.profile);
+        authStatus.textContent = "已填入参考格式，可替换其中的 token 后导入。";
+      } catch (error) {
+        authStatus.textContent = error.message;
+      } finally {
+        setBusy(loadImportTemplateBtn, false);
+      }
+    }
+
+    async function exportProfile(profileId, button, options) {
+      setBusy(button, true);
+      authStatus.textContent = "正在导出账号配置...";
+      try {
+        const exportAll = !!(options && options.all);
+        const profileIds = options && Array.isArray(options.profileIds) ? options.profileIds : null;
+        const result = await fetchJson("/_gateway/admin/profiles/export", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: formatJson(profileIds ? { profileIds: profileIds } : exportAll ? { all: true } : { profileId: profileId }),
+        });
+        const profile = result.profile;
+        const isBundle = profile && Array.isArray(profile.profiles);
+        const suffix = isBundle
+          ? "profiles-" + String(profile.profiles.length)
+          : profile && profile.account_id ? profile.account_id : "active";
+        downloadJsonFile("ai-zero-token-" + suffix + ".json", profile);
+        authStatus.textContent = isBundle
+          ? "已批量导出 " + String(profile.profiles.length) + " 个账号。请妥善保管导出的 refresh token。"
+          : "账号配置已导出。请妥善保管导出的 refresh token。";
+      } catch (error) {
+        authStatus.textContent = error.message;
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    async function exportSelectedProfiles() {
+      const profileIds = getSelectedProfileIds();
+      if (profileIds.length === 0) {
+        authStatus.textContent = "请先勾选要导出的账号。";
+        return;
+      }
+
+      await exportProfile(null, exportSelectedProfilesBtn, {
+        profileIds: profileIds,
+      });
     }
 
     async function saveModel() {
@@ -3080,6 +3307,16 @@ export function renderAdminPage(): string {
       }
     }
 
+    function openAccountModal() {
+      accountModal.classList.add("is-open");
+      accountModal.setAttribute("aria-hidden", "false");
+    }
+
+    function closeAccountModal() {
+      accountModal.classList.remove("is-open");
+      accountModal.setAttribute("aria-hidden", "true");
+    }
+
     function openContactModal() {
       contactModal.classList.add("is-open");
       contactModal.setAttribute("aria-hidden", "false");
@@ -3090,7 +3327,7 @@ export function renderAdminPage(): string {
       contactModal.setAttribute("aria-hidden", "true");
     }
 
-    document.getElementById("loginBtn").addEventListener("click", login);
+    document.getElementById("loginBtn").addEventListener("click", openAccountModal);
     document.getElementById("refreshBtn").addEventListener("click", function () {
       authStatus.textContent = "正在同步额度与版本状态...";
       refreshConfig({
@@ -3102,6 +3339,11 @@ export function renderAdminPage(): string {
       });
     });
     document.getElementById("logoutBtn").addEventListener("click", logout);
+    oauthLoginBtn.addEventListener("click", login);
+    importProfileBtn.addEventListener("click", importProfile);
+    loadImportTemplateBtn.addEventListener("click", loadImportTemplate);
+    exportSelectedProfilesBtn.addEventListener("click", exportSelectedProfiles);
+    document.getElementById("closeAccountModalBtn").addEventListener("click", closeAccountModal);
     contactBtn.addEventListener("click", openContactModal);
     document.getElementById("closeContactBtn").addEventListener("click", closeContactModal);
     document.getElementById("closeImagePreviewBtn").addEventListener("click", closeImagePreviewModal);
@@ -3123,6 +3365,10 @@ export function renderAdminPage(): string {
     });
 
     document.getElementById("profileList").addEventListener("click", function (event) {
+      if (event.target.closest("[data-profile-select]")) {
+        return;
+      }
+
       const button = event.target.closest("[data-profile-action]");
       if (!button) {
         return;
@@ -3135,6 +3381,25 @@ export function renderAdminPage(): string {
       }
 
       runProfileAction(action, profileId, button);
+    });
+
+    document.getElementById("profileList").addEventListener("change", function (event) {
+      const checkbox = event.target.closest("[data-profile-select]");
+      if (!checkbox) {
+        return;
+      }
+
+      const profileId = checkbox.getAttribute("data-profile-id");
+      if (!profileId) {
+        return;
+      }
+
+      if (checkbox.checked) {
+        state.selectedProfileIds[profileId] = true;
+      } else {
+        delete state.selectedProfileIds[profileId];
+      }
+      updateSelectedProfileControls();
     });
 
     document.getElementById("activateCurrentBtn").addEventListener("click", function () {
@@ -3208,6 +3473,12 @@ export function renderAdminPage(): string {
       }
     });
 
+    accountModal.addEventListener("click", function (event) {
+      if (event.target === accountModal) {
+        closeAccountModal();
+      }
+    });
+
     imagePreviewModal.addEventListener("click", function (event) {
       if (event.target === imagePreviewModal) {
         closeImagePreviewModal();
@@ -3220,6 +3491,9 @@ export function renderAdminPage(): string {
       }
       if (event.key === "Escape" && contactModal.classList.contains("is-open")) {
         closeContactModal();
+      }
+      if (event.key === "Escape" && accountModal.classList.contains("is-open")) {
+        closeAccountModal();
       }
     });
 

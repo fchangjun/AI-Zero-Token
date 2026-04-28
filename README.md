@@ -220,12 +220,16 @@ azt start
 - 查看当前账号、已保存账号列表、过期时间、token 摘要
 - 查看账号套餐 plan 和当前账号是否支持生图
 - 在多个已保存账号之间切换当前使用账号
+- 在“新增账号”里选择 OAuth 登录，或粘贴外部账号 JSON 批量导入
+- 导出单个账号，或勾选多个账号后批量导出所选账号 JSON
 - 删除单个本地账号，或一键清空全部本地账号
 - 切换默认模型
 - 测试 `models` / `responses` / `chat.completions`
 - 测试 `images.generations`
 
 管理页里邮箱默认脱敏显示，需要手动点击“查看邮箱”才会显示明文。
+
+导出的账号 JSON 包含完整 `access_token` 和 `refresh_token`，等同于账号登录凭据，只适合在可信环境中传递。
 
 如果当前网络访问海外上游不稳定，可以在管理页的“接口测试 / 系统设置”区域启用“上游代理”，并填写你自己的代理地址。保存后，OAuth 换取 token、模型刷新和接口转发都会通过该代理访问上游；本地管理页和 `127.0.0.1` 默认保持直连。
 
@@ -403,7 +407,16 @@ curl http://127.0.0.1:8787/v1/images/generations \
 
 ## 兼容说明
 
-代码里仍然保留了 `login`、`status`、`models`、`ask`、`serve`、`clear` 等 CLI 命令，主要用于调试、兼容和后续扩展。
+代码里仍然保留了 `login`、`status`、`models`、`profiles`、`ask`、`serve`、`clear` 等 CLI 命令，主要用于调试、兼容和后续扩展。
+
+账号 JSON 也可以通过 CLI 导入/导出：
+
+```bash
+azt profiles import ./profile.json
+azt profiles export active ./profile.json
+azt profiles export all ./profiles.json
+azt profiles export "openai-codex:<accountId>" ./profile.json
+```
 
 README 不再把这些命令作为推荐使用方式。默认使用路径就是：
 

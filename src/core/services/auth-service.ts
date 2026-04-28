@@ -14,6 +14,15 @@ import {
 } from "../providers/openai-codex/oauth.js";
 import { askOpenAICodex } from "../providers/openai-codex/chat.js";
 import { ConfigService } from "./config-service.js";
+import {
+  exportProfilesToJson,
+  exportProfileToJson,
+  getProfileImportTemplate,
+  importProfileFromJson,
+  importProfilesFromJson,
+  type ExportedProfileBundle,
+  type ExportedProfile,
+} from "../store/profile-transfer.js";
 
 export class AuthService {
   constructor(private readonly configService: ConfigService) {}
@@ -55,6 +64,57 @@ export class AuthService {
     const profile = await loginOpenAICodex();
     await saveProfile(profile);
     return this.toManagedProfile(profile);
+  }
+
+  async importProfile(value: unknown, provider: ProviderId = "openai-codex"): Promise<OAuthProfile> {
+    if (provider !== "openai-codex") {
+      throw new Error(`暂不支持 provider: ${provider}`);
+    }
+
+    const profile = importProfileFromJson(value);
+    await saveProfile(profile);
+    return this.toManagedProfile(profile);
+  }
+
+  async importProfiles(value: unknown, provider: ProviderId = "openai-codex"): Promise<OAuthProfile[]> {
+    if (provider !== "openai-codex") {
+      throw new Error(`暂不支持 provider: ${provider}`);
+    }
+
+    const profiles = importProfilesFromJson(value);
+    for (const profile of profiles) {
+      await saveProfile(profile);
+    }
+    return profiles.map((profile) => this.toManagedProfile(profile));
+  }
+
+  async exportProfile(profileId?: string, provider: ProviderId = "openai-codex"): Promise<ExportedProfile> {
+    const profiles = await listProfiles();
+    const activeProfile = await this.getActiveProfile(provider);
+    const targetProfileId = profileId?.trim() || activeProfile?.profileId;
+    const profile = profiles.find((item) => item.provider === provider && item.profileId === targetProfileId);
+    if (!profile) {
+      throw new Error(targetProfileId ? `没有找到可导出的账号: ${targetProfileId}` : "没有可导出的当前账号。");
+    }
+
+    return exportProfileToJson(profile);
+  }
+
+  async exportProfiles(profileIds?: string[], provider: ProviderId = "openai-codex"): Promise<ExportedProfileBundle> {
+    const profiles = await listProfiles();
+    const idSet = profileIds && profileIds.length > 0 ? new Set(profileIds.map((item) => item.trim()).filter(Boolean)) : null;
+    const selected = profiles
+      .filter((item) => item.provider === provider)
+      .filter((item) => !idSet || idSet.has(item.profileId));
+    if (selected.length === 0) {
+      throw new Error("没有找到可导出的账号。");
+    }
+
+    return exportProfilesToJson(selected);
+  }
+
+  getProfileImportTemplate(): ExportedProfileBundle {
+    return getProfileImportTemplate();
   }
 
   async getActiveProfile(provider: ProviderId = "openai-codex"): Promise<OAuthProfile | null> {

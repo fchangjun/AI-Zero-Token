@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.6 - 2026-04-28
+
+- Added account JSON import/export support in the management page.
+- Added batch account import from a single object, an array, or a `profiles` bundle.
+- Added selectable batch export for checked accounts in the management page.
+- Added `azt profiles import/export` CLI commands for account transfer workflows.
+- Added an account import template endpoint for quick JSON format reference.
+
 ## 1.0.5 - 2026-04-27
 
 - Added management-page proxy configuration for upstream requests, persisted in local settings.

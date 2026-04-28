@@ -3,6 +3,7 @@ import { runClearCommand } from "./commands/clear.js";
 import { printHelp } from "./commands/help.js";
 import { runLoginCommand } from "./commands/login.js";
 import { runModelsCommand } from "./commands/models.js";
+import { runProfilesCommand } from "./commands/profiles.js";
 import { runServeCommand } from "./commands/serve.js";
 import { runStartCommand } from "./commands/start.js";
 import { runStatusCommand } from "./commands/status.js";
@@ -19,6 +20,9 @@ export async function runCli(argv: string[] = process.argv.slice(2)): Promise<vo
       return;
     case "models":
       await runModelsCommand(rest);
+      return;
+    case "profiles":
+      await runProfilesCommand(rest);
       return;
     case "ask":
       await runAskCommand(rest);

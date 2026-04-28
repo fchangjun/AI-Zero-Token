@@ -105,6 +105,16 @@ const profileActionSchema = z.object({
   profileId: z.string().min(1),
 });
 
+const profileImportSchema = z.object({
+  profile: z.unknown(),
+});
+
+const profileExportSchema = z.object({
+  profileId: z.string().min(1).optional(),
+  profileIds: z.array(z.string().min(1)).optional(),
+  all: z.boolean().optional(),
+});
+
 const imageGenerationsBodySchema = z
   .object({
     prompt: z.string().min(1),
@@ -580,6 +590,55 @@ export function createApp(params?: {
 
     await ctx.authService.removeProfile(parsed.data.profileId);
     return buildAdminConfig(request);
+  });
+
+  app.post("/_gateway/admin/profiles/import", async (request, reply) => {
+    const parsed = profileImportSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    const importedProfiles = await ctx.authService.importProfiles(parsed.data.profile);
+    await ctx.authService.syncActiveProfileQuota("openai-codex", {
+      suppressErrors: true,
+    });
+    return {
+      ...(await buildAdminConfig(request)),
+      importedProfileCount: importedProfiles.length,
+    };
+  });
+
+  app.get("/_gateway/admin/profiles/import-template", async () => ({
+    profile: ctx.authService.getProfileImportTemplate(),
+  }));
+
+  app.post("/_gateway/admin/profiles/export", async (request, reply) => {
+    const parsed = profileExportSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    if (parsed.data.all || parsed.data.profileIds) {
+      return {
+        profile: await ctx.authService.exportProfiles(parsed.data.profileIds),
+      };
+    }
+
+    return {
+      profile: await ctx.authService.exportProfile(parsed.data.profileId),
+    };
   });
 
   app.put("/_gateway/admin/settings", async (request, reply) => {
