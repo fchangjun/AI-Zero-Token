@@ -26,6 +26,9 @@ export function renderAdminPage(): string {
       --orange-soft: rgba(245, 158, 11, 0.12);
       --red: #ef4444;
       --red-soft: rgba(239, 68, 68, 0.12);
+      --plan-color: #94a3b8;
+      --plan-soft: rgba(148, 163, 184, 0.12);
+      --plan-border: var(--line);
       --shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
       --radius: 16px;
       --radius-sm: 12px;
@@ -340,6 +343,45 @@ export function renderAdminPage(): string {
       min-height: 112px;
     }
 
+    .summary-card-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .summary-icon {
+      width: 22px;
+      height: 22px;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      flex: 0 0 auto;
+      color: var(--brand);
+      background: var(--brand-soft);
+    }
+
+    .summary-icon svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+    }
+
+    .summary-icon.blue {
+      color: var(--blue);
+      background: var(--blue-soft);
+    }
+
+    .summary-icon.green {
+      color: #15803d;
+      background: var(--green-soft);
+    }
+
+    .summary-icon.orange {
+      color: #b45309;
+      background: var(--orange-soft);
+    }
+
     .summary-card label {
       color: var(--text-muted);
       font-size: 12px;
@@ -364,6 +406,60 @@ export function renderAdminPage(): string {
       color: var(--text-muted);
       font-size: 12px;
       line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .summary-card.account-status-summary {
+      gap: 12px;
+      min-height: 112px;
+    }
+
+    .account-status-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .account-status-line {
+      display: grid;
+      grid-template-columns: 20px auto minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      color: var(--text-soft);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .account-status-line svg {
+      width: 18px;
+      height: 18px;
+      padding: 3px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+    }
+
+    .account-status-line.gateway svg {
+      color: var(--blue);
+      background: var(--blue-soft);
+    }
+
+    .account-status-line.codex svg {
+      color: #15803d;
+      background: var(--green-soft);
+    }
+
+    .account-status-line span {
+      color: var(--text-muted);
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .account-status-line strong {
+      min-width: 0;
+      color: var(--text);
+      font-size: clamp(16px, 1.05vw, 18px);
+      line-height: 1.25;
+      letter-spacing: -0.02em;
       overflow-wrap: anywhere;
     }
 
@@ -484,6 +580,88 @@ export function renderAdminPage(): string {
 
     .modal-backdrop.is-open {
       display: flex;
+    }
+
+    .drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      justify-content: flex-end;
+      background: rgba(15, 23, 42, 0.38);
+      backdrop-filter: blur(4px);
+      z-index: 60;
+    }
+
+    .drawer-backdrop.is-open {
+      display: flex;
+    }
+
+    .settings-drawer {
+      width: min(460px, 100vw);
+      height: 100vh;
+      background: var(--panel);
+      border-left: 1px solid var(--line);
+      box-shadow: -18px 0 48px rgba(15, 23, 42, 0.16);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+    }
+
+    .settings-drawer-head,
+    .settings-drawer-footer {
+      padding: 18px 20px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .settings-drawer-footer {
+      align-items: center;
+      border-top: 1px solid var(--line);
+      border-bottom: 0;
+      background: #fbfdff;
+    }
+
+    .settings-drawer-head h3 {
+      margin: 0;
+      font-size: 22px;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+    }
+
+    .settings-drawer-head p {
+      margin: 6px 0 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .settings-drawer-body {
+      padding: 18px 20px;
+      overflow: auto;
+      display: grid;
+      align-content: start;
+      gap: 16px;
+    }
+
+    .settings-section {
+      display: grid;
+      gap: 12px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .settings-section:last-child {
+      border-bottom: 0;
+      padding-bottom: 0;
+    }
+
+    .settings-section h4 {
+      margin: 0;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.4;
     }
 
     .modal-card {
@@ -661,35 +839,89 @@ export function renderAdminPage(): string {
 
     .account-grid {
       display: grid;
-      grid-auto-rows: 1fr;
       gap: 16px;
-      justify-content: start;
+      align-items: start;
+      justify-content: stretch;
+      width: 100%;
     }
 
     .account-grid.profile-count-1 {
-      grid-template-columns: minmax(300px, 440px);
+      grid-template-columns: minmax(340px, 520px);
     }
 
     .account-grid.profile-count-2 {
-      grid-template-columns: repeat(2, minmax(280px, 360px));
+      grid-template-columns: repeat(2, minmax(340px, 1fr));
     }
 
     .account-grid.profile-count-3 {
-      grid-template-columns: repeat(3, minmax(260px, 320px));
+      grid-template-columns: repeat(3, minmax(320px, 1fr));
     }
 
     .account-grid.profile-count-many {
-      grid-template-columns: repeat(auto-fit, minmax(250px, 300px));
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
     }
 
     .account-card {
+      --plan-color: #94a3b8;
+      --plan-soft: rgba(148, 163, 184, 0.12);
+      --plan-border: var(--line);
+      --usage-color: #16a34a;
+      --usage-soft: rgba(22, 163, 74, 0.12);
+      position: relative;
       border-radius: 16px;
       padding: 14px;
       display: grid;
       grid-template-rows: auto auto auto 1fr auto;
       gap: 12px;
       min-width: 0;
-      height: 100%;
+      border-color: var(--plan-border);
+      overflow: hidden;
+    }
+
+    .account-card::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 3px;
+      background: var(--plan-color);
+    }
+
+    .account-card.plan-free {
+      --plan-color: #94a3b8;
+      --plan-soft: rgba(148, 163, 184, 0.12);
+      --plan-border: var(--line);
+    }
+
+    .account-card.plan-plus {
+      --plan-color: #635bff;
+      --plan-soft: rgba(99, 91, 255, 0.11);
+      --plan-border: rgba(99, 91, 255, 0.2);
+    }
+
+    .account-card.plan-pro {
+      --plan-color: #4f46e5;
+      --plan-soft: rgba(79, 70, 229, 0.11);
+      --plan-border: rgba(79, 70, 229, 0.22);
+    }
+
+    .account-card.plan-team {
+      --plan-color: #0f766e;
+      --plan-soft: rgba(15, 118, 110, 0.11);
+      --plan-border: rgba(15, 118, 110, 0.22);
+    }
+
+    .account-card.plan-premium {
+      --plan-color: #d97706;
+      --plan-soft: rgba(217, 119, 6, 0.12);
+      --plan-border: rgba(217, 119, 6, 0.34);
+      box-shadow: 0 10px 26px rgba(180, 83, 9, 0.1), var(--shadow);
+    }
+
+    .account-card.plan-enterprise {
+      --plan-color: #a16207;
+      --plan-soft: rgba(161, 98, 7, 0.14);
+      --plan-border: rgba(71, 85, 105, 0.28);
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.1), var(--shadow);
     }
 
     .account-head {
@@ -697,6 +929,7 @@ export function renderAdminPage(): string {
       align-items: flex-start;
       justify-content: space-between;
       gap: 12px;
+      padding-top: 8px;
     }
 
     .account-title {
@@ -712,6 +945,7 @@ export function renderAdminPage(): string {
       gap: 6px;
       min-height: 28px;
       padding: 0 8px;
+      margin-top: 28px;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fff;
@@ -741,11 +975,12 @@ export function renderAdminPage(): string {
       height: 24px;
       border-radius: 999px;
       background: var(--panel-soft);
-      border: 1px solid var(--line);
+      border: 1px solid var(--plan-color);
+      box-shadow: 0 0 0 3px var(--plan-soft);
       display: grid;
       place-items: center;
       font-size: 11px;
-      color: var(--brand);
+      color: var(--plan-color);
       font-weight: 700;
       flex: 0 0 auto;
     }
@@ -782,8 +1017,66 @@ export function renderAdminPage(): string {
     }
 
     .badge.brand {
-      color: var(--brand);
-      background: var(--brand-soft);
+      color: var(--plan-color);
+      background: var(--plan-soft);
+    }
+
+    .usage-corner {
+      position: absolute;
+      top: 10px;
+      right: 12px;
+      min-height: 24px;
+      padding: 0 10px 0 8px;
+      border-radius: 999px;
+      color: #047857;
+      background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+      border: 1px solid rgba(16, 185, 129, 0.28);
+      box-shadow: 0 8px 18px rgba(16, 185, 129, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 22px;
+      letter-spacing: 0;
+      pointer-events: none;
+      z-index: 1;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .usage-corner::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: currentColor;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
+      flex: 0 0 auto;
+    }
+
+    .usage-corner span {
+      line-height: 1;
+    }
+
+    .usage-corner.codex-only {
+      color: #1d4ed8;
+      background: linear-gradient(135deg, #eff6ff, #dbeafe);
+      border-color: rgba(37, 99, 235, 0.24);
+      box-shadow: 0 8px 18px rgba(37, 99, 235, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    }
+
+    .usage-corner.codex-only::before {
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .usage-corner.dual {
+      color: #4f46e5;
+      background: linear-gradient(135deg, #f5f3ff, #ede9fe);
+      border-color: rgba(99, 91, 255, 0.25);
+      box-shadow: 0 8px 18px rgba(99, 91, 255, 0.13), inset 0 1px 0 rgba(255, 255, 255, 0.82);
+    }
+
+    .usage-corner.dual::before {
+      box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.12);
     }
 
     .badge.blue {
@@ -809,6 +1102,145 @@ export function renderAdminPage(): string {
     .account-metrics {
       display: grid;
       gap: 10px;
+    }
+
+    .usage-status-row {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: var(--panel-soft);
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .usage-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      min-width: 0;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+
+    .usage-status svg {
+      width: 12px;
+      height: 12px;
+      color: var(--text-muted);
+      flex: 0 0 auto;
+    }
+
+    .usage-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: #cbd5e1;
+      flex: 0 0 auto;
+    }
+
+    .usage-dot.active {
+      background: #22c55e;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+    }
+
+    .usage-state-text {
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .usage-status.is-active .usage-state-text {
+      color: #15803d;
+    }
+
+    .compact-meta-row {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+      color: var(--text-muted);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .compact-reset-list {
+      display: flex;
+      flex-wrap: nowrap;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .compact-meta-item {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+      min-width: 0;
+      flex: 1 1 0;
+    }
+
+    .compact-meta-item label {
+      color: var(--text-muted);
+      font-size: 10px;
+      line-height: 1.4;
+      white-space: nowrap;
+    }
+
+    .compact-meta-item strong {
+      color: var(--text-soft);
+      font-size: 11px;
+      line-height: 1.4;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    .compact-meta-actions {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 2px;
+    }
+
+    .compact-meta-actions::before,
+    .compact-meta-actions::after {
+      content: "";
+      height: 1px;
+      background: var(--line);
+      flex: 1 1 auto;
+      min-width: 18px;
+    }
+
+    .details-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      min-height: 24px;
+      padding: 0 6px;
+      border: 0;
+      background: transparent;
+      color: var(--brand);
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .details-toggle:hover {
+      color: #4338ca;
+    }
+
+    .details-toggle svg {
+      width: 12px;
+      height: 12px;
+      transition: transform 0.16s ease;
+    }
+
+    .details-toggle.is-expanded svg {
+      transform: rotate(180deg);
     }
 
     .quota-row {
@@ -870,6 +1302,8 @@ export function renderAdminPage(): string {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 8px 12px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
     }
 
     .meta-item {
@@ -908,6 +1342,38 @@ export function renderAdminPage(): string {
       padding: 0 12px;
       border-radius: 10px;
       font-size: 12px;
+    }
+
+    .account-actions .btn-secondary.is-current {
+      position: relative;
+      opacity: 1;
+      color: #047857;
+      background: linear-gradient(135deg, #f0fdf4, #dcfce7);
+      border-color: rgba(16, 185, 129, 0.36);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 6px 14px rgba(16, 185, 129, 0.08);
+      cursor: default;
+    }
+
+    .account-actions .btn-secondary.is-current::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 999px;
+      background: #22c55e;
+      box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+      flex: 0 0 auto;
+    }
+
+    .account-actions .btn-secondary.is-current.codex {
+      color: #1d4ed8;
+      background: linear-gradient(135deg, #eff6ff, #dbeafe);
+      border-color: rgba(37, 99, 235, 0.32);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 6px 14px rgba(37, 99, 235, 0.08);
+    }
+
+    .account-actions .btn-secondary.is-current.codex::before {
+      background: #3b82f6;
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
     }
 
     .account-status {
@@ -1324,6 +1790,10 @@ export function renderAdminPage(): string {
         padding: 12px;
       }
 
+      .settings-drawer {
+        width: 100vw;
+      }
+
       .modal-head,
       .modal-body {
         padding-left: 16px;
@@ -1365,7 +1835,7 @@ export function renderAdminPage(): string {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h13"></path><path d="M8 12h13"></path><path d="M8 18h13"></path><path d="M3 6h.01"></path><path d="M3 12h.01"></path><path d="M3 18h.01"></path></svg>
           请求日志
         </button>
-        <button class="nav-item" type="button" data-nav-target="settings">
+        <button class="nav-item" type="button" data-open-settings>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.6 1.6 0 0 0 .33 1.76l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.6 1.6 0 0 0-1.76-.33 1.6 1.6 0 0 0-.97 1.46V21a2 2 0 0 1-4 0v-.09a1.6 1.6 0 0 0-.97-1.46 1.6 1.6 0 0 0-1.76.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.6 1.6 0 0 0 .33-1.76 1.6 1.6 0 0 0-1.46-.97H3a2 2 0 0 1 0-4h.09a1.6 1.6 0 0 0 1.46-.97 1.6 1.6 0 0 0-.33-1.76l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.6 1.6 0 0 0 1.76.33H9a1.6 1.6 0 0 0 .97-1.46V3a2 2 0 0 1 4 0v.09a1.6 1.6 0 0 0 .97 1.46 1.6 1.6 0 0 0 1.76-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.6 1.6 0 0 0-.33 1.76V9c0 .64.38 1.22.97 1.46H21a2 2 0 0 1 0 4h-.09c-.64 0-1.22.38-1.46.97Z"></path></svg>
           系统设置
         </button>
@@ -1388,6 +1858,7 @@ export function renderAdminPage(): string {
         </div>
         <div class="top-actions">
           <a class="btn-link" href="https://github.com/fchangjun/AI-Zero-Token" target="_blank" rel="noreferrer">GitHub 仓库</a>
+          <button class="btn-secondary" id="openSettingsBtn" type="button">设置</button>
           <button class="btn-secondary" id="contactBtn" type="button">交流反馈</button>
           <button class="btn-secondary" id="toggleEmailBtn" type="button">脱敏模式</button>
           <button class="btn-primary" id="loginBtn" type="button">+ 新增账号</button>
@@ -1427,7 +1898,7 @@ export function renderAdminPage(): string {
                 <option value="healthy">健康</option>
                 <option value="warning">即将耗尽</option>
                 <option value="expired">已过期</option>
-                <option value="active">当前使用</option>
+                <option value="active">使用中</option>
               </select>
               <select class="control" id="profileSort">
                 <option value="quota-desc">按主额度排序</option>
@@ -1507,32 +1978,6 @@ export function renderAdminPage(): string {
               <select class="control" id="endpointSelect"></select>
             </div>
 
-            <div class="field" id="settings">
-              <label for="defaultModel">默认模型</label>
-              <select class="control" id="defaultModel"></select>
-              <p class="hint">切换后会影响未显式传 <code>model</code> 的请求。</p>
-              <p class="hint" id="modelCatalogHint"></p>
-              <div class="actions">
-                <button class="btn-secondary" id="refreshModelsBtn" type="button">同步 Codex 模型</button>
-                <button class="btn-primary" id="saveModelBtn" type="button">保存默认模型</button>
-              </div>
-            </div>
-
-            <div class="field">
-              <label class="checkbox-row" for="proxyEnabled">
-                <input id="proxyEnabled" type="checkbox" />
-                启用上游代理
-              </label>
-              <label for="proxyUrl">代理地址</label>
-              <input class="input" id="proxyUrl" type="text" placeholder="填写你的代理地址" />
-              <label for="proxyNoProxy">直连地址</label>
-              <input class="input" id="proxyNoProxy" type="text" placeholder="localhost,127.0.0.1,::1" />
-              <p class="hint">启用后，OAuth 换取 token、模型刷新和接口转发会通过此代理访问海外上游。</p>
-              <div class="actions">
-                <button class="btn-primary" id="saveProxyBtn" type="button">保存代理配置</button>
-              </div>
-            </div>
-
             <div class="field">
               <label for="requestBody">请求体 JSON</label>
               <textarea class="textarea" id="requestBody" spellcheck="false"></textarea>
@@ -1594,6 +2039,65 @@ export function renderAdminPage(): string {
         </aside>
       </section>
     </main>
+  </div>
+
+  <div class="drawer-backdrop" id="settingsDrawerBackdrop" aria-hidden="true">
+    <aside class="settings-drawer" role="dialog" aria-modal="true" aria-labelledby="settingsDrawerTitle">
+      <div class="settings-drawer-head">
+        <div>
+          <h3 id="settingsDrawerTitle">系统设置</h3>
+          <p>集中管理默认模型、上游代理和额度耗尽后的自动切换策略。</p>
+        </div>
+        <button class="btn-secondary" id="closeSettingsDrawerBtn" type="button">关闭</button>
+      </div>
+      <div class="settings-drawer-body">
+        <section class="settings-section">
+          <h4>默认模型</h4>
+          <div class="field">
+            <label for="defaultModel">默认模型</label>
+            <select class="control" id="defaultModel"></select>
+            <p class="hint">影响未显式传 <code>model</code> 的请求。</p>
+            <p class="hint" id="modelCatalogHint"></p>
+            <div class="actions">
+              <button class="btn-secondary" id="refreshModelsBtn" type="button">同步 Codex 模型</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h4>上游代理</h4>
+          <div class="field">
+            <label class="checkbox-row" for="proxyEnabled">
+              <input id="proxyEnabled" type="checkbox" />
+              启用上游代理
+            </label>
+            <label for="proxyUrl">代理地址</label>
+            <input class="input" id="proxyUrl" type="text" placeholder="填写你的代理地址" />
+            <label for="proxyNoProxy">直连地址</label>
+            <input class="input" id="proxyNoProxy" type="text" placeholder="localhost,127.0.0.1,::1" />
+            <p class="hint">启用后，OAuth 换取 token、模型刷新和接口转发会通过此代理访问海外上游。</p>
+            <div class="actions">
+              <button class="btn-secondary" id="testProxyBtn" type="button">测试代理</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <h4>账号切换</h4>
+          <div class="field">
+            <label class="checkbox-row" for="autoSwitchEnabled">
+              <input id="autoSwitchEnabled" type="checkbox" />
+              额度耗尽自动切换
+            </label>
+            <p class="hint">开启后，当前 API 账号额度快照已耗尽时，网关会按账号池顺序切到仍有额度的账号，并尽量避开 Codex 正在使用的账号。</p>
+          </div>
+        </section>
+      </div>
+      <div class="settings-drawer-footer">
+        <p class="status-inline" id="settingsStatus"></p>
+        <button class="btn-primary" id="saveSettingsBtn" type="button">保存设置</button>
+      </div>
+    </aside>
   </div>
 
   <div class="modal-backdrop" id="imagePreviewModal" aria-hidden="true">
@@ -1685,7 +2189,8 @@ export function renderAdminPage(): string {
   </div>
 
   <script>
-    const RUNTIME_AUTO_REFRESH_MS = 10 * 60 * 1000;
+    const RUNTIME_AUTO_REFRESH_MS = 5 * 60 * 1000;
+    const ACTIVE_PROFILE_REFRESH_MS = 15 * 1000;
 
     const state = {
       config: null,
@@ -1697,7 +2202,9 @@ export function renderAdminPage(): string {
         sort: "quota-desc",
       },
       selectedProfileIds: {},
+      expandedProfileIds: {},
       testerResultTab: "response",
+      settingsDirty: false,
     };
 
     const endpointMeta = {
@@ -1742,6 +2249,7 @@ export function renderAdminPage(): string {
     const accountModal = document.getElementById("accountModal");
     const contactModal = document.getElementById("contactModal");
     const imagePreviewModal = document.getElementById("imagePreviewModal");
+    const settingsDrawerBackdrop = document.getElementById("settingsDrawerBackdrop");
     const contactBtn = document.getElementById("contactBtn");
     const previewModalImage = document.getElementById("previewModalImage");
     const previewModalMeta = document.getElementById("previewModalMeta");
@@ -1758,6 +2266,10 @@ export function renderAdminPage(): string {
     const proxyEnabled = document.getElementById("proxyEnabled");
     const proxyUrl = document.getElementById("proxyUrl");
     const proxyNoProxy = document.getElementById("proxyNoProxy");
+    const testProxyBtn = document.getElementById("testProxyBtn");
+    const autoSwitchEnabled = document.getElementById("autoSwitchEnabled");
+    const settingsStatus = document.getElementById("settingsStatus");
+    const saveSettingsBtn = document.getElementById("saveSettingsBtn");
 
     function setBusy(button, busy) {
       if (button) {
@@ -1849,6 +2361,9 @@ export function renderAdminPage(): string {
       if (minutes === 60 * 24) {
         return "日额度";
       }
+      if (minutes === 60 * 5) {
+        return "5 小时额度";
+      }
       if (minutes === 60 * 24 * 7) {
         return "周额度";
       }
@@ -1859,6 +2374,68 @@ export function renderAdminPage(): string {
       return profile && profile.quota && typeof profile.quota.planType === "string"
         ? profile.quota.planType
         : "unknown";
+    }
+
+    function getPlanRank(profile) {
+      const plan = getPlanType(profile).toLowerCase();
+      if (plan.indexOf("enterprise") !== -1 || plan.indexOf("business") !== -1) {
+        return 60;
+      }
+      if (plan.indexOf("team") !== -1) {
+        return 50;
+      }
+      if (plan.indexOf("pro") !== -1 || plan.indexOf("premium") !== -1) {
+        return 40;
+      }
+      if (plan.indexOf("plus") !== -1) {
+        return 30;
+      }
+      if (plan.indexOf("free") !== -1) {
+        return 10;
+      }
+      return 0;
+    }
+
+    function getPlanKey(profile) {
+      const plan = getPlanType(profile).toLowerCase();
+      if (plan.indexOf("enterprise") !== -1 || plan.indexOf("business") !== -1) {
+        return "enterprise";
+      }
+      if (plan.indexOf("team") !== -1) {
+        return "team";
+      }
+      if (plan.indexOf("pro") !== -1 || plan.indexOf("premium") !== -1) {
+        return plan.indexOf("premium") !== -1 ? "premium" : "pro";
+      }
+      if (plan.indexOf("plus") !== -1) {
+        return "plus";
+      }
+      if (plan.indexOf("free") !== -1) {
+        return "free";
+      }
+      return "unknown";
+    }
+
+    function getUsageCorner(profile, isCodexActive) {
+      if (profile.isActive && isCodexActive) {
+        return {
+          className: "dual",
+          label: "API + Codex",
+        };
+      }
+      if (profile.isActive) {
+        return {
+          className: "api-only",
+          label: "API",
+        };
+      }
+      if (isCodexActive) {
+        return {
+          className: "codex-only",
+          label: "Codex",
+        };
+      }
+      return null;
     }
 
     function getQuotaSnapshotTime(profile) {
@@ -2049,6 +2626,41 @@ export function renderAdminPage(): string {
       return Math.max(0, Math.min(100, value));
     }
 
+    function isProfileQuotaExhausted(profile) {
+      if (!profile || !profile.quota) {
+        return false;
+      }
+
+      return getPrimaryUsage(profile) >= 100 || getSecondaryUsage(profile) >= 100;
+    }
+
+    function findProfileById(profileId) {
+      const profiles = state.config && Array.isArray(state.config.profiles) ? state.config.profiles : [];
+      return profiles.find(function (profile) {
+        return profile.profileId === profileId;
+      }) || null;
+    }
+
+    function confirmQuotaSwitch(action, profileId) {
+      if (action !== "activate" && action !== "apply-codex") {
+        return true;
+      }
+
+      const profile = findProfileById(profileId);
+      if (!isProfileQuotaExhausted(profile)) {
+        return true;
+      }
+
+      const target = action === "activate" ? "网关" : "Codex";
+      const label = getProfileDisplayLabel(profile);
+      const message = "账号 “" + label + "” 的额度快照显示已耗尽。\\n\\n仍要应用到 " + target + " 吗？";
+      const confirmed = window.confirm(message);
+      if (!confirmed) {
+        authStatus.textContent = "已取消应用到 " + target + "。";
+      }
+      return confirmed;
+    }
+
     function getProfileHealth(profile) {
       const now = Date.now();
       if (profile && profile.expiresAt && profile.expiresAt <= now) {
@@ -2104,6 +2716,37 @@ export function renderAdminPage(): string {
       return "未知";
     }
 
+    function formatCompactDateTime(value) {
+      if (!value) {
+        return "暂无数据";
+      }
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) {
+        return "未知";
+      }
+      const month = String(date.getMonth() + 1);
+      const day = String(date.getDate());
+      const time = date.toLocaleTimeString("zh-CN", { hour12: false, hour: "2-digit", minute: "2-digit" });
+      return month + "/" + day + " " + time;
+    }
+
+    function describeCompactReset(profile, slot) {
+      if (!profile || !profile.quota) {
+        return "暂无数据";
+      }
+
+      const quota = profile.quota;
+      const resetAt = slot === "primary" ? quota.primaryResetAt : quota.secondaryResetAt;
+      const resetAfter = slot === "primary" ? quota.primaryResetAfterSeconds : quota.secondaryResetAfterSeconds;
+      if (typeof resetAt === "number" && resetAt > 0) {
+        return formatCompactDateTime(resetAt * 1000);
+      }
+      if (typeof resetAfter === "number" && resetAfter > 0) {
+        return formatCompactDuration(resetAfter) + "后";
+      }
+      return "未知";
+    }
+
     function getQuotaWindowLabel(profile, slot) {
       const quota = profile && profile.quota ? profile.quota : null;
       if (!quota) {
@@ -2111,6 +2754,17 @@ export function renderAdminPage(): string {
       }
       const field = slot === "primary" ? "primaryWindowMinutes" : "secondaryWindowMinutes";
       return formatWindowLabel(quota && quota[field]);
+    }
+
+    function getResetLabel(profile, slot) {
+      const label = getQuotaWindowLabel(profile, slot);
+      if (label === "5 小时额度") {
+        return "5小时重置";
+      }
+      if (label === "周额度") {
+        return "周重置";
+      }
+      return label.replace("额度", "") + "重置";
     }
 
     function formatQuotaUsage(percent, profile, slot) {
@@ -2361,50 +3015,58 @@ export function renderAdminPage(): string {
       const codexProfile = codexAccountId && Array.isArray(config.profiles)
         ? config.profiles.find(function (profile) { return profile.accountId === codexAccountId; })
         : null;
+      const gatewayLabel = config.profile ? getProfileDisplayLabel(config.profile) : "未激活账号";
+      const codexLabel = codexProfile
+        ? getProfileDisplayLabel(codexProfile)
+        : (codexAccountId ? maskIdentifier(codexAccountId) : "未检测到");
 
       return [
         {
+          icon: "users",
+          iconClass: "blue",
           label: "账号总数",
           value: String(config.status.profileCount || 0),
           detail: "已保存到本地账号池",
         },
         {
-          label: "当前使用账号",
-          value: getProfileDisplayLabel(config.profile),
-          detail: config.profile && config.profile.profileId
-            ? "Profile ID: " + config.profile.profileId + " · " + getPlanType(config.profile)
-            : "尚未激活账号",
-          compact: true,
+          kind: "account-status",
+          label: "当前账号状态",
+          gatewayLabel: gatewayLabel,
+          codexLabel: codexLabel,
         },
         {
+          icon: "model",
+          iconClass: "brand",
           label: "默认模型",
           value: config.settings.defaultModel || "-",
           detail: "未显式指定 model 时生效",
           compact: true,
         },
         {
-          label: "Codex 当前账号",
-          value: codexProfile ? getProfileDisplayLabel(codexProfile) : (codexAccountId ? maskIdentifier(codexAccountId) : "未检测到"),
-          detail: config.codex && config.codex.exists ? "来自 ~/.codex/auth.json" : "尚未应用到 Codex",
-          compact: true,
-        },
-        {
+          icon: "version",
+          iconClass: config.versionStatus && config.versionStatus.needsUpdate ? "orange" : "green",
           label: "当前版本",
           value: getVersionValue(config),
           detail: getVersionDetail(config),
           compact: true,
         },
         {
+          icon: "requests",
+          iconClass: "blue",
           label: "今日请求数",
           value: String(requests.length),
           detail: "基于本页最近测试记录",
         },
         {
+          icon: "latency",
+          iconClass: "orange",
           label: "平均耗时",
           value: requests.length ? (avg / 1000).toFixed(2) + " s" : "--",
           detail: requests.length ? "统计最近 " + String(requests.length) + " 次" : "等待请求样本",
         },
         {
+          icon: "service",
+          iconClass: config.status.loggedIn ? "green" : "orange",
           label: "服务状态",
           value: config.status.loggedIn ? "运行中" : "待登录",
           detail: config.status.loggedIn ? "网关可转发请求" : "请先完成 OAuth 登录",
@@ -2413,14 +3075,63 @@ export function renderAdminPage(): string {
       ];
     }
 
+    function getSummaryIcon(name) {
+      if (name === "users") {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>';
+      }
+      if (name === "model") {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M9 9h6v6H9z"></path><path d="M9 1v3"></path><path d="M15 1v3"></path><path d="M9 20v3"></path><path d="M15 20v3"></path><path d="M20 9h3"></path><path d="M20 15h3"></path><path d="M1 9h3"></path><path d="M1 15h3"></path></svg>';
+      }
+      if (name === "version") {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"></path></svg>';
+      }
+      if (name === "requests") {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18"></path><path d="m15 6 6 6-6 6"></path></svg>';
+      }
+      if (name === "latency") {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 6v6l4 2"></path><circle cx="12" cy="12" r="9"></circle></svg>';
+      }
+      if (name === "service") {
+        return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4 7v6c0 5 3.4 7.7 8 8 4.6-.3 8-3 8-8V7l-8-4Z"></path><path d="m9 12 2 2 4-4"></path></svg>';
+      }
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle></svg>';
+    }
+
     function renderOverview(config) {
       const container = document.getElementById("summaryGrid");
       const cards = getOverviewCards(config);
       container.innerHTML = cards.map(function (card) {
+        if (card.kind === "account-status") {
+          return ""
+            + '<article class="summary-card account-status-summary">'
+            +   '<div class="summary-card-head">'
+            +     '<span class="summary-icon green">'
+            +       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17 10 11 4 5"></path><path d="M12 19h8"></path></svg>'
+            +     "</span>"
+            +     "<label>" + escapeHtml(card.label) + "</label>"
+            +   "</div>"
+            +   '<div class="account-status-list">'
+            +     '<div class="account-status-line gateway">'
+            +       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3c2.5 2.7 3.8 5.7 3.8 9S14.5 18.3 12 21"></path><path d="M12 3c-2.5 2.7-3.8 5.7-3.8 9s1.3 6.3 3.8 9"></path></svg>'
+            +       "<span>网关：</span>"
+            +       "<strong>" + escapeHtml(card.gatewayLabel) + "</strong>"
+            +     "</div>"
+            +     '<div class="account-status-line codex">'
+            +       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17 10 11 4 5"></path><path d="M12 19h8"></path></svg>'
+            +       "<span>Codex：</span>"
+            +       "<strong>" + escapeHtml(card.codexLabel) + "</strong>"
+            +     "</div>"
+            +   "</div>"
+            + "</article>";
+        }
         const valueClass = card.compact ? "summary-value-sm" : "";
+        const iconClass = card.iconClass ? " " + card.iconClass : "";
         return ""
           + '<article class="summary-card">'
-          +   "<label>" + escapeHtml(card.label) + "</label>"
+          +   '<div class="summary-card-head">'
+          +     '<span class="summary-icon' + iconClass + '">' + getSummaryIcon(card.icon) + "</span>"
+          +     "<label>" + escapeHtml(card.label) + "</label>"
+          +   "</div>"
           +   '<strong class="' + valueClass + '">' + escapeHtml(card.value) + "</strong>"
           +   "<span>" + escapeHtml(card.detail) + "</span>"
           + "</article>";
@@ -2432,6 +3143,7 @@ export function renderAdminPage(): string {
       const search = state.filters.search.trim().toLowerCase();
       const status = state.filters.status;
       const sort = state.filters.sort;
+      const codexAccountId = config.codex && config.codex.accountId ? config.codex.accountId : "";
 
       const filtered = profiles.filter(function (profile) {
         const label = getProfileDisplayLabel(profile).toLowerCase();
@@ -2446,7 +3158,8 @@ export function renderAdminPage(): string {
         }
 
         const health = getProfileHealth(profile);
-        if (status === "active" && !profile.isActive) {
+        const isCodexActive = Boolean(codexAccountId && profile.accountId === codexAccountId);
+        if (status === "active" && !profile.isActive && !isCodexActive) {
           return false;
         }
         if (status === "healthy" && health.key !== "healthy") {
@@ -2462,6 +3175,24 @@ export function renderAdminPage(): string {
       });
 
       filtered.sort(function (a, b) {
+        const aCodexActive = Boolean(codexAccountId && a.accountId === codexAccountId);
+        const bCodexActive = Boolean(codexAccountId && b.accountId === codexAccountId);
+        const activeDiff = Number(b.isActive || bCodexActive) - Number(a.isActive || aCodexActive);
+        if (activeDiff !== 0) {
+          return activeDiff;
+        }
+        const gatewayDiff = Number(b.isActive) - Number(a.isActive);
+        if (gatewayDiff !== 0) {
+          return gatewayDiff;
+        }
+        const codexDiff = Number(bCodexActive) - Number(aCodexActive);
+        if (codexDiff !== 0) {
+          return codexDiff;
+        }
+        const planDiff = getPlanRank(b) - getPlanRank(a);
+        if (planDiff !== 0) {
+          return planDiff;
+        }
         if (sort === "latency-asc") {
           const aCapturedAt = getQuotaSnapshotTime(a) || 0;
           const bCapturedAt = getQuotaSnapshotTime(b) || 0;
@@ -2498,6 +3229,11 @@ export function renderAdminPage(): string {
           delete state.selectedProfileIds[profileId];
         }
       });
+      Object.keys(state.expandedProfileIds).forEach(function (profileId) {
+        if (!availableIds[profileId]) {
+          delete state.expandedProfileIds[profileId];
+        }
+      });
     }
 
     function updateSelectedProfileControls() {
@@ -2511,6 +3247,7 @@ export function renderAdminPage(): string {
       syncSelectedProfiles(config);
       updateSelectedProfileControls();
       const profiles = getFilteredProfiles(config);
+      const codexAccountId = config.codex && config.codex.accountId ? config.codex.accountId : "";
       const gridClass = profiles.length <= 0
         ? ""
         : profiles.length === 1
@@ -2529,22 +3266,29 @@ export function renderAdminPage(): string {
 
       container.innerHTML = profiles.map(function (profile) {
         const selected = !!state.selectedProfileIds[profile.profileId];
-        const isSingleProfile = profiles.length === 1;
+        const expanded = !!state.expandedProfileIds[profile.profileId];
         const health = getProfileHealth(profile);
         const planType = getPlanType(profile);
+        const planKey = getPlanKey(profile);
         const imageCapability = getImageCapability(profile);
         const primary = getPrimaryUsage(profile);
         const secondary = getSecondaryUsage(profile);
         const primaryClass = health.barClass || "blue";
         const secondaryClass = secondary >= 85 ? "orange" : "blue";
+        const isCodexActive = Boolean(codexAccountId && profile.accountId === codexAccountId);
+        const usageCorner = getUsageCorner(profile, isCodexActive);
+        const apiUsageClass = profile.isActive ? " is-active" : "";
+        const codexUsageClass = isCodexActive ? " is-active" : "";
         const actionButton = profile.isActive
-          ? (isSingleProfile
-            ? '<span class="account-status">当前使用中</span>'
-            : '<button class="btn-secondary" type="button" disabled>当前使用中</button>')
-          : '<button class="btn-secondary" type="button" data-profile-action="activate" data-profile-id="' + escapeHtml(profile.profileId) + '">切换</button>';
+          ? '<button class="btn-secondary is-current" type="button" disabled>网关使用中</button>'
+          : '<button class="btn-secondary" type="button" data-profile-action="activate" data-profile-id="' + escapeHtml(profile.profileId) + '">应用网关</button>';
+        const codexButton = isCodexActive
+          ? '<button class="btn-secondary is-current codex" type="button" disabled>Codex 使用中</button>'
+          : '<button class="btn-secondary" type="button" data-profile-action="apply-codex" data-profile-id="' + escapeHtml(profile.profileId) + '">应用 Codex</button>';
 
         return ""
-          + '<article class="account-card" data-profile-card="' + escapeHtml(profile.profileId) + '">'
+          + '<article class="account-card plan-' + escapeHtml(planKey) + '" data-profile-card="' + escapeHtml(profile.profileId) + '">'
+          +   (usageCorner ? '<span class="usage-corner ' + escapeHtml(usageCorner.className) + '"><span>' + escapeHtml(usageCorner.label) + "</span></span>" : "")
           +   '<div class="account-head">'
           +     '<div class="account-title">'
           +       '<div class="account-name">'
@@ -2552,7 +3296,6 @@ export function renderAdminPage(): string {
           +         "<strong>" + escapeHtml(getProfileDisplayLabel(profile)) + "</strong>"
           +       "</div>"
           +       '<div class="badge-row">'
-          +         (profile.isActive ? '<span class="badge blue">当前使用</span>' : "")
           +         '<span class="badge brand">' + escapeHtml(planType) + "</span>"
           +         '<span class="badge ' + escapeHtml(health.badgeClass) + '">' + escapeHtml(health.label) + "</span>"
           +         '<span class="badge ' + escapeHtml(imageCapability.badgeClass) + '">' + escapeHtml(imageCapability.label) + "</span>"
@@ -2570,18 +3313,45 @@ export function renderAdminPage(): string {
           +       '<div class="progress-track"><div class="progress-bar ' + escapeHtml(secondaryClass) + '" style="width:' + escapeHtml(String(secondary)) + '%"></div></div>'
           +     "</div>"
           +   "</div>"
-          +   '<div class="meta-grid">'
-          +     '<div class="meta-item"><label>套餐</label><strong>' + escapeHtml(planType) + "</strong></div>"
-          +     '<div class="meta-item"><label>生图能力</label><strong>' + escapeHtml(imageCapability.detail) + "</strong></div>"
-          +     '<div class="meta-item"><label>重置时间</label><strong>' + escapeHtml(describeReset(profile, "primary")) + "</strong></div>"
-          +     '<div class="meta-item"><label>额度快照</label><strong>' + escapeHtml(describeQuotaSnapshot(profile)) + "</strong></div>"
-          +     '<div class="meta-item"><label>额度限制</label><strong>' + escapeHtml(describeQuotaLimit(profile)) + "</strong></div>"
-          +     '<div class="meta-item"><label>Account ID</label><code>' + escapeHtml(state.showEmails ? (profile.accountId || "未提供") : maskIdentifier(profile.accountId || "未提供")) + "</code></div>"
-          +     '<div class="meta-item"><label>过期时间</label><span>' + escapeHtml(formatTime(profile.expiresAt)) + "</span></div>"
+          +   '<div class="usage-status-row">'
+          +     '<span class="usage-status' + apiUsageClass + '">'
+          +       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18"></path><path d="M12 3c2.5 2.7 3.8 5.7 3.8 9S14.5 18.3 12 21"></path><path d="M12 3c-2.5 2.7-3.8 5.7-3.8 9s1.3 6.3 3.8 9"></path></svg>'
+          +       "<span>API</span>"
+          +       '<span class="usage-dot' + (profile.isActive ? " active" : "") + '"></span>'
+          +       '<span class="usage-state-text">' + (profile.isActive ? "使用中" : "未使用") + "</span>"
+          +     "</span>"
+          +     '<span class="usage-status' + codexUsageClass + '">'
+          +       '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 17 10 11 4 5"></path><path d="M12 19h8"></path></svg>'
+          +       "<span>Codex</span>"
+          +       '<span class="usage-dot' + (isCodexActive ? " active" : "") + '"></span>'
+          +       '<span class="usage-state-text">' + (isCodexActive ? "使用中" : "未使用") + "</span>"
+          +     "</span>"
           +   "</div>"
+          +   '<div class="compact-meta-row">'
+          +     '<div class="compact-reset-list">'
+          +       '<div class="compact-meta-item"><label>' + escapeHtml(getResetLabel(profile, "primary")) + '</label><strong>' + escapeHtml(describeCompactReset(profile, "primary")) + "</strong></div>"
+          +       '<div class="compact-meta-item"><label>' + escapeHtml(getResetLabel(profile, "secondary")) + '</label><strong>' + escapeHtml(describeCompactReset(profile, "secondary")) + "</strong></div>"
+          +     "</div>"
+          +     '<div class="compact-meta-actions">'
+          +       '<button class="details-toggle' + (expanded ? " is-expanded" : "") + '" type="button" data-profile-action="toggle-details" data-profile-id="' + escapeHtml(profile.profileId) + '">'
+          +         "<span>" + (expanded ? "收起详情" : "查看详情") + "</span>"
+          +         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"></path></svg>'
+          +       "</button>"
+          +     "</div>"
+          +   "</div>"
+          +   (expanded
+            ? '<div class="meta-grid">'
+              + '<div class="meta-item"><label>套餐</label><strong>' + escapeHtml(planType) + "</strong></div>"
+              + '<div class="meta-item"><label>生图能力</label><strong>' + escapeHtml(imageCapability.detail) + "</strong></div>"
+              + '<div class="meta-item"><label>额度快照</label><strong>' + escapeHtml(describeQuotaSnapshot(profile)) + "</strong></div>"
+              + '<div class="meta-item"><label>额度限制</label><strong>' + escapeHtml(describeQuotaLimit(profile)) + "</strong></div>"
+              + '<div class="meta-item"><label>Account ID</label><code>' + escapeHtml(state.showEmails ? (profile.accountId || "未提供") : maskIdentifier(profile.accountId || "未提供")) + "</code></div>"
+              + '<div class="meta-item"><label>过期时间</label><span>' + escapeHtml(formatTime(profile.expiresAt)) + "</span></div>"
+              + "</div>"
+            : "")
           +   '<div class="account-actions">'
           +     actionButton
-          +     '<button class="btn-secondary" type="button" data-profile-action="apply-codex" data-profile-id="' + escapeHtml(profile.profileId) + '">应用到 Codex</button>'
+          +     codexButton
           +     '<button class="btn-secondary" type="button" data-profile-action="export" data-profile-id="' + escapeHtml(profile.profileId) + '">导出</button>'
           +     '<button class="btn-danger" type="button" data-profile-action="remove" data-profile-id="' + escapeHtml(profile.profileId) + '">删除</button>'
           +   "</div>"
@@ -2746,6 +3516,7 @@ export function renderAdminPage(): string {
         ["Provider", config.status.activeProvider || "openai-codex"],
         ["默认模型", config.settings.defaultModel],
         ["上游代理", config.settings.networkProxy && config.settings.networkProxy.enabled ? "已启用" : "未启用"],
+        ["自动切换", config.settings.autoSwitch && config.settings.autoSwitch.enabled ? "已启用" : "未启用"],
         ["当前版本", getVersionValue(config)],
         ["当前套餐", config.profile ? getPlanType(config.profile) : "未登录"],
         ["生图能力", getImageCapability(config.profile).detail],
@@ -2765,6 +3536,7 @@ export function renderAdminPage(): string {
         ["当前账号", getProfileDisplayLabel(config.profile)],
         ["默认模型", config.settings.defaultModel],
         ["上游代理", config.settings.networkProxy && config.settings.networkProxy.enabled ? config.settings.networkProxy.url : "未启用"],
+        ["自动切换", config.settings.autoSwitch && config.settings.autoSwitch.enabled ? "已启用" : "未启用"],
         ["版本状态", getVersionDetail(config)],
         ["当前套餐", config.profile ? getPlanType(config.profile) : "未登录"],
         ["生图能力", getImageCapability(config.profile).detail],
@@ -2831,6 +3603,47 @@ export function renderAdminPage(): string {
       proxyNoProxy.value = proxy.noProxy || "localhost,127.0.0.1,::1";
     }
 
+    function renderAutoSwitchSettings(config) {
+      const autoSwitch = config.settings.autoSwitch || {
+        enabled: false,
+      };
+      autoSwitchEnabled.checked = !!autoSwitch.enabled;
+    }
+
+    function isSettingsDrawerOpen() {
+      return settingsDrawerBackdrop.classList.contains("is-open");
+    }
+
+    function renderSettingsFields(config, options) {
+      if (!config) {
+        return;
+      }
+
+      if (!(options && options.force) && state.settingsDirty && isSettingsDrawerOpen()) {
+        return;
+      }
+
+      renderModelOptions(config);
+      renderModelCatalogStatus(config);
+      renderProxySettings(config);
+      renderAutoSwitchSettings(config);
+      state.settingsDirty = false;
+    }
+
+    function markSettingsDirty() {
+      state.settingsDirty = true;
+    }
+
+    function resetSettingsDraft() {
+      state.settingsDirty = false;
+      if (state.config) {
+        renderSettingsFields(state.config, {
+          force: true,
+        });
+      }
+      settingsStatus.textContent = "";
+    }
+
     function syncHero(config) {
       const profileText = config.profile
         ? "当前账号为 " + getProfileDisplayLabel(config.profile) + "，套餐 " + getPlanType(config.profile) + "，可在右侧完成模型切换和接口调试。"
@@ -2865,9 +3678,7 @@ export function renderAdminPage(): string {
       syncHero(config);
       renderOverview(config);
       renderProfiles(config);
-      renderModelOptions(config);
-      renderModelCatalogStatus(config);
-      renderProxySettings(config);
+      renderSettingsFields(config);
       renderUpdatePanel(config);
       renderEndpoints(config);
       renderServiceInfo(config);
@@ -2925,6 +3736,8 @@ export function renderAdminPage(): string {
       const silent = !!(options && options.silent);
       const url = syncRuntime ? "/_gateway/admin/runtime-refresh" : "/_gateway/admin/config";
       const requestOptions = syncRuntime ? { method: "POST" } : undefined;
+      const previousProfileId = state.config && state.config.profile ? state.config.profile.profileId : "";
+      const previousStatus = authStatus.textContent;
 
       if (!silent) {
         testerMeta.textContent = syncRuntime ? "同步额度与版本状态" : "刷新管理状态";
@@ -2932,9 +3745,14 @@ export function renderAdminPage(): string {
 
       const config = await fetchJson(url, requestOptions);
       renderConfig(config);
+      const nextProfileId = config && config.profile ? config.profile.profileId : "";
 
       if (!silent) {
         testerMeta.textContent = "准备就绪";
+      } else if (previousProfileId && nextProfileId && previousProfileId !== nextProfileId) {
+        authStatus.textContent = "检测到额度耗尽，网关已自动切换到: " + getProfileDisplayLabel(config.profile);
+      } else {
+        authStatus.textContent = previousStatus;
       }
 
       return config;
@@ -2953,6 +3771,20 @@ export function renderAdminPage(): string {
           console.warn("[admin] auto runtime refresh failed", error && error.message ? error.message : String(error));
         });
       }, RUNTIME_AUTO_REFRESH_MS);
+    }
+
+    function scheduleActiveProfileRefresh() {
+      window.setInterval(function () {
+        if (document.hidden || !state.config || !state.config.settings || !state.config.settings.autoSwitch || !state.config.settings.autoSwitch.enabled) {
+          return;
+        }
+
+        refreshConfig({
+          silent: true,
+        }).catch(function (error) {
+          console.warn("[admin] active profile refresh failed", error && error.message ? error.message : String(error));
+        });
+      }, ACTIVE_PROFILE_REFRESH_MS);
     }
 
     async function syncQuotaAfterProfileChange(config, sourceLabel) {
@@ -3017,6 +3849,10 @@ export function renderAdminPage(): string {
     }
 
     async function runProfileAction(action, profileId, button) {
+      if (!confirmQuotaSwitch(action, profileId)) {
+        return;
+      }
+
       if (action === "export") {
         await exportProfile(profileId, button);
         return;
@@ -3074,7 +3910,7 @@ export function renderAdminPage(): string {
         const config = result.config || await fetchJson("/_gateway/admin/config");
         renderConfig(config);
         const codex = result.codex || config.codex || {};
-        authStatus.textContent = "已应用到 Codex。新开的 Codex 会话将使用该账号。"
+        authStatus.textContent = "已应用到 Codex。请关闭 Codex 应用并重新打开后生效。"
           + (codex.backupPath ? " 已备份原 auth.json。" : "");
       } catch (error) {
         authStatus.textContent = error.message;
@@ -3193,11 +4029,15 @@ export function renderAdminPage(): string {
       });
     }
 
-    async function saveModel() {
-      const button = document.getElementById("saveModelBtn");
+    async function saveSettings() {
       const select = document.getElementById("defaultModel");
-      setBusy(button, true);
-      authStatus.textContent = "正在保存默认模型...";
+      const savedProxy = state.config && state.config.settings && state.config.settings.networkProxy
+        ? state.config.settings.networkProxy
+        : { url: "", noProxy: "localhost,127.0.0.1,::1" };
+      const nextProxyUrl = proxyUrl.value.trim() || (!proxyEnabled.checked ? savedProxy.url || "" : "");
+      setBusy(saveSettingsBtn, true);
+      settingsStatus.textContent = "正在保存设置...";
+      authStatus.textContent = "正在保存设置...";
       try {
         const config = await fetchJson("/_gateway/admin/settings", {
           method: "PUT",
@@ -3206,24 +4046,36 @@ export function renderAdminPage(): string {
           },
           body: formatJson({
             defaultModel: select.value,
+            networkProxy: {
+              enabled: proxyEnabled.checked,
+              url: nextProxyUrl,
+              noProxy: proxyNoProxy.value,
+            },
+            autoSwitch: {
+              enabled: autoSwitchEnabled.checked,
+            },
           }),
         });
+        state.settingsDirty = false;
         renderConfig(config);
-        authStatus.textContent = "默认模型已更新。";
+        settingsStatus.textContent = "设置已保存。";
+        authStatus.textContent = "设置已保存。";
       } catch (error) {
-        authStatus.textContent = error.message;
+        const message = error && error.message ? error.message : String(error);
+        settingsStatus.textContent = message;
+        authStatus.textContent = message;
       } finally {
-        setBusy(button, false);
+        setBusy(saveSettingsBtn, false);
       }
     }
 
-    async function saveProxy() {
-      const button = document.getElementById("saveProxyBtn");
-      setBusy(button, true);
-      authStatus.textContent = "正在保存代理配置...";
+    async function testProxy() {
+      setBusy(testProxyBtn, true);
+      settingsStatus.textContent = "正在测试代理连接...";
+      authStatus.textContent = "正在测试代理连接...";
       try {
-        const config = await fetchJson("/_gateway/admin/settings", {
-          method: "PUT",
+        const result = await fetchJson("/_gateway/admin/settings/proxy-test", {
+          method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
@@ -3235,18 +4087,23 @@ export function renderAdminPage(): string {
             },
           }),
         });
-        renderConfig(config);
-        authStatus.textContent = proxyEnabled.checked ? "代理配置已启用。" : "代理配置已关闭。";
+        const message = "代理测试通过: HTTP " + String(result.status)
+          + "，耗时 " + String(result.elapsedMs) + " ms。";
+        settingsStatus.textContent = message;
+        authStatus.textContent = message;
       } catch (error) {
-        authStatus.textContent = error.message;
+        const message = "代理测试失败: " + (error && error.message ? error.message : String(error));
+        settingsStatus.textContent = message;
+        authStatus.textContent = message;
       } finally {
-        setBusy(button, false);
+        setBusy(testProxyBtn, false);
       }
     }
 
     async function refreshModels() {
       const button = document.getElementById("refreshModelsBtn");
       setBusy(button, true);
+      settingsStatus.textContent = "正在同步 Codex 模型列表...";
       authStatus.textContent = "正在同步 Codex 模型列表...";
       try {
         await fetchJson("/_gateway/models/refresh", {
@@ -3254,9 +4111,12 @@ export function renderAdminPage(): string {
         });
         const config = await fetchJson("/_gateway/admin/config");
         renderConfig(config);
+        settingsStatus.textContent = "Codex 模型列表已同步。";
         authStatus.textContent = "Codex 模型列表已同步。";
       } catch (error) {
-        authStatus.textContent = error.message;
+        const message = error && error.message ? error.message : String(error);
+        settingsStatus.textContent = message;
+        authStatus.textContent = message;
       } finally {
         setBusy(button, false);
       }
@@ -3277,6 +4137,7 @@ export function renderAdminPage(): string {
       const meta = endpointMeta[endpoint];
       const button = document.getElementById("runTestBtn");
       const tracker = createTimingTracker();
+      const initialProfileId = state.config && state.config.profile ? state.config.profile.profileId : "";
       setBusy(button, true);
       setTesterResultTab("response");
       testerMeta.textContent = "请求中: " + meta.method + " " + endpoint;
@@ -3358,6 +4219,13 @@ export function renderAdminPage(): string {
         testerMeta.textContent = "请求失败";
         clearPreview();
       } finally {
+        if (initialProfileId) {
+          await refreshConfig({
+            silent: true,
+          }).catch(function (error) {
+            console.warn("[admin] refresh after gateway request failed", error && error.message ? error.message : String(error));
+          });
+        }
         setBusy(button, false);
       }
     }
@@ -3391,7 +4259,27 @@ export function renderAdminPage(): string {
       contactModal.setAttribute("aria-hidden", "true");
     }
 
+    function openSettingsDrawer() {
+      if (state.config && !state.settingsDirty) {
+        renderSettingsFields(state.config, {
+          force: true,
+        });
+      }
+      settingsDrawerBackdrop.classList.add("is-open");
+      settingsDrawerBackdrop.setAttribute("aria-hidden", "false");
+    }
+
+    function closeSettingsDrawer() {
+      resetSettingsDraft();
+      settingsDrawerBackdrop.classList.remove("is-open");
+      settingsDrawerBackdrop.setAttribute("aria-hidden", "true");
+    }
+
     document.getElementById("loginBtn").addEventListener("click", openAccountModal);
+    document.getElementById("openSettingsBtn").addEventListener("click", openSettingsDrawer);
+    document.querySelectorAll("[data-open-settings]").forEach(function (button) {
+      button.addEventListener("click", openSettingsDrawer);
+    });
     document.getElementById("refreshBtn").addEventListener("click", function () {
       authStatus.textContent = "正在同步额度与版本状态...";
       refreshConfig({
@@ -3411,9 +4299,14 @@ export function renderAdminPage(): string {
     contactBtn.addEventListener("click", openContactModal);
     document.getElementById("closeContactBtn").addEventListener("click", closeContactModal);
     document.getElementById("closeImagePreviewBtn").addEventListener("click", closeImagePreviewModal);
+    document.getElementById("closeSettingsDrawerBtn").addEventListener("click", closeSettingsDrawer);
     document.getElementById("refreshModelsBtn").addEventListener("click", refreshModels);
-    document.getElementById("saveModelBtn").addEventListener("click", saveModel);
-    document.getElementById("saveProxyBtn").addEventListener("click", saveProxy);
+    testProxyBtn.addEventListener("click", testProxy);
+    saveSettingsBtn.addEventListener("click", saveSettings);
+    [document.getElementById("defaultModel"), proxyEnabled, proxyUrl, proxyNoProxy, autoSwitchEnabled].forEach(function (element) {
+      element.addEventListener("input", markSettingsDirty);
+      element.addEventListener("change", markSettingsDirty);
+    });
     runTestBtn.addEventListener("click", runTest);
     document.querySelectorAll("[data-result-tab]").forEach(function (button) {
       button.addEventListener("click", function () {
@@ -3441,6 +4334,18 @@ export function renderAdminPage(): string {
       const action = button.getAttribute("data-profile-action");
       const profileId = button.getAttribute("data-profile-id");
       if (!action || !profileId) {
+        return;
+      }
+
+      if (action === "toggle-details") {
+        if (state.expandedProfileIds[profileId]) {
+          delete state.expandedProfileIds[profileId];
+        } else {
+          state.expandedProfileIds[profileId] = true;
+        }
+        if (state.config) {
+          renderProfiles(state.config);
+        }
         return;
       }
 
@@ -3543,6 +4448,12 @@ export function renderAdminPage(): string {
       }
     });
 
+    settingsDrawerBackdrop.addEventListener("click", function (event) {
+      if (event.target === settingsDrawerBackdrop) {
+        closeSettingsDrawer();
+      }
+    });
+
     imagePreviewModal.addEventListener("click", function (event) {
       if (event.target === imagePreviewModal) {
         closeImagePreviewModal();
@@ -3559,10 +4470,14 @@ export function renderAdminPage(): string {
       if (event.key === "Escape" && accountModal.classList.contains("is-open")) {
         closeAccountModal();
       }
+      if (event.key === "Escape" && settingsDrawerBackdrop.classList.contains("is-open")) {
+        closeSettingsDrawer();
+      }
     });
 
     setTesterResultTab(state.testerResultTab);
     scheduleRuntimeRefresh();
+    scheduleActiveProfileRefresh();
     refreshConfig().catch(function (error) {
       authStatus.textContent = error && error.message ? error.message : String(error);
       testerMeta.textContent = "加载失败";

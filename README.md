@@ -21,8 +21,15 @@ AI Zero Token provides a local CLI, web console, and HTTP gateway that expose sa
 - Account JSON import/export, including selected batch export.
 - Apply a saved account to local Codex by backing up and updating `~/.codex/auth.json`.
 - `gpt-image-2` image generation and JSON image editing through the ChatGPT internal Responses path.
+- Optional quota-exhaustion auto switch to the next saved API account with available quota.
 - Optional upstream proxy configuration for OAuth, model refresh, and gateway forwarding.
 - Local model discovery from the Codex model cache with manual refresh support.
+
+## Architecture
+
+![AI Zero Token architecture](docs/images/architecture-diagram.png)
+
+AI Zero Token keeps account tokens and gateway settings in local state, exposes OpenAI-compatible HTTP endpoints, and forwards requests to the selected ChatGPT/Codex OAuth account. The web console reads the same local state, so account switching, Codex auth application, proxy settings, and automatic switching are all controlled from one local place.
 
 ## Quick Start
 
@@ -50,6 +57,7 @@ The web console is the recommended entry point:
 - Export one account or selected accounts.
 - Apply a saved account to local Codex.
 - Configure the default text model and upstream proxy.
+- Enable automatic account switching when the active API account has exhausted its recorded quota.
 - Test `models`, `responses`, `chat.completions`, `images.generations`, and `images.edits`.
 
 ![AI Zero Token admin dashboard](docs/images/admin-dashboard.jpg)
@@ -186,6 +194,8 @@ The persistent state directory can be overridden with:
 ```bash
 AI_ZERO_TOKEN_HOME=/path/to/home azt start
 ```
+
+The web console settings are persisted in the same local state directory. The quota auto-switch option is stored as `autoSwitch.enabled`; when enabled, the gateway uses the latest saved quota snapshot and moves API traffic away from the active account once that snapshot shows a quota window is exhausted.
 
 The default request body limit is `32 MiB`, which is intended to make JSON base64 image references practical for local image editing. You can override it with:
 

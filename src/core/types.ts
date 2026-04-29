@@ -112,6 +112,9 @@ export type GatewaySettings = {
     url: string;
     noProxy: string;
   };
+  autoSwitch: {
+    enabled: boolean;
+  };
   server: {
     host: string;
     port: number;

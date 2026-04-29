@@ -19,7 +19,9 @@ type HttpTextResponse = {
 type TextRequestInit = {
   body?: string;
   headers?: Record<string, string>;
+  ignoreProxy?: boolean;
   method: "GET" | "POST";
+  proxyOverride?: NetworkProxySettings;
   timeoutMs?: number;
   url: string;
 };
@@ -233,7 +235,7 @@ async function loadNetworkProxySettings(): Promise<NetworkProxySettings | undefi
 
 export async function requestText(init: TextRequestInit): Promise<HttpTextResponse> {
   const requestId = nextRequestId();
-  const proxy = await loadNetworkProxySettings();
+  const proxy = init.ignoreProxy ? undefined : init.proxyOverride ?? await loadNetworkProxySettings();
   const useCurlOnly = process.env.OAUTH_DEMO_USE_CURL === "1";
   const useConfiguredProxy = !!proxy?.enabled && !!proxy.url.trim();
   const timeoutMs = init.timeoutMs;

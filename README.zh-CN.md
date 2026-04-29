@@ -21,8 +21,15 @@ AI Zero Token 是一个本地优先的 OpenAI 兼容网关，用于把 ChatGPT/C
 - 支持账号 JSON 导入/导出，以及复选框选择后的批量导出。
 - 支持把已保存账号应用到本机 Codex，并自动备份 `~/.codex/auth.json`。
 - 支持 `gpt-image-2` 文生图和 JSON 图生图。
+- 支持 API 账号额度耗尽后自动切换到下一个仍有额度的账号。
 - 支持上游代理配置，覆盖 OAuth、模型刷新和接口转发。
 - 模型列表优先读取本机 Codex 模型缓存，并支持手动刷新。
+
+## 技术架构
+
+![AI Zero Token 技术架构图](docs/images/architecture-diagram.png)
+
+AI Zero Token 会把账号 token、网关配置和运行状态保存在本地，通过 OpenAI 兼容接口转发到当前选中的 ChatGPT/Codex OAuth 账号。管理页读取同一份本地状态，因此账号切换、应用到 Codex、代理配置和额度耗尽自动切换都可以在本地统一管理。
 
 ## 快速开始
 
@@ -50,6 +57,7 @@ http://127.0.0.1:8787/v1
 - 导出单个账号或勾选导出多个账号。
 - 将已保存账号应用到本机 Codex。
 - 配置默认文本模型和上游代理。
+- 开启当前 API 账号额度耗尽后的自动切换。
 - 测试 `models`、`responses`、`chat.completions`、`images.generations`、`images.edits`。
 
 ![AI Zero Token 管理页](docs/images/admin-dashboard.jpg)
@@ -186,6 +194,8 @@ AZT_CORS_ORIGIN=http://127.0.0.1:8124,http://localhost:3000 azt start
 ```bash
 AI_ZERO_TOKEN_HOME=/path/to/home azt start
 ```
+
+管理页里的配置会保存在同一个本地状态目录。额度耗尽自动切换会保存为 `autoSwitch.enabled`；开启后，网关会根据最近一次保存的额度快照判断当前 API 账号是否耗尽，并把 API 流量切到下一个仍有额度的账号。
 
 默认请求体上限是 `32 MiB`，用于让 JSON base64 图片在本地图片编辑场景里更实用。可以用下面的环境变量覆盖：
 

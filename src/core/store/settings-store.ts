@@ -16,6 +16,9 @@ export function createDefaultSettings(): GatewaySettings {
       url: "",
       noProxy: "localhost,127.0.0.1,::1",
     },
+    autoSwitch: {
+      enabled: false,
+    },
     server: {
       host: "0.0.0.0",
       port: 8787,
@@ -37,6 +40,9 @@ export async function loadSettings(): Promise<GatewaySettings> {
         enabled: parsed.networkProxy?.enabled ?? defaults.networkProxy.enabled,
         url: parsed.networkProxy?.url ?? defaults.networkProxy.url,
         noProxy: parsed.networkProxy?.noProxy ?? defaults.networkProxy.noProxy,
+      },
+      autoSwitch: {
+        enabled: parsed.autoSwitch?.enabled ?? defaults.autoSwitch.enabled,
       },
       server: {
         host: parsed.server?.host ?? defaults.server.host,

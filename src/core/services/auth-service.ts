@@ -62,6 +62,105 @@ export class AuthService {
     };
   }
 
+  private getQuotaPercents(profile: OAuthProfile): number[] {
+    const quota = profile.quota;
+    if (!quota) {
+      return [];
+    }
+
+    return [quota.primaryUsedPercent, quota.secondaryUsedPercent].filter(
+      (value): value is number => typeof value === "number" && Number.isFinite(value),
+    );
+  }
+
+  private isQuotaExhausted(profile: OAuthProfile): boolean {
+    const percents = this.getQuotaPercents(profile);
+    return percents.length > 0 && percents.some((value) => value >= 100);
+  }
+
+  private hasKnownAvailableQuota(profile: OAuthProfile): boolean {
+    const percents = this.getQuotaPercents(profile);
+    return percents.length > 0 && percents.every((value) => value < 100);
+  }
+
+  private getQuotaUsageScore(profile: OAuthProfile): number {
+    const percents = this.getQuotaPercents(profile);
+    if (percents.length === 0) {
+      return 100;
+    }
+
+    return Math.max(...percents);
+  }
+
+  private async maybeAutoSwitchProfile(profile: OAuthProfile, provider: ProviderId): Promise<OAuthProfile> {
+    const settings = await this.configService.getSettings();
+    if (!settings.autoSwitch.enabled || !this.isQuotaExhausted(profile)) {
+      return profile;
+    }
+
+    const [profiles, codexStatus] = await Promise.all([
+      listProfiles(),
+      getCodexAuthStatus(),
+    ]);
+    const currentIndex = profiles.findIndex((item) => item.profileId === profile.profileId);
+    const codexAccountId = codexStatus.accountId;
+    const candidates = profiles
+      .map((item, index) => ({
+        profile: item,
+        index,
+        distance: currentIndex >= 0
+          ? (index - currentIndex + profiles.length) % profiles.length
+          : index + 1,
+      }))
+      .filter((item) => item.profile.provider === provider && item.profile.profileId !== profile.profileId)
+      .filter((item) => this.hasKnownAvailableQuota(item.profile))
+      .sort((left, right) => {
+        const leftCodexConflict = codexAccountId && left.profile.accountId === codexAccountId ? 1 : 0;
+        const rightCodexConflict = codexAccountId && right.profile.accountId === codexAccountId ? 1 : 0;
+        const codexDiff = leftCodexConflict - rightCodexConflict;
+        if (codexDiff !== 0) {
+          return codexDiff;
+        }
+
+        const distanceDiff = left.distance - right.distance;
+        if (distanceDiff !== 0) {
+          return distanceDiff;
+        }
+
+        const usageDiff = this.getQuotaUsageScore(left.profile) - this.getQuotaUsageScore(right.profile);
+        if (usageDiff !== 0) {
+          return usageDiff;
+        }
+
+        const leftCapturedAt = left.profile.quota?.capturedAt ?? 0;
+        const rightCapturedAt = right.profile.quota?.capturedAt ?? 0;
+        if (leftCapturedAt !== rightCapturedAt) {
+          return leftCapturedAt - rightCapturedAt;
+        }
+
+        return right.profile.expires - left.profile.expires;
+      })
+      .map((item) => item.profile);
+
+    const nextProfile = candidates[0];
+    if (!nextProfile) {
+      return profile;
+    }
+
+    const activated = await setActiveProfile(nextProfile.profileId);
+    if (!activated) {
+      return profile;
+    }
+
+    console.info("[auth] auto switched active profile after quota exhaustion", {
+      provider,
+      fromProfileId: profile.profileId,
+      toProfileId: activated.profileId,
+      avoidedCodexAccount: Boolean(codexAccountId && activated.accountId !== codexAccountId),
+    });
+    return this.toManagedProfile(activated);
+  }
+
   async login(provider: ProviderId): Promise<OAuthProfile> {
     if (provider !== "openai-codex") {
       throw new Error(`暂不支持 provider: ${provider}`);
@@ -187,8 +286,16 @@ export class AuthService {
     await removeProfile(profileId);
   }
 
-  async requireUsableProfile(provider: ProviderId = "openai-codex"): Promise<OAuthProfile> {
-    const profile = await this.getActiveProfile(provider);
+  async requireUsableProfile(
+    provider: ProviderId = "openai-codex",
+    options?: { skipAutoSwitch?: boolean },
+  ): Promise<OAuthProfile> {
+    const activeProfile = await this.getActiveProfile(provider);
+    const profile = activeProfile
+      ? options?.skipAutoSwitch
+        ? activeProfile
+        : await this.maybeAutoSwitchProfile(activeProfile, provider)
+      : null;
     if (!profile) {
       throw new Error(`还没有登录 ${provider}。先运行 azt login`);
     }
@@ -228,11 +335,13 @@ export class AuthService {
 
   async syncActiveProfileQuota(
     provider: ProviderId = "openai-codex",
-    options?: { suppressErrors?: boolean },
+    options?: { suppressErrors?: boolean; skipAutoSwitch?: boolean },
   ): Promise<void> {
     let profile: OAuthProfile;
     try {
-      profile = await this.requireUsableProfile(provider);
+      profile = await this.requireUsableProfile(provider, {
+        skipAutoSwitch: options?.skipAutoSwitch,
+      });
     } catch (error) {
       if (options?.suppressErrors) {
         return;
@@ -251,10 +360,14 @@ export class AuthService {
           text: { verbosity: "low" },
         },
       });
-      await this.updateProfileQuota(profile.profileId, result.quota, provider);
+      await this.updateProfileQuota(profile.profileId, result.quota, provider, {
+        skipAutoSwitch: options?.skipAutoSwitch,
+      });
     } catch (error) {
       const quota = (error as { quota?: CodexQuotaSnapshot }).quota;
-      await this.updateProfileQuota(profile.profileId, quota, provider);
+      await this.updateProfileQuota(profile.profileId, quota, provider, {
+        skipAutoSwitch: options?.skipAutoSwitch,
+      });
 
       if (!options?.suppressErrors) {
         throw error;
@@ -272,12 +385,13 @@ export class AuthService {
     profileId: string,
     quota: CodexQuotaSnapshot | undefined,
     provider: ProviderId = "openai-codex",
+    options?: { skipAutoSwitch?: boolean },
   ): Promise<void> {
     if (!quota) {
       return;
     }
 
-    await updateProfile(profileId, (profile) => {
+    const updated = await updateProfile(profileId, (profile) => {
       if (profile.provider !== provider) {
         return profile;
       }
@@ -287,6 +401,15 @@ export class AuthService {
         quota,
       };
     });
+
+    if (options?.skipAutoSwitch || !updated || updated.provider !== provider || !this.isQuotaExhausted(updated)) {
+      return;
+    }
+
+    const activeProfile = await this.getActiveProfile(provider);
+    if (activeProfile?.profileId === updated.profileId) {
+      await this.maybeAutoSwitchProfile(updated, provider);
+    }
   }
 
   async getStatus(): Promise<GatewayStatus> {

@@ -53,8 +53,10 @@ export class ConfigService {
     url?: string;
     noProxy?: string;
   }): Promise<GatewaySettings> {
-    const url = params.url?.trim() ?? "";
-    const noProxy = params.noProxy?.trim() || "localhost,127.0.0.1,::1";
+    const settings = await this.getSettings();
+    const requestedUrl = params.url?.trim() ?? "";
+    const url = requestedUrl || (!params.enabled ? settings.networkProxy.url : "");
+    const noProxy = params.noProxy?.trim() || settings.networkProxy.noProxy || "localhost,127.0.0.1,::1";
 
     if (params.enabled) {
       if (!url) {
@@ -74,13 +76,24 @@ export class ConfigService {
       }
     }
 
-    const settings = await this.getSettings();
     const next = {
       ...settings,
       networkProxy: {
         enabled: params.enabled,
         url,
         noProxy,
+      },
+    };
+    await saveSettings(next);
+    return next;
+  }
+
+  async setAutoSwitch(params: { enabled: boolean }): Promise<GatewaySettings> {
+    const settings = await this.getSettings();
+    const next = {
+      ...settings,
+      autoSwitch: {
+        enabled: params.enabled,
       },
     };
     await saveSettings(next);

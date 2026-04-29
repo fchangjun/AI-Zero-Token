@@ -84,22 +84,7 @@ export class VersionService {
     const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(manifest.name)}/latest`;
 
     try {
-      const response = await requestText({
-        method: "GET",
-        url: registryUrl,
-        timeoutMs: 5000,
-      });
-
-      if (response.status < 200 || response.status >= 300) {
-        throw new Error(`npm registry returned ${response.status}`);
-      }
-
-      const parsed = JSON.parse(response.body) as NpmLatestManifest;
-      const latestVersion = typeof parsed.version === "string" && parsed.version ? parsed.version : undefined;
-      if (!latestVersion) {
-        throw new Error("npm registry did not return a version");
-      }
-
+      const latestVersion = await this.fetchNpmLatestVersion(registryUrl);
       const needsUpdate = compareSemver(manifest.version, latestVersion) < 0;
       return {
         packageName: manifest.name,
@@ -121,5 +106,26 @@ export class VersionService {
         error: error instanceof Error ? error.message : String(error),
       };
     }
+  }
+
+  private async fetchNpmLatestVersion(registryUrl: string): Promise<string> {
+    const response = await requestText({
+      method: "GET",
+      url: registryUrl,
+      timeoutMs: 5000,
+      ignoreProxy: true,
+    });
+
+    if (response.status < 200 || response.status >= 300) {
+      throw new Error(`npm registry returned ${response.status}`);
+    }
+
+    const parsed = JSON.parse(response.body) as NpmLatestManifest;
+    const latestVersion = typeof parsed.version === "string" && parsed.version ? parsed.version : undefined;
+    if (!latestVersion) {
+      throw new Error("npm registry did not return a version");
+    }
+
+    return latestVersion;
   }
 }

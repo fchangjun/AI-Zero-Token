@@ -4,6 +4,7 @@ import cors from "@fastify/cors";
 import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
 import type { ChatResult, OAuthProfile, ProfileSummary } from "../core/types.js";
+import { requestText } from "../core/providers/http-client.js";
 import { renderAdminPage } from "./admin-page.js";
 
 const inputPartSchema = z
@@ -99,6 +100,19 @@ const settingsUpdateSchema = z.object({
       noProxy: z.string().optional(),
     })
     .optional(),
+  autoSwitch: z
+    .object({
+      enabled: z.boolean(),
+    })
+    .optional(),
+});
+
+const proxyTestSchema = z.object({
+  networkProxy: z.object({
+    enabled: z.boolean(),
+    url: z.string().optional(),
+    noProxy: z.string().optional(),
+  }),
 });
 
 const profileActionSchema = z.object({
@@ -688,6 +702,7 @@ export function createApp(params?: {
     await ctx.authService.activateProfile(parsed.data.profileId);
     await ctx.authService.syncActiveProfileQuota("openai-codex", {
       suppressErrors: true,
+      skipAutoSwitch: true,
     });
     return buildAdminConfig(request);
   });
@@ -798,7 +813,64 @@ export function createApp(params?: {
     if (parsed.data.networkProxy) {
       await ctx.configService.setNetworkProxy(parsed.data.networkProxy);
     }
+    if (parsed.data.autoSwitch) {
+      await ctx.configService.setAutoSwitch(parsed.data.autoSwitch);
+    }
     return buildAdminConfig(request);
+  });
+
+  app.post("/_gateway/admin/settings/proxy-test", async (request, reply) => {
+    const parsed = proxyTestSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    const proxy = {
+      enabled: parsed.data.networkProxy.enabled,
+      url: parsed.data.networkProxy.url?.trim() ?? "",
+      noProxy: parsed.data.networkProxy.noProxy?.trim() || "localhost,127.0.0.1,::1",
+    };
+
+    if (proxy.enabled && !proxy.url) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: "启用代理时必须填写代理地址。",
+        },
+      };
+    }
+
+    const startedAt = performance.now();
+    try {
+      const response = await requestText({
+        method: "GET",
+        url: "https://chatgpt.com/",
+        timeoutMs: 8000,
+        proxyOverride: proxy,
+      });
+      return {
+        ok: response.status >= 200 && response.status < 500,
+        status: response.status,
+        elapsedMs: Math.round(performance.now() - startedAt),
+        target: "https://chatgpt.com/",
+        transport: response.transport,
+      };
+    } catch (error) {
+      reply.code(502);
+      return {
+        error: {
+          type: "proxy_test_failed",
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
   });
 
   app.get("/v1/models", async () => ({
