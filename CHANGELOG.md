@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.8 - 2026-04-29
+
+- Removed local Free-plan blocking for image generation and editing; upstream account limits now decide availability.
+- Switched image request orchestration to `gpt-5.4-mini` while keeping the requested image model on the `image_generation` tool.
+- Increased the default gateway request body limit to 32 MiB and added `AZT_BODY_LIMIT_MB` for large JSON base64 image inputs.
+- Updated the management-page update command to `npm install -g ai-zero-token`.
+- Reworked the README into a cleaner open-source project format and added `README.zh-CN.md` for Simplified Chinese.
+
 ## 1.0.7 - 2026-04-29
 
 - Added JSON `POST /v1/images/edits` support for image-to-image workflows with URL, base64 data URL, or raw base64 image references.

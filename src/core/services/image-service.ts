@@ -1,8 +1,6 @@
 import { AuthService } from "./auth-service.js";
 import { ConfigService } from "./config-service.js";
 import { askOpenAICodex } from "../providers/openai-codex/chat.js";
-import type { OAuthProfile } from "../types.js";
-
 type ImageRequest = {
   prompt: string;
   model?: string;
@@ -68,6 +66,8 @@ const SUPPORTED_IMAGE_MODELS = new Set([
   "gpt-image-1.5",
   "gpt-image-2",
 ]);
+
+const IMAGE_ORCHESTRATOR_MODEL = "gpt-5.4-mini";
 
 const SUPPORTED_IMAGE_QUALITIES = new Set([
   "low",
@@ -417,16 +417,9 @@ export class ImageService {
     return model;
   }
 
-  private isFreePlan(profile: OAuthProfile): boolean {
-    return profile.quota?.planType === "free";
-  }
-
   async generate(request: ImageRequest): Promise<ImageResult> {
     const profile = await this.deps.authService.requireUsableProfile("openai-codex");
-    if (this.isFreePlan(profile)) {
-      throw new Error("当前账号为 free 套餐，不支持图片生成。请切换到 Plus 或更高套餐账号。");
-    }
-    const orchestratorModel = await this.deps.configService.getDefaultModel();
+    const orchestratorModel = IMAGE_ORCHESTRATOR_MODEL;
     const requestedImageModel = this.resolveRequestedImageModel(request.model);
     const requestSummary = {
       requestedImageModel,

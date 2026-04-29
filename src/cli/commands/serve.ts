@@ -54,6 +54,7 @@ export async function runServeCommand(
   console.log(`admin: ${adminUrl}`);
   console.log(`apiBase: ${adminUrl}/v1`);
   console.log(`corsOrigin: ${server.corsOrigin}`);
+  console.log(`bodyLimitMB: ${(server.bodyLimit / 1024 / 1024).toFixed(1)}`);
   console.log(`activeProvider: ${status.activeProvider ?? "none"}`);
   console.log(`defaultModel: ${status.defaultModel}`);
 

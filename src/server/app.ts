@@ -532,9 +532,11 @@ function getErrorStatusCode(error: unknown): number {
 
 export function createApp(params?: {
   corsOrigin?: true | string | RegExp | Array<string | RegExp>;
+  bodyLimit?: number;
 }) {
   const app = Fastify({
     logger: false,
+    bodyLimit: params?.bodyLimit,
   });
   const ctx = createGatewayContext();
 

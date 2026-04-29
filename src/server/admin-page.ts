@@ -1932,12 +1932,12 @@ export function renderAdminPage(): string {
       title.textContent = "发现新版本可更新";
       detail.textContent = "当前版本 " + versionStatus.currentVersion + "，最新版本 "
         + versionStatus.latestVersion + "。更新后可获得最新模型列表逻辑、管理页体验和接口修复。";
-      command.textContent = "npm install -g " + versionStatus.packageName + "@latest";
+      command.textContent = "npm install -g " + versionStatus.packageName;
       panel.classList.add("is-visible");
     }
 
     function supportsImageGeneration(profile) {
-      return getPlanType(profile) !== "free";
+      return Boolean(profile);
     }
 
     function getImageCapability(profile) {
@@ -1953,10 +1953,10 @@ export function renderAdminPage(): string {
       const planType = getPlanType(profile);
       if (planType === "free") {
         return {
-          supported: false,
-          label: "生图受限",
-          detail: "free 套餐账号不支持图片生成，请切换到 Plus 或更高套餐账号。",
-          badgeClass: "red",
+          supported: true,
+          label: "可尝试生图",
+          detail: "free 账号可尝试图片生成，额度和可用性以上游返回为准。",
+          badgeClass: "orange",
         };
       }
 
@@ -2843,10 +2843,10 @@ export function renderAdminPage(): string {
       const isImageEndpoint = endpointSelect.value === "/v1/images/generations" || endpointSelect.value === "/v1/images/edits";
       imageCapabilityHint.textContent = capability.detail;
       imageCapabilityHint.className = capability.supported && !isImageEndpoint ? "hint" : "hint warn";
-      runTestBtn.disabled = isImageEndpoint && !capability.supported;
+      runTestBtn.disabled = isImageEndpoint && !config.profile;
       if (isImageEndpoint && !capability.supported) {
         testerMeta.textContent = capability.label;
-      } else if (testerMeta.textContent === capability.label || testerMeta.textContent === "生图受限") {
+      } else if (testerMeta.textContent === capability.label || testerMeta.textContent === "生图受限" || testerMeta.textContent === "可尝试生图") {
         testerMeta.textContent = "准备就绪";
       }
     }
@@ -2877,7 +2877,7 @@ export function renderAdminPage(): string {
       authStatus.textContent = config.status.loggedIn
         ? (supportsImageGeneration(config.profile)
           ? "网关已可直接转发请求，可以在下方切换默认模型并发送测试请求。"
-          : "当前账号可用于文本接口，但不支持图片生成。请切换到 Plus 或更高套餐账号。")
+          : "当前账号未就绪，请重新登录后再测试接口。")
         : "请先点击“新增账号”，完成 OAuth 后再测试接口。";
       if (!requestBody.value) {
         requestBody.value = buildExample(endpointSelect.value || "/v1/chat/completions");
