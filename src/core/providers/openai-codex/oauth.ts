@@ -34,6 +34,7 @@ type AuthorizationResult = {
 type TokenResult = {
   access: string;
   refresh: string;
+  idToken?: string;
   expires: number;
 };
 
@@ -105,7 +106,7 @@ function parseAuthorizationInput(value: string): AuthorizationResult {
   return { code: trimmed };
 }
 
-function extractProfile(accessToken: string, refreshToken: string, expires: number): OAuthProfile {
+function extractProfile(accessToken: string, refreshToken: string, expires: number, idToken?: string): OAuthProfile {
   const payload = decodeJwtPayload(accessToken);
   const authClaim = payload?.[JWT_CLAIM_PATH] as Record<string, unknown> | undefined;
   const accountId = authClaim?.chatgpt_account_id;
@@ -121,6 +122,7 @@ function extractProfile(accessToken: string, refreshToken: string, expires: numb
     mode: "oauth_account",
     access: accessToken,
     refresh: refreshToken,
+    idToken,
     expires,
     accountId,
     email,
@@ -150,6 +152,7 @@ async function exchangeAuthorizationCode(code: string, verifier: string): Promis
   const json = JSON.parse(response.body) as {
     access_token?: string;
     refresh_token?: string;
+    id_token?: string;
     expires_in?: number;
   };
 
@@ -160,6 +163,7 @@ async function exchangeAuthorizationCode(code: string, verifier: string): Promis
   return {
     access: json.access_token,
     refresh: json.refresh_token,
+    idToken: json.id_token,
     expires: Date.now() + json.expires_in * 1000,
   };
 }
@@ -185,6 +189,7 @@ export async function refreshOpenAICodexToken(profile: OAuthProfile): Promise<OA
   const json = JSON.parse(response.body) as {
     access_token?: string;
     refresh_token?: string;
+    id_token?: string;
     expires_in?: number;
   };
 
@@ -196,6 +201,7 @@ export async function refreshOpenAICodexToken(profile: OAuthProfile): Promise<OA
     json.access_token,
     json.refresh_token,
     Date.now() + json.expires_in * 1000,
+    json.id_token ?? profile.idToken,
   );
 }
 
@@ -350,7 +356,7 @@ export async function loginOpenAICodex(): Promise<OAuthProfile> {
     console.log("已收到授权回调，正在交换 access token...");
     const token = await exchangeAuthorizationCode(code, verifier);
     console.log("token 交换成功，正在解析账号信息...");
-    return extractProfile(token.access, token.refresh, token.expires);
+    return extractProfile(token.access, token.refresh, token.expires, token.idToken);
   } finally {
     callbackServer.close();
   }

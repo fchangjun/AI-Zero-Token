@@ -1497,6 +1497,7 @@ export function renderAdminPage(): string {
             <div class="tester-tabs" id="testerTabs">
               <button class="tab-btn is-active" type="button" data-endpoint="/v1/chat/completions">Chat</button>
               <button class="tab-btn" type="button" data-endpoint="/v1/images/generations">Images</button>
+              <button class="tab-btn" type="button" data-endpoint="/v1/images/edits">Edits</button>
               <button class="tab-btn" type="button" data-endpoint="/v1/responses">Responses</button>
               <button class="tab-btn" type="button" data-endpoint="/v1/models">Models</button>
             </div>
@@ -1544,6 +1545,7 @@ export function renderAdminPage(): string {
               <button class="btn-secondary" type="button" data-example="/v1/responses">示例 Responses</button>
               <button class="btn-secondary" type="button" data-example="/v1/chat/completions">示例 Chat</button>
               <button class="btn-secondary" type="button" data-example="/v1/images/generations">示例 Images</button>
+              <button class="btn-secondary" type="button" data-example="/v1/images/edits">示例 Edits</button>
               <button class="btn-primary" id="runTestBtn" type="button">发送请求</button>
             </div>
 
@@ -1718,6 +1720,11 @@ export function renderAdminPage(): string {
         method: "POST",
         tab: "Images",
         description: "兼容 OpenAI images.generations 接口。",
+      },
+      "/v1/images/edits": {
+        method: "POST",
+        tab: "Edits",
+        description: "兼容 OpenAI images.edits JSON 接口。",
       },
     };
 
@@ -2324,6 +2331,21 @@ export function renderAdminPage(): string {
         });
       }
 
+      if (endpoint === "/v1/images/edits") {
+        return formatJson({
+          model: "gpt-image-2",
+          prompt: "参考这张图片，生成一张更适合科技产品广告的版本，保留主体构图，增强光线和质感。",
+          images: [
+            {
+              image_url: "data:image/png;base64,替换为你的图片base64",
+            },
+          ],
+          size: "1024x1024",
+          quality: "low",
+          response_format: "b64_json",
+        });
+      }
+
       return formatJson({
         model: model,
         input: "请只回复 OK",
@@ -2335,6 +2357,10 @@ export function renderAdminPage(): string {
       const avg = requests.length
         ? requests.reduce(function (sum, item) { return sum + (item.durationMs || 0); }, 0) / requests.length
         : 0;
+      const codexAccountId = config.codex && config.codex.accountId ? config.codex.accountId : "";
+      const codexProfile = codexAccountId && Array.isArray(config.profiles)
+        ? config.profiles.find(function (profile) { return profile.accountId === codexAccountId; })
+        : null;
 
       return [
         {
@@ -2354,6 +2380,12 @@ export function renderAdminPage(): string {
           label: "默认模型",
           value: config.settings.defaultModel || "-",
           detail: "未显式指定 model 时生效",
+          compact: true,
+        },
+        {
+          label: "Codex 当前账号",
+          value: codexProfile ? getProfileDisplayLabel(codexProfile) : (codexAccountId ? maskIdentifier(codexAccountId) : "未检测到"),
+          detail: config.codex && config.codex.exists ? "来自 ~/.codex/auth.json" : "尚未应用到 Codex",
           compact: true,
         },
         {
@@ -2549,6 +2581,7 @@ export function renderAdminPage(): string {
           +   "</div>"
           +   '<div class="account-actions">'
           +     actionButton
+          +     '<button class="btn-secondary" type="button" data-profile-action="apply-codex" data-profile-id="' + escapeHtml(profile.profileId) + '">应用到 Codex</button>'
           +     '<button class="btn-secondary" type="button" data-profile-action="export" data-profile-id="' + escapeHtml(profile.profileId) + '">导出</button>'
           +     '<button class="btn-danger" type="button" data-profile-action="remove" data-profile-id="' + escapeHtml(profile.profileId) + '">删除</button>'
           +   "</div>"
@@ -2560,13 +2593,15 @@ export function renderAdminPage(): string {
       const profiles = Array.isArray(config.profiles) ? config.profiles : [];
       const now = Date.now();
       const seeds = profiles.slice(0, 5).map(function (profile, index) {
-        const endpoint = index % 4 === 0
+        const endpoint = index % 5 === 0
           ? "/v1/chat/completions"
-          : index % 4 === 1
+          : index % 5 === 1
             ? "/v1/responses"
-            : index % 4 === 2
+            : index % 5 === 2
               ? "/v1/models"
-              : "/v1/images/generations";
+              : index % 5 === 3
+                ? "/v1/images/generations"
+                : "/v1/images/edits";
         const method = endpointMeta[endpoint].method;
         return {
           time: now - index * 15 * 60 * 1000,
@@ -2574,7 +2609,7 @@ export function renderAdminPage(): string {
           endpoint: endpoint,
           accountEmail: profile.email || "",
           accountFallback: profile.accountId || profile.profileId || "未命名账号",
-          model: endpoint === "/v1/images/generations" ? "gpt-image-2" : config.settings.defaultModel,
+          model: endpoint.indexOf("/v1/images/") === 0 ? "gpt-image-2" : config.settings.defaultModel,
           statusCode: 200,
           durationMs: 860 + index * 230 + getPrimaryUsage(profile) * 8,
           source: index % 2 === 0 ? "管理页" : "CLI",
@@ -2805,7 +2840,7 @@ export function renderAdminPage(): string {
 
     function syncImageCapabilityHint(config) {
       const capability = getImageCapability(config ? config.profile : null);
-      const isImageEndpoint = endpointSelect.value === "/v1/images/generations";
+      const isImageEndpoint = endpointSelect.value === "/v1/images/generations" || endpointSelect.value === "/v1/images/edits";
       imageCapabilityHint.textContent = capability.detail;
       imageCapabilityHint.className = capability.supported && !isImageEndpoint ? "hint" : "hint warn";
       runTestBtn.disabled = isImageEndpoint && !capability.supported;
@@ -2986,6 +3021,10 @@ export function renderAdminPage(): string {
         await exportProfile(profileId, button);
         return;
       }
+      if (action === "apply-codex") {
+        await applyProfileToCodex(profileId, button);
+        return;
+      }
 
       setBusy(button, true);
       authStatus.textContent = action === "activate" ? "正在切换当前账号..." : "正在删除账号...";
@@ -3012,6 +3051,31 @@ export function renderAdminPage(): string {
         } else {
           authStatus.textContent = "账号已删除。";
         }
+      } catch (error) {
+        authStatus.textContent = error.message;
+      } finally {
+        setBusy(button, false);
+      }
+    }
+
+    async function applyProfileToCodex(profileId, button) {
+      setBusy(button, true);
+      authStatus.textContent = "正在应用账号到 Codex...";
+      try {
+        const result = await fetchJson("/_gateway/admin/codex/apply", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: formatJson({
+            profileId: profileId,
+          }),
+        });
+        const config = result.config || await fetchJson("/_gateway/admin/config");
+        renderConfig(config);
+        const codex = result.codex || config.codex || {};
+        authStatus.textContent = "已应用到 Codex。新开的 Codex 会话将使用该账号。"
+          + (codex.backupPath ? " 已备份原 auth.json。" : "");
       } catch (error) {
         authStatus.textContent = error.message;
       } finally {

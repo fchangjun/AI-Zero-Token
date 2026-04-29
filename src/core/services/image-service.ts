@@ -7,6 +7,9 @@ type ImageRequest = {
   prompt: string;
   model?: string;
   n?: number;
+  inputImages?: Array<{
+    imageUrl: string;
+  }>;
   size?: string;
   quality?: "low" | "medium" | "high" | "auto";
   background?: "transparent" | "opaque" | "auto";
@@ -436,6 +439,7 @@ export class ImageService {
       outputFormat: request.outputFormat ?? "default",
       outputCompression: typeof request.outputCompression === "number" ? request.outputCompression : undefined,
       moderation: request.moderation ?? "default",
+      inputImageCount: request.inputImages?.length ?? 0,
     };
 
     console.info("[gateway:image] upstream request", requestSummary);
@@ -463,6 +467,9 @@ export class ImageService {
     if (request.moderation) {
       tool.moderation = request.moderation;
     }
+    if (request.inputImages && request.inputImages.length > 0) {
+      tool.action = "edit";
+    }
 
     for (let attempt = 1; attempt <= IMAGE_GENERATION_MAX_ATTEMPTS; attempt += 1) {
       let result;
@@ -480,6 +487,10 @@ export class ImageService {
                     type: "input_text",
                     text: request.prompt,
                   },
+                  ...(request.inputImages ?? []).map((image) => ({
+                    type: "input_image",
+                    image_url: image.imageUrl,
+                  })),
                 ],
               },
             ],

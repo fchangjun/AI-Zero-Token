@@ -7,6 +7,7 @@ AI Zero Token 是一个本地优先的单用户 AI CLI 和本地网关。
 它把账号授权能力整理成 OpenAI 风格接口，重点是把图片生成能力也代理出来：
 
 - `POST /v1/images/generations`
+- `POST /v1/images/edits`
 - `POST /v1/responses`
 - `POST /v1/chat/completions`
 - `GET /v1/models`
@@ -15,9 +16,10 @@ AI Zero Token 是一个本地优先的单用户 AI CLI 和本地网关。
 
 ## 这次迭代亮点
 
-- 直接代理 `gpt-image-2`，把图片生成能力暴露成 OpenAI 风格 `images.generations` 接口
+- 直接代理 `gpt-image-2`，把图片生成能力暴露成 OpenAI 风格 `images.generations` / `images.edits` 接口
 - 启动 `azt start` 后即可获得本地管理页和本地网关，适合脚本、前端和自动化流程接入
 - 支持多账号保存、切换当前账号、查看账号套餐 plan，以及当前账号是否支持生图
+- 支持账号 JSON 批量导入/勾选导出，并可一键把已保存账号应用到本机 Codex
 - 模型列表会优先同步本机 `~/.codex/models_cache.json`，不需要每次为新模型重新 build
 - 管理页会每 10 分钟自动同步额度快照和版本状态，并提示当前版本是否可更新
 - `free` 账号会在管理页直接预警，并在网关层明确拦截生图请求
@@ -222,6 +224,7 @@ azt start
 - 在多个已保存账号之间切换当前使用账号
 - 在“新增账号”里选择 OAuth 登录，或粘贴外部账号 JSON 批量导入
 - 导出单个账号，或勾选多个账号后批量导出所选账号 JSON
+- 将任一已保存账号“应用到 Codex”，自动备份并更新本机 `~/.codex/auth.json`
 - 删除单个本地账号，或一键清空全部本地账号
 - 切换默认模型
 - 测试 `models` / `responses` / `chat.completions`
@@ -230,6 +233,8 @@ azt start
 管理页里邮箱默认脱敏显示，需要手动点击“查看邮箱”才会显示明文。
 
 导出的账号 JSON 包含完整 `access_token` 和 `refresh_token`，等同于账号登录凭据，只适合在可信环境中传递。
+
+账号卡片里的“应用到 Codex”会把该账号的 `access_token`、`refresh_token`、`id_token` 和 `account_id` 写入本机 Codex 的 `~/.codex/auth.json`。写入前会自动备份原文件；新开的 Codex 会话会使用该账号。
 
 如果当前网络访问海外上游不稳定，可以在管理页的“接口测试 / 系统设置”区域启用“上游代理”，并填写你自己的代理地址。保存后，OAuth 换取 token、模型刷新和接口转发都会通过该代理访问上游；本地管理页和 `127.0.0.1` 默认保持直连。
 
@@ -322,9 +327,28 @@ curl http://127.0.0.1:8787/v1/images/generations \
 响应会返回 OpenAI 同类型结构的 `data[].b64_json`。如果你在管理页里测试，这张图片会直接显示预览。
 如果请求里不显式传 `model`，当前默认会使用 `gpt-image-2`。
 
+JSON 版 `images.edits` 支持通过 URL 或 base64 data URL 传参考图：
+
+```bash
+curl http://127.0.0.1:8787/v1/images/edits \
+  -H "content-type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "参考这张图，生成一张更适合科技产品广告的版本。",
+    "images": [
+      {
+        "image_url": "data:image/png;base64,替换为你的图片base64"
+      }
+    ],
+    "size": "1024x1024",
+    "quality": "low",
+    "response_format": "b64_json"
+  }'
+```
+
 生图能力和账号套餐有关：
 
-- `plus` 或更高套餐账号可正常调用 `images.generations`
+- `plus` 或更高套餐账号可正常调用 `images.generations` / `images.edits`
 - `free` 账号不支持生图，网关会直接返回明确错误，而不是继续请求上游
 - 管理页会显示当前账号的 `plan` 和“生图能力”状态
 - 当当前账号是 `free` 且你选中 `Images` 测试时，“发送请求”按钮会被直接禁用
@@ -345,6 +369,7 @@ curl http://127.0.0.1:8787/v1/images/generations \
 - `POST /v1/responses`
 - `POST /v1/chat/completions`
 - `POST /v1/images/generations`
+- `POST /v1/images/edits`
 
 ### 7. 当前支持的主要参数
 
@@ -394,6 +419,24 @@ curl http://127.0.0.1:8787/v1/images/generations \
 - `response_format`
 - `user`
 
+`POST /v1/images/edits` 当前主要支持 JSON 请求：
+
+- `prompt`
+- `images`
+- `image`
+- `model`
+- `n`
+- `size`
+- `quality`
+- `background`
+- `output_format`
+- `output_compression`
+- `moderation`
+- `response_format`
+- `user`
+
+其中 `images` / `image` 支持 `image_url`，可以是 `https://...` URL、`data:image/...;base64,...`，或裸 base64 字符串。
+
 ### 8. 当前限制
 
 - `stream=true` 目前只识别，不返回真实流式结果
@@ -402,7 +445,8 @@ curl http://127.0.0.1:8787/v1/images/generations \
 - `images.generations` 暂不支持 `n > 1`
 - `images.generations` 当前只返回 `b64_json`，暂不支持托管图片 `url`
 - `images.generations` 当前只透传 GPT Image 路径，不兼容 DALL·E 专有参数
-- `images.generations` 对账号套餐有要求；`free` 账号会被网关直接拦截并返回“不支持图片生成”
+- `images.edits` 当前只支持 `application/json`，暂不支持 `multipart/form-data`、`mask` 和 `file_id`
+- `images.generations` / `images.edits` 对账号套餐有要求；`free` 账号会被网关直接拦截并返回“不支持图片生成”
 - 网关当前默认面向本地单用户使用
 
 ## 兼容说明

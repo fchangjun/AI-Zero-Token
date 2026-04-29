@@ -91,6 +91,25 @@ curl http://127.0.0.1:8787/v1/images/generations \
   }'
 ```
 
+JSON image edit with a reference image URL or base64 data URL:
+
+```bash
+curl http://127.0.0.1:8787/v1/images/edits \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-image-2",
+    "prompt": "Use this reference image and make it look like a clean product advertisement.",
+    "images": [
+      {
+        "image_url": "data:image/png;base64,REPLACE_WITH_IMAGE_BASE64"
+      }
+    ],
+    "size": "1024x1024",
+    "quality": "low",
+    "response_format": "b64_json"
+  }'
+```
+
 ## JavaScript SDK Example
 
 ```ts
@@ -117,4 +136,3 @@ console.log(response.choices[0]?.message?.content);
 - A model appearing in `/v1/models` means the local Codex cache lists it. Final availability still depends on the active account.
 - `stream=true` is not supported yet.
 - The default listener is `0.0.0.0:8787`, so local-network clients can call the gateway by using the machine IP.
-

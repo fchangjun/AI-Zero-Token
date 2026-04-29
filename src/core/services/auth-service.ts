@@ -15,6 +15,12 @@ import {
 import { askOpenAICodex } from "../providers/openai-codex/chat.js";
 import { ConfigService } from "./config-service.js";
 import {
+  applyProfileToCodexAuth,
+  getCodexAuthStatus,
+  type ApplyCodexAuthResult,
+  type CodexAuthStatus,
+} from "../store/codex-auth-store.js";
+import {
   exportProfilesToJson,
   exportProfileToJson,
   getProfileImportTemplate,
@@ -117,6 +123,15 @@ export class AuthService {
     return getProfileImportTemplate();
   }
 
+  async getCodexStatus(): Promise<CodexAuthStatus> {
+    return getCodexAuthStatus();
+  }
+
+  async applyProfileToCodex(profileId: string, provider: ProviderId = "openai-codex"): Promise<ApplyCodexAuthResult> {
+    const profile = await this.requireFreshProfileWithIdToken(profileId, provider);
+    return applyProfileToCodexAuth(profile);
+  }
+
   async getActiveProfile(provider: ProviderId = "openai-codex"): Promise<OAuthProfile | null> {
     const profile = await getActiveProfile();
     if (!profile || profile.provider !== provider) {
@@ -184,6 +199,26 @@ export class AuthService {
 
     const refreshed = await refreshOpenAICodexToken(profile);
     await saveProfile(refreshed);
+    return this.toManagedProfile(refreshed);
+  }
+
+  async requireFreshProfileWithIdToken(profileId: string, provider: ProviderId = "openai-codex"): Promise<OAuthProfile> {
+    const profiles = await listProfiles();
+    const profile = profiles.find((item) => item.provider === provider && item.profileId === profileId);
+    if (!profile) {
+      throw new Error(`没有找到账号: ${profileId}`);
+    }
+
+    if (profile.idToken && Date.now() < profile.expires) {
+      return this.toManagedProfile(profile);
+    }
+
+    const refreshed = await refreshOpenAICodexToken(profile);
+    await saveProfile(refreshed);
+    if (!refreshed.idToken) {
+      throw new Error("刷新 token 成功，但上游没有返回 id_token。");
+    }
+
     return this.toManagedProfile(refreshed);
   }
 

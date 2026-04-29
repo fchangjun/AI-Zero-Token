@@ -9,6 +9,7 @@ export type ExportedProfile = {
   type: "codex";
   access_token: string;
   refresh_token: string;
+  id_token?: string;
   expired: string;
   email?: string;
   account_id: string;
@@ -101,6 +102,7 @@ export function importProfileFromJson(value: unknown): OAuthProfile {
 
   const access = getString(value.access_token) ?? getString(value.access);
   const refresh = getString(value.refresh_token) ?? getString(value.refresh);
+  const idToken = getString(value.id_token) ?? getString(value.idToken);
   if (!access || !refresh) {
     throw new Error("导入失败: 缺少 access_token/access 或 refresh_token/refresh。");
   }
@@ -116,6 +118,7 @@ export function importProfileFromJson(value: unknown): OAuthProfile {
     mode: "oauth_account",
     access,
     refresh,
+    idToken,
     expires,
     accountId,
     email,
@@ -144,6 +147,7 @@ export function exportProfileToJson(profile: OAuthProfile): ExportedProfile {
     type: "codex",
     access_token: profile.access,
     refresh_token: profile.refresh,
+    id_token: profile.idToken,
     expired: new Date(profile.expires).toISOString(),
     email: profile.email,
     account_id: profile.accountId,
@@ -169,6 +173,7 @@ export function getProfileImportTemplate(): ExportedProfileBundle {
         type: "codex",
         access_token: "eyJ...access_token",
         refresh_token: "rt_...",
+        id_token: "eyJ...id_token",
         expired: "2026-05-04T22:13:00.000Z",
         email: "user@example.com",
         account_id: "可选，通常会从 access_token 自动解析",

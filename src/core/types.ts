@@ -29,6 +29,7 @@ export type OAuthProfile = {
   mode: AuthMode;
   access: string;
   refresh: string;
+  idToken?: string;
   expires: number;
   accountId: string;
   email?: string;

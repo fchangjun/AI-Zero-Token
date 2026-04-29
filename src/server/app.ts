@@ -115,9 +115,42 @@ const profileExportSchema = z.object({
   all: z.boolean().optional(),
 });
 
+const codexApplySchema = z.object({
+  profileId: z.string().min(1),
+});
+
 const imageGenerationsBodySchema = z
   .object({
     prompt: z.string().min(1),
+    model: z.string().optional(),
+    n: z.number().int().positive().optional(),
+    quality: z.enum(["low", "medium", "high", "auto"]).optional(),
+    size: z.string().min(1).optional(),
+    background: z.enum(["transparent", "opaque", "auto"]).optional(),
+    output_format: z.enum(["png", "webp", "jpeg"]).optional(),
+    output_compression: z.number().int().min(0).max(100).optional(),
+    moderation: z.enum(["auto", "low"]).optional(),
+    response_format: z.enum(["b64_json", "url"]).optional(),
+    user: z.string().optional(),
+  })
+  .passthrough();
+
+const imageReferenceSchema = z.union([
+  z.string().min(1),
+  z
+    .object({
+      image_url: z.string().min(1).optional(),
+      file_id: z.string().min(1).optional(),
+    })
+    .passthrough(),
+]);
+
+const imageEditsBodySchema = z
+  .object({
+    prompt: z.string().min(1),
+    images: z.array(imageReferenceSchema).min(1).max(16).optional(),
+    image: z.union([imageReferenceSchema, z.array(imageReferenceSchema).min(1).max(16)]).optional(),
+    mask: imageReferenceSchema.optional(),
     model: z.string().optional(),
     n: z.number().int().positive().optional(),
     quality: z.enum(["low", "medium", "high", "auto"]).optional(),
@@ -266,6 +299,56 @@ function summarizeImageRequestForLog(body: z.infer<typeof imageGenerationsBodySc
   };
 }
 
+function getImageEditReferences(data: z.infer<typeof imageEditsBodySchema>): Array<z.infer<typeof imageReferenceSchema>> {
+  if (Array.isArray(data.images)) {
+    return data.images;
+  }
+
+  if (Array.isArray(data.image)) {
+    return data.image;
+  }
+
+  if (data.image) {
+    return [data.image];
+  }
+
+  return [];
+}
+
+function normalizeJsonImageReference(reference: z.infer<typeof imageReferenceSchema>): { imageUrl?: string; fileId?: string } {
+  if (typeof reference === "string") {
+    return {
+      imageUrl: normalizeJsonImageUrl(reference),
+    };
+  }
+
+  return {
+    imageUrl: reference.image_url ? normalizeJsonImageUrl(reference.image_url) : undefined,
+    fileId: reference.file_id,
+  };
+}
+
+function normalizeJsonImageUrl(value: string): string {
+  const trimmed = value.trim();
+  if (/^https?:\/\//i.test(trimmed) || /^data:image\//i.test(trimmed)) {
+    return trimmed;
+  }
+
+  if (/^[A-Za-z0-9+/=_-]+$/.test(trimmed) && trimmed.length > 80) {
+    return `data:image/png;base64,${trimmed}`;
+  }
+
+  return trimmed;
+}
+
+function summarizeImageEditRequestForLog(body: z.infer<typeof imageEditsBodySchema>): Record<string, unknown> {
+  return {
+    ...summarizeImageRequestForLog(body),
+    imageCount: getImageEditReferences(body).length,
+    hasMask: Boolean(body.mask),
+  };
+}
+
 function buildResponseApiBody(result: ChatResult, includeRaw?: boolean): Record<string, unknown> {
   const responseBody: Record<string, unknown> = {
     object: "response",
@@ -337,6 +420,35 @@ function validateImageRequest(data: z.infer<typeof imageGenerationsBodySchema>):
 
   if (typeof data.output_compression === "number" && data.output_format === "png") {
     return "output_compression 仅支持 jpeg 或 webp 输出。";
+  }
+
+  return null;
+}
+
+function validateImageEditRequest(data: z.infer<typeof imageEditsBodySchema>): string | null {
+  const generationValidationError = validateImageRequest(data);
+  if (generationValidationError) {
+    return generationValidationError;
+  }
+
+  if (data.mask) {
+    return "当前网关的 JSON 版 images.edits 暂不支持 mask；请先使用参考图编辑。";
+  }
+
+  const references = getImageEditReferences(data);
+  if (references.length === 0) {
+    return "images.edits 请求缺少 images 或 image。";
+  }
+
+  const normalized = references.map((reference) => normalizeJsonImageReference(reference));
+  if (normalized.some((reference) => reference.fileId)) {
+    return "当前网关的 JSON 版 images.edits 暂不支持 file_id，请使用 image_url URL 或 base64 data URL。";
+  }
+  if (normalized.some((reference) => !reference.imageUrl)) {
+    return "images.edits 的每个图片引用都需要提供 image_url。";
+  }
+  if (normalized.some((reference) => reference.imageUrl && !/^https?:\/\//i.test(reference.imageUrl) && !/^data:image\//i.test(reference.imageUrl))) {
+    return "images.edits 的 image_url 需要是 http(s) URL、data:image/...;base64,...，或裸 base64 字符串。";
   }
 
   return null;
@@ -451,7 +563,7 @@ export function createApp(params?: {
   });
 
   async function buildAdminConfig(request: FastifyRequest) {
-    const [status, models, modelCatalog, versionStatus, settings, profile, profiles] = await Promise.all([
+    const [status, models, modelCatalog, versionStatus, settings, profile, profiles, codexStatus] = await Promise.all([
       ctx.authService.getStatus(),
       ctx.modelService.listModels(),
       ctx.modelService.getCatalog(),
@@ -459,6 +571,7 @@ export function createApp(params?: {
       ctx.configService.getSettings(),
       ctx.authService.getActiveProfile(),
       ctx.authService.listProfiles(),
+      ctx.authService.getCodexStatus(),
     ]);
     const origin = resolveOrigin(request);
 
@@ -470,6 +583,7 @@ export function createApp(params?: {
       versionStatus,
       profile: serializeProfile(profile),
       profiles: profiles.map((item) => serializeManagedProfile(item)),
+      codex: codexStatus,
       adminUrl: `${origin}/`,
       baseUrl: `${origin}/v1`,
       supportedEndpoints: [
@@ -492,6 +606,11 @@ export function createApp(params?: {
           method: "POST",
           path: "/v1/images/generations",
           description: "OpenAI images.generations 兼容接口。",
+        },
+        {
+          method: "POST",
+          path: "/v1/images/edits",
+          description: "OpenAI images.edits JSON 兼容接口。",
         },
       ],
     };
@@ -638,6 +757,24 @@ export function createApp(params?: {
 
     return {
       profile: await ctx.authService.exportProfile(parsed.data.profileId),
+    };
+  });
+
+  app.post("/_gateway/admin/codex/apply", async (request, reply) => {
+    const parsed = codexApplySchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    return {
+      codex: await ctx.authService.applyProfileToCodex(parsed.data.profileId),
+      config: await buildAdminConfig(request),
     };
   });
 
@@ -876,6 +1013,106 @@ export function createApp(params?: {
     });
 
     console.info("[gateway:image] response ready", {
+      method: request.method,
+      url: request.url,
+      summary: requestSummary,
+      created: response.created,
+      imageCount: response.data.length,
+      output_format: response.output_format,
+      quality: response.quality,
+      size: response.size,
+    });
+
+    return response;
+  });
+
+  app.post("/v1/images/edits", async (request, reply) => {
+    const contentType = request.headers["content-type"] ?? "";
+    if (!String(contentType).toLowerCase().includes("application/json")) {
+      reply.code(415);
+      return {
+        error: {
+          type: "unsupported_media_type",
+          message: "当前网关仅支持 JSON 版 images.edits；请使用 application/json，并通过 images[].image_url 传 URL 或 base64 data URL。",
+        },
+      };
+    }
+
+    const parsed = imageEditsBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      console.error("[gateway:image:edit] validation failure", {
+        method: request.method,
+        url: request.url,
+        issue: parsed.error.issues[0]?.message ?? "请求体格式错误",
+      });
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    const validationError = validateImageEditRequest(parsed.data);
+    if (validationError) {
+      console.error("[gateway:image:edit] validation failure", {
+        method: request.method,
+        url: request.url,
+        summary: summarizeImageEditRequestForLog(parsed.data),
+        issue: validationError,
+      });
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: validationError,
+        },
+      };
+    }
+
+    if (typeof parsed.data.n === "number" && parsed.data.n > 1) {
+      console.error("[gateway:image:edit] not supported", {
+        method: request.method,
+        url: request.url,
+        summary: summarizeImageEditRequestForLog(parsed.data),
+        issue: "当前网关暂不支持 images.edits 一次返回多张图（n > 1）",
+      });
+      reply.code(501);
+      return {
+        error: {
+          type: "not_supported",
+          message: "当前网关暂不支持 images.edits 一次返回多张图（n > 1）",
+        },
+      };
+    }
+
+    const imageReferences = getImageEditReferences(parsed.data)
+      .map((reference) => normalizeJsonImageReference(reference))
+      .map((reference) => ({
+        imageUrl: reference.imageUrl ?? "",
+      }));
+    const requestSummary = summarizeImageEditRequestForLog(parsed.data);
+    console.info("[gateway:image:edit] request accepted", {
+      method: request.method,
+      url: request.url,
+      summary: requestSummary,
+    });
+
+    const response = await ctx.imageService.generate({
+      prompt: parsed.data.prompt,
+      inputImages: imageReferences,
+      model: parsed.data.model,
+      n: parsed.data.n,
+      size: parsed.data.size,
+      quality: parsed.data.quality,
+      background: parsed.data.background,
+      outputFormat: parsed.data.output_format,
+      outputCompression: parsed.data.output_compression,
+      moderation: parsed.data.moderation,
+    });
+
+    console.info("[gateway:image:edit] response ready", {
       method: request.method,
       url: request.url,
       summary: requestSummary,

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.7 - 2026-04-29
+
+- Added JSON `POST /v1/images/edits` support for image-to-image workflows with URL, base64 data URL, or raw base64 image references.
+- Added management-page Edits test examples and documented the JSON image editing request format.
+- Added `id_token` persistence for login, refresh, import, export, and account transfer JSON.
+- Added "Apply to Codex" account action to back up and update local `~/.codex/auth.json` for new Codex sessions.
+- Updated the local AI-Zero-Token skill documentation package with image editing and Codex account switching guidance.
+
 ## 1.0.6 - 2026-04-28
 
 - Added account JSON import/export support in the management page.
