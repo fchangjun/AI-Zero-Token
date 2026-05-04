@@ -47,6 +47,38 @@ http://127.0.0.1:8787/v1
 
 如果客户端必须填写 API Key，可以填任意非空占位值；真正起作用的是本地网关里的账号授权。
 
+## 桌面端预览
+
+当前仓库已提供 Electron 桌面端预览入口。它会在桌面主进程中启动现有本地网关，并直接加载当前管理页：
+
+```bash
+npm run desktop
+```
+
+构建桌面端发布包：
+
+```bash
+npm run dist:mac
+npm run dist:win
+```
+
+发布说明见 [docs/DESKTOP_RELEASE.md](docs/DESKTOP_RELEASE.md)。
+桌面端安装包会在每次打标签发布后上传到 GitHub Releases：
+
+- [GitHub Releases](https://github.com/fchangjun/AI-Zero-Token/releases)
+
+桌面端第一版沿用现有默认监听策略：
+
+```text
+0.0.0.0:8787
+```
+
+本机客户端仍建议使用：
+
+```text
+http://127.0.0.1:8787/v1
+```
+
 ## 管理页
 
 管理页是推荐入口，可以完成：

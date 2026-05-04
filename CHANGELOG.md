@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0 - 2026-05-04
+
+- Added the Electron desktop app, with a local gateway boot path and the management UI embedded in the desktop shell.
+- Added desktop download entry points in the app shell and README, pointing to GitHub Releases for future installers.
+- Added the React desktop admin UI structure under `admin-ui/` with launch, overview, account, tester, logs, docs, network, and settings pages.
+- Added desktop release packaging with `electron-builder`, including macOS and Windows targets and unpacked `release/` artifacts.
+- Added desktop design and frontend architecture docs to keep the new UI consistent as it grows.
+
 ## 1.0.8 - 2026-04-29
 
 - Removed local Free-plan blocking for image generation and editing; upstream account limits now decide availability.

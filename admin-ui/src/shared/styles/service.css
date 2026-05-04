@@ -1,0 +1,155 @@
+.service-card {
+  border-radius: 16px;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.sidebar-status {
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.sidebar-status.tone-green {
+  border-color: rgba(34, 197, 94, 0.18);
+}
+
+.sidebar-status.tone-orange {
+  border-color: rgba(245, 158, 11, 0.24);
+  background: rgba(255, 251, 235, 0.95);
+}
+
+.sidebar-status.tone-red {
+  border-color: rgba(239, 68, 68, 0.2);
+  background: rgba(254, 242, 242, 0.95);
+}
+
+.sidebar-status .service-head span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.sidebar-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.sidebar-meta {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 11px;
+  background: rgba(248, 250, 252, 0.88);
+}
+
+.sidebar-meta span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.sidebar-meta strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.endpoint-card .compact-grid {
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.service-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.service-list {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.service-row {
+  min-width: 0;
+}
+
+.service-row label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.service-row strong,
+.service-row code {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.meta-grid .service-row label {
+  margin-bottom: 0;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.meta-grid .service-row strong,
+.meta-grid .service-row code {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.14);
+}
+
+.status-dot.offline {
+  background: var(--orange);
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.14);
+}
+
+.update-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-color: rgba(245, 158, 11, 0.25);
+  background: rgba(255, 251, 235, 0.94);
+}
+
+.update-panel div {
+  display: grid;
+  gap: 5px;
+}
+
+.update-panel span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.update-panel code {
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: #fff;
+  color: #92400e;
+  overflow-wrap: anywhere;
+}

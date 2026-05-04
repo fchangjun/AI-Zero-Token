@@ -38,6 +38,12 @@ type TokenResult = {
   expires: number;
 };
 
+type UpstreamErrorBody = {
+  message?: string;
+  type?: string;
+  code?: string;
+};
+
 function createState(): string {
   return randomBytes(16).toString("hex");
 }
@@ -72,6 +78,25 @@ function extractEmailFromPayload(payload: Record<string, unknown> | null): strin
   }
 
   return undefined;
+}
+
+function parseUpstreamErrorBody(body: string): UpstreamErrorBody | undefined {
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    const error = parsed.error;
+    if (!error || typeof error !== "object") {
+      return undefined;
+    }
+
+    const record = error as Record<string, unknown>;
+    return {
+      message: typeof record.message === "string" ? record.message : undefined,
+      type: typeof record.type === "string" ? record.type : undefined,
+      code: typeof record.code === "string" ? record.code : undefined,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function parseAuthorizationInput(value: string): AuthorizationResult {
@@ -183,7 +208,18 @@ export async function refreshOpenAICodexToken(profile: OAuthProfile): Promise<OA
   });
 
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(`刷新 token 失败: HTTP ${response.status} via ${response.transport} ${response.body}`);
+    const upstreamError = parseUpstreamErrorBody(response.body);
+    const error = new Error(`刷新 token 失败: HTTP ${response.status} via ${response.transport} ${response.body}`) as Error & {
+      upstreamStatus?: number;
+      upstreamErrorCode?: string;
+      upstreamErrorType?: string;
+      upstreamErrorMessage?: string;
+    };
+    error.upstreamStatus = response.status;
+    error.upstreamErrorCode = upstreamError?.code;
+    error.upstreamErrorType = upstreamError?.type;
+    error.upstreamErrorMessage = upstreamError?.message;
+    throw error;
   }
 
   const json = JSON.parse(response.body) as {

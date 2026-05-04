@@ -1,0 +1,72 @@
+:root {
+  color-scheme: light;
+  --bg: #f8fafc;
+  --panel: #ffffff;
+  --panel-soft: #f8fafc;
+  --line: #e2e8f0;
+  --line-strong: #cbd5e1;
+  --text: #0f172a;
+  --text-soft: #334155;
+  --text-muted: #64748b;
+  --brand: #635bff;
+  --brand-strong: #4f46e5;
+  --brand-soft: rgba(99, 91, 255, 0.1);
+  --blue: #3b82f6;
+  --blue-soft: rgba(59, 130, 246, 0.12);
+  --green: #22c55e;
+  --green-soft: rgba(34, 197, 94, 0.12);
+  --orange: #f59e0b;
+  --orange-soft: rgba(245, 158, 11, 0.12);
+  --red: #ef4444;
+  --red-soft: rgba(239, 68, 68, 0.12);
+  --plan-color: #94a3b8;
+  --plan-soft: rgba(148, 163, 184, 0.12);
+  --plan-border: var(--line);
+  --shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
+  --shadow-sm: var(--shadow);
+  --radius: 16px;
+  --radius-sm: 12px;
+  --radius-xs: 10px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-width: 0;
+  min-height: 100vh;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(99, 91, 255, 0.08), transparent 28%),
+    radial-gradient(circle at right top, rgba(59, 130, 246, 0.06), transparent 32%),
+    var(--bg);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button {
+  cursor: pointer;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+

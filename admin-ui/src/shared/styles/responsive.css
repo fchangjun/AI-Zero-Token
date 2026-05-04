@@ -1,0 +1,323 @@
+@media (max-width: 1380px) {
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .right-column {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tester-card {
+    order: -1;
+  }
+}
+
+@media (max-width: 1120px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    width: calc(100vw - 20px);
+    padding: 10px;
+  }
+
+  .sidebar {
+    position: relative;
+    top: 0;
+    max-height: none;
+  }
+
+  .nav {
+    grid-template-columns: repeat(6, minmax(max-content, 1fr));
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .nav-item {
+    justify-content: center;
+  }
+
+  .sidebar-status {
+    display: none;
+  }
+
+  .topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .top-actions {
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 900px) {
+  .app-shell {
+    padding: 0;
+    gap: 12px;
+  }
+
+  .sidebar,
+  .card,
+  .trend-card,
+  .log-table-wrap,
+  .update-panel {
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+  }
+
+  .sidebar {
+    padding: 16px 12px;
+  }
+
+  .brand span,
+  .sidebar-status {
+    display: none;
+  }
+
+  .nav {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+  }
+
+  .nav-item {
+    width: auto;
+  }
+
+  .main {
+    gap: 12px;
+  }
+
+  .topbar {
+    padding: 0 12px;
+  }
+
+  .page-title h1 {
+    font-size: 25px;
+  }
+
+  .top-actions {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding: 0 12px;
+    gap: 10px;
+  }
+
+  .summary-card {
+    min-height: 82px;
+    padding: 14px;
+  }
+
+  .summary-card strong {
+    font-size: 19px;
+  }
+
+  .main-grid {
+    gap: 12px;
+  }
+
+  .section-head,
+  .update-panel,
+  .settings-drawer-footer {
+    display: grid;
+  }
+
+  .section-actions,
+  .button-row,
+  .example-row {
+    justify-content: flex-start;
+  }
+
+  .filter-row {
+    display: flex;
+  }
+
+  .filter-row .control {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .account-grid,
+  .account-grid.profile-count-1,
+  .account-grid.profile-count-2,
+  .account-grid.profile-count-3,
+  .account-grid.profile-count-many,
+  .meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-card {
+    border-radius: 14px;
+    padding: 16px;
+  }
+
+  .account-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .account-select {
+    width: max-content;
+    margin-top: 0;
+  }
+
+  .compact-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .account-actions {
+    display: flex;
+  }
+
+  .tester-textarea {
+    min-height: 150px;
+  }
+
+  .pre {
+    max-height: 320px;
+  }
+
+  .modal-backdrop,
+  .drawer-backdrop {
+    padding: 0;
+  }
+
+  .modal-card,
+  .settings-drawer {
+    width: 100%;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+  }
+
+  .modal-body,
+  .settings-drawer-body,
+  .settings-drawer-head,
+  .settings-drawer-footer {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 460px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    min-height: 40px;
+    padding: 0 12px;
+  }
+
+  .card,
+  .trend-card,
+  .log-table-wrap {
+    padding: 16px 12px;
+  }
+}
+
+@media (max-width: 1120px) {
+  body {
+    min-width: 0;
+  }
+
+  .app-shell {
+    width: calc(100vw - 24px);
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 0;
+  }
+
+  .sidebar {
+    position: relative;
+    top: 0;
+    max-height: none;
+    border-radius: 24px;
+    padding: 22px 18px;
+    gap: 14px;
+  }
+
+  .brand span,
+  .sidebar-status {
+    display: none;
+  }
+
+  .nav {
+    grid-template-columns: repeat(5, minmax(max-content, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .nav-item {
+    width: auto;
+    justify-content: center;
+  }
+
+  .topbar {
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+
+  .page-title p {
+    max-width: 680px;
+  }
+
+  .top-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    overflow: visible;
+  }
+
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 0;
+  }
+
+  .overview-grid,
+  .tester-route-grid,
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar,
+  .card,
+  .trend-card,
+  .log-table-wrap,
+  .update-panel {
+    border-radius: 20px;
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+  }
+
+  .launch-page {
+    grid-template-columns: 1fr;
+  }
+
+  .launch-visual {
+    min-height: 420px;
+  }
+
+  .account-grid.profile-count-2 {
+    grid-template-columns: repeat(2, minmax(340px, 1fr));
+  }
+
+  .account-grid.profile-count-3 {
+    grid-template-columns: repeat(3, minmax(320px, 1fr));
+  }
+
+  .account-grid.profile-count-many {
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  }
+
+  .meta-grid,
+  .compact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

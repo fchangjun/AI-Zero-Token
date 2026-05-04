@@ -1,0 +1,133 @@
+export type QuotaSnapshot = {
+  capturedAt?: number;
+  sourceRequestId?: string;
+  activeLimit?: string;
+  planType?: string;
+  primaryUsedPercent?: number;
+  secondaryUsedPercent?: number;
+  primaryWindowMinutes?: number;
+  secondaryWindowMinutes?: number;
+  primaryResetAfterSeconds?: number;
+  secondaryResetAfterSeconds?: number;
+  primaryResetAt?: number;
+  secondaryResetAt?: number;
+  creditsHasCredits?: boolean;
+  creditsUnlimited?: boolean;
+  creditsBalance?: string;
+  promoMessage?: string;
+};
+
+export type AuthStatus = {
+  state: "ok" | "token_invalidated" | "auth_error";
+  checkedAt: number;
+  message?: string;
+  code?: string;
+  httpStatus?: number;
+};
+
+export type ProfileSummary = {
+  provider: string;
+  profileId: string;
+  accountId: string;
+  email?: string;
+  quota?: QuotaSnapshot;
+  authStatus?: AuthStatus;
+  expiresAt: number;
+  accessTokenPreview: string;
+  refreshTokenPreview: string;
+  isActive: boolean;
+};
+
+export type GatewaySettings = {
+  version: number;
+  defaultProvider: string;
+  defaultModel: string;
+  networkProxy: {
+    enabled: boolean;
+    url: string;
+    noProxy: string;
+  };
+  autoSwitch: {
+    enabled: boolean;
+  };
+  server: {
+    host: string;
+    port: number;
+  };
+};
+
+export type GatewayStatus = {
+  ok: boolean;
+  activeProvider?: string;
+  activeProfileId?: string;
+  defaultModel: string;
+  loggedIn: boolean;
+  expiresAt?: number;
+  profileCount: number;
+  serverHost: string;
+  serverPort: number;
+};
+
+export type ModelInfo = {
+  provider: string;
+  id: string;
+  name: string;
+  input: Array<"text" | "image">;
+  source: string;
+  isDefault?: boolean;
+};
+
+export type ModelCatalogInfo = {
+  source: string;
+  cachePath: string;
+  fetchedAt?: string;
+  modelCount: number;
+};
+
+export type VersionStatus = {
+  packageName: string;
+  currentVersion: string;
+  latestVersion?: string;
+  checkedAt: number;
+  needsUpdate: boolean;
+  registryUrl: string;
+  status: "ok" | "update-available" | "error";
+  error?: string;
+};
+
+export type SupportedEndpoint = {
+  method: "GET" | "POST" | "PUT" | "DELETE";
+  path: string;
+  description: string;
+};
+
+export type AdminConfig = {
+  status: GatewayStatus;
+  settings: GatewaySettings;
+  models: ModelInfo[];
+  modelCatalog: ModelCatalogInfo;
+  versionStatus: VersionStatus;
+  profile: ProfileSummary | null;
+  profiles: ProfileSummary[];
+  codex: {
+    exists: boolean;
+    path: string;
+    accountId?: string;
+    email?: string;
+  };
+  adminUrl: string;
+  baseUrl: string;
+  supportedEndpoints: SupportedEndpoint[];
+};
+
+export type RequestLog = {
+  id: string;
+  time: number;
+  method: string;
+  endpoint: string;
+  account: string;
+  model: string;
+  statusCode: number;
+  durationMs: number;
+  source: string;
+};

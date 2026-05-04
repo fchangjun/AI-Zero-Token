@@ -1,0 +1,243 @@
+.tester-card {
+  display: grid;
+  gap: 16px;
+}
+
+.tester-tabs,
+.tester-result-tabs {
+  padding: 6px;
+  border-radius: 14px;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+}
+
+.tester-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(92px, 1fr));
+  gap: 6px;
+}
+
+.tester-result-tabs {
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 0;
+}
+
+.tab-btn {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.tab-btn.is-active {
+  color: var(--brand);
+  background: #fff;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.06);
+}
+
+.tester-workbench {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.92fr) minmax(360px, 1.08fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.tester-pane {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fff, rgba(248, 250, 252, 0.62));
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.tester-request-pane {
+  grid-template-rows: auto auto minmax(180px, 1fr) auto auto;
+}
+
+.tester-body-field {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.tester-textarea {
+  min-height: 180px;
+  height: 100%;
+  resize: vertical;
+}
+
+.tester-actions-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.tester-actions-group {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.tester-actions-bar .example-row {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.tester-copy-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tester-copy-row-top {
+  margin-top: -4px;
+}
+
+.tester-actions-bar .btn-secondary {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.tester-response-pane {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.tester-result-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.tester-result-head .status-inline {
+  margin: 0;
+  max-width: 220px;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.edit-upload-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: -2px;
+}
+
+.upload-btn {
+  cursor: pointer;
+}
+
+.upload-btn input {
+  display: none;
+}
+
+.edit-upload-row span {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pre {
+  width: 100%;
+  min-height: 312px;
+  max-height: 420px;
+  margin: 0;
+  padding: 16px;
+  border-radius: 12px;
+  color: #e2e8f0;
+  background: #0f172a;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.preview-panel {
+  min-height: 312px;
+}
+
+.preview-empty,
+.empty-state {
+  min-height: 140px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+  background: #f8fafc;
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.preview-card {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.preview-card button {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0;
+  background: #fff;
+  overflow: hidden;
+}
+
+.preview-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.preview-card figcaption {
+  color: var(--text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preview-actions a {
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  color: var(--text-soft);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pre.tester-log {
+  min-height: 200px;
+}

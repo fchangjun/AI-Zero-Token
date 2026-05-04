@@ -1,0 +1,36 @@
+.image-preview-stage {
+  display: grid;
+  place-items: center;
+  background: #0f172a;
+  border-radius: 14px;
+  overflow: hidden;
+  min-height: 320px;
+}
+
+.image-preview-stage img {
+  max-width: 100%;
+  max-height: min(70vh, 680px);
+  display: block;
+}
+
+.preview-modal-meta {
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.7;
+  word-break: break-word;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.spin {
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

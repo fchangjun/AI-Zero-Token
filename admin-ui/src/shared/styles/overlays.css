@@ -1,0 +1,85 @@
+.modal-backdrop,
+.drawer-backdrop,
+.loading-cover {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(8px);
+}
+
+.loading-cover {
+  z-index: 30;
+  color: var(--text);
+  background: rgba(248, 250, 252, 0.76);
+  gap: 12px;
+}
+
+.modal-card {
+  width: min(760px, 100%);
+  max-height: min(760px, calc(100vh - 40px));
+  overflow: auto;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.modal-card.wide {
+  width: min(980px, 100%);
+}
+
+.modal-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.modal-head h3 {
+  margin: 0;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+.modal-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.modal-section {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.modal-section h4 {
+  margin: 0;
+}
+
+.modal-section p,
+.contact-notes span {
+  margin: 0;
+  color: var(--text-muted);
+  line-height: 1.6;
+  font-size: 13px;
+}
+
+.import-textarea {
+  min-height: 220px;
+}
+

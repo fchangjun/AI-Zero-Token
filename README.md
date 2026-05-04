@@ -47,6 +47,38 @@ http://127.0.0.1:8787/v1
 
 Use any non-empty API key value when a client requires one. Authentication is handled by the local gateway.
 
+## Desktop Preview
+
+This repository now includes an Electron desktop preview. It starts the existing local gateway from the desktop main process and loads the current web console:
+
+```bash
+npm run desktop
+```
+
+Build desktop release artifacts:
+
+```bash
+npm run dist:mac
+npm run dist:win
+```
+
+See [docs/DESKTOP_RELEASE.md](docs/DESKTOP_RELEASE.md) for release notes.
+Desktop installers will be published on GitHub Releases after each tagged release:
+
+- [GitHub Releases](https://github.com/fchangjun/AI-Zero-Token/releases)
+
+The first desktop version keeps the current default listener:
+
+```text
+0.0.0.0:8787
+```
+
+For local clients, keep using:
+
+```text
+http://127.0.0.1:8787/v1
+```
+
 ## Web Console
 
 The web console is the recommended entry point:

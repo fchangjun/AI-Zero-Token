@@ -1,8 +1,9 @@
 {
   "name": "ai-zero-token",
-  "version": "1.0.9",
+  "version": "2.0.0",
   "description": "Local-first OpenAI-compatible AI CLI and gateway with Codex OAuth, multi-account management, and gpt-image-2 image generation/editing.",
   "license": "MIT",
+  "author": "AI Zero Token Contributors",
   "type": "module",
   "repository": {
     "type": "git",
@@ -16,6 +17,7 @@
     "azt": "dist/cli.js",
     "ai-zero-token": "dist/cli.js"
   },
+  "main": "dist/desktop/main.js",
   "keywords": [
     "ai",
     "cli",
@@ -40,8 +42,19 @@
     "ask": "bun src/cli.ts ask",
     "start": "bun src/cli.ts start",
     "serve": "bun src/cli.ts serve",
-    "build": "tsup",
-    "typecheck": "bunx tsc -p tsconfig.json --noEmit",
+    "dev": "node scripts/dev.mjs web",
+    "build": "npm run build:ui && npm run build:server",
+    "build:server": "tsup",
+    "build:ui": "vite build --config admin-ui/vite.config.ts",
+    "desktop": "npm run build && electron .",
+    "desktop:dev": "node scripts/dev.mjs desktop",
+    "dist": "npm run build && electron-builder",
+    "dist:dir": "npm run build && electron-builder --dir",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win",
+    "typecheck": "npm run typecheck:server && npm run typecheck:ui",
+    "typecheck:server": "bunx tsc -p tsconfig.json --noEmit",
+    "typecheck:ui": "tsc -p admin-ui/tsconfig.json --noEmit",
     "prepack": "npm run build",
     "pack:dry": "npm pack --dry-run"
   },
@@ -52,13 +65,67 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^41.3.0",
+    "electron-builder": "^26.8.1",
+    "lucide-react": "^1.14.0",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^8.0.10"
+  },
+  "build": {
+    "appId": "com.aizerotoken.desktop",
+    "productName": "AI Zero Token",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "admin-ui/dist/**/*",
+      "build/icon.*",
+      "package.json",
+      "README.md",
+      "README.zh-CN.md",
+      "LICENSE"
+    ],
+    "extraMetadata": {
+      "main": "dist/desktop/main.js"
+    },
+    "asar": true,
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   },
   "files": [
     "dist",
+    "admin-ui/dist",
+    "build/icon.png",
+    "build/icon.icns",
+    "build/icon.ico",
     "CHANGELOG.md",
     "docs/API_USAGE.md",
+    "docs/DESKTOP_RELEASE.md",
+    "docs/PRODUCT_UPDATE_DESKTOP_TOOLBOX.md",
     "README.md",
     "README.zh-CN.md",
     "package.json"

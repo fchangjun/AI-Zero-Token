@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
@@ -6,6 +9,57 @@ import { createGatewayContext } from "../core/context.js";
 import type { ChatResult, OAuthProfile, ProfileSummary } from "../core/types.js";
 import { requestText } from "../core/providers/http-client.js";
 import { renderAdminPage } from "./admin-page.js";
+
+const packageRoot = path.dirname(fileURLToPath(new URL("../../package.json", import.meta.url)));
+const adminUiDistDir = path.join(packageRoot, "admin-ui", "dist");
+const adminUiIndexPath = path.join(adminUiDistDir, "index.html");
+
+const assetContentTypes: Record<string, string> = {
+  ".css": "text/css; charset=utf-8",
+  ".gif": "image/gif",
+  ".html": "text/html; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".map": "application/json; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+};
+
+async function pathExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getContentType(filePath: string): string {
+  return assetContentTypes[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
+
+async function readAdminUiAsset(assetPath: string): Promise<{ body: Buffer; filePath: string } | null> {
+  const normalized = path.normalize(assetPath).replace(/^(\.\.(\/|\\|$))+/, "");
+  const filePath = path.resolve(adminUiDistDir, normalized);
+  const root = path.resolve(adminUiDistDir);
+
+  if (!filePath.startsWith(`${root}${path.sep}`)) {
+    return null;
+  }
+
+  try {
+    return {
+      body: await fs.readFile(filePath),
+      filePath,
+    };
+  } catch {
+    return null;
+  }
+}
 
 const inputPartSchema = z
   .object({
@@ -487,6 +541,7 @@ function serializeProfile(profile: OAuthProfile | null): Record<string, unknown>
     accountId: profile.accountId,
     email: profile.email,
     quota: profile.quota,
+    authStatus: profile.authStatus,
     expiresAt: profile.expires,
     accessTokenPreview: maskSecret(profile.access),
     refreshTokenPreview: maskSecret(profile.refresh),
@@ -500,6 +555,7 @@ function serializeManagedProfile(profile: ProfileSummary): Record<string, unknow
     accountId: profile.accountId,
     email: profile.email,
     quota: profile.quota,
+    authStatus: profile.authStatus,
     expiresAt: profile.expiresAt,
     accessTokenPreview: profile.accessTokenPreview,
     refreshTokenPreview: profile.refreshTokenPreview,
@@ -524,6 +580,11 @@ function getErrorStatusCode(error: unknown): number {
   const normalized = normalizeError(error) as Error & { statusCode?: number };
   if (typeof normalized.statusCode === "number") {
     return normalized.statusCode;
+  }
+
+  const upstreamStatus = (normalized as Error & { upstreamStatus?: unknown }).upstreamStatus;
+  if (upstreamStatus === 401 || upstreamStatus === 403) {
+    return upstreamStatus;
   }
 
   const message = normalized.message;
@@ -633,8 +694,30 @@ export function createApp(params?: {
   }
 
   app.get("/", async (_request, reply) => {
+    if (await pathExists(adminUiIndexPath)) {
+      reply.header("Content-Type", "text/html; charset=utf-8");
+      return fs.readFile(adminUiIndexPath, "utf8");
+    }
+
     reply.header("Content-Type", "text/html; charset=utf-8");
     return renderAdminPage();
+  });
+
+  app.get("/assets/*", async (request, reply) => {
+    const assetPath = (request.params as { "*": string })["*"];
+    const asset = await readAdminUiAsset(path.join("assets", assetPath));
+    if (!asset) {
+      reply.code(404);
+      return {
+        error: {
+          type: "not_found",
+          message: "asset not found",
+        },
+      };
+    }
+
+    reply.header("Content-Type", getContentType(asset.filePath));
+    return asset.body;
   });
 
   app.get("/favicon.ico", async (_request, reply) => {
@@ -660,8 +743,8 @@ export function createApp(params?: {
   });
 
   app.post("/_gateway/admin/runtime-refresh", async (request) => {
-    await Promise.all([
-      ctx.authService.syncActiveProfileQuota("openai-codex", {
+    const [quotaSync] = await Promise.all([
+      ctx.authService.syncAllProfileQuotas("openai-codex", {
         suppressErrors: true,
       }),
       ctx.versionService.getVersionStatus({
@@ -669,7 +752,10 @@ export function createApp(params?: {
       }),
     ]);
 
-    return buildAdminConfig(request);
+    return {
+      ...(await buildAdminConfig(request)),
+      quotaSync,
+    };
   });
 
   app.get("/_gateway/admin/config", async (request) => buildAdminConfig(request));
@@ -707,8 +793,23 @@ export function createApp(params?: {
     return buildAdminConfig(request);
   });
 
-  app.post("/_gateway/admin/profiles/sync-quota", async (request) => {
-    await ctx.authService.syncActiveProfileQuota("openai-codex");
+  app.post("/_gateway/admin/profiles/sync-quota", async (request, reply) => {
+    const parsed = profileActionSchema.partial().safeParse(request.body ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    if (parsed.data.profileId) {
+      await ctx.authService.syncProfileQuota(parsed.data.profileId, "openai-codex");
+    } else {
+      await ctx.authService.syncActiveProfileQuota("openai-codex");
+    }
     return buildAdminConfig(request);
   });
 
@@ -871,6 +972,11 @@ export function createApp(params?: {
         },
       };
     }
+  });
+
+  app.get("/_gateway/admin/network-detect", async () => {
+    const settings = await ctx.configService.getSettings();
+    return ctx.networkDetectService.collectReport(settings.networkProxy);
   });
 
   app.get("/v1/models", async () => ({

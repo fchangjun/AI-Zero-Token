@@ -2,6 +2,8 @@
 .npmrc
 .state/
 dist/
+admin-ui/dist/
+release/
 node_modules/
 TECHNICAL.md
 PRODUCT.md

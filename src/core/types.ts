@@ -23,6 +23,14 @@ export type CodexQuotaSnapshot = {
   promoMessage?: string;
 };
 
+export type ProfileAuthStatus = {
+  state: "ok" | "token_invalidated" | "auth_error";
+  checkedAt: number;
+  message?: string;
+  code?: string;
+  httpStatus?: number;
+};
+
 export type OAuthProfile = {
   provider: ProviderId;
   profileId: string;
@@ -34,6 +42,7 @@ export type OAuthProfile = {
   accountId: string;
   email?: string;
   quota?: CodexQuotaSnapshot;
+  authStatus?: ProfileAuthStatus;
 };
 
 export type ProfileSummary = {
@@ -46,6 +55,7 @@ export type ProfileSummary = {
   refreshTokenPreview: string;
   isActive: boolean;
   quota?: CodexQuotaSnapshot;
+  authStatus?: ProfileAuthStatus;
 };
 
 export type ModelInfo = {

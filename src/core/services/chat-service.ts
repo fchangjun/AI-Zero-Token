@@ -25,7 +25,7 @@ export class ChatService {
         system: request.system,
         bodyOverride: request.experimental?.codexBody,
       });
-      await this.deps.authService.updateProfileQuota(profile.profileId, result.quota, provider);
+      await this.deps.authService.recordProfileRequestSuccess(profile.profileId, result.quota, provider);
 
       return {
         provider,
@@ -36,7 +36,7 @@ export class ChatService {
       };
     } catch (error) {
       const quota = (error as { quota?: import("../types.js").CodexQuotaSnapshot }).quota;
-      await this.deps.authService.updateProfileQuota(profile.profileId, quota, provider);
+      await this.deps.authService.recordProfileRequestFailure(profile.profileId, error, quota, provider);
       throw error;
     }
   }

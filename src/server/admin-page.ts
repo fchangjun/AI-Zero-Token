@@ -1897,6 +1897,7 @@ export function renderAdminPage(): string {
                 <option value="all">全部状态</option>
                 <option value="healthy">健康</option>
                 <option value="warning">即将耗尽</option>
+                <option value="invalid">登录失效</option>
                 <option value="expired">已过期</option>
                 <option value="active">使用中</option>
               </select>
@@ -2301,6 +2302,13 @@ export function renderAdminPage(): string {
       return date.toLocaleString("zh-CN", { hour12: false });
     }
 
+    function timestampToMillis(value) {
+      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+        return null;
+      }
+      return value < 1000000000000 ? value * 1000 : value;
+    }
+
     function formatShortTime(value) {
       if (!value) {
         return "--:--";
@@ -2527,6 +2535,15 @@ export function renderAdminPage(): string {
         };
       }
 
+      if (profile.authStatus && (profile.authStatus.state === "token_invalidated" || profile.authStatus.state === "auth_error")) {
+        return {
+          supported: false,
+          label: "认证失效",
+          detail: "账号认证已失效，请重新登录后再使用图片生成。",
+          badgeClass: "red",
+        };
+      }
+
       const planType = getPlanType(profile);
       if (planType === "free") {
         return {
@@ -2543,6 +2560,17 @@ export function renderAdminPage(): string {
         detail: "当前账号可使用图片生成接口。",
         badgeClass: "green",
       };
+    }
+
+    function describeAuthStatus(profile) {
+      const authStatus = profile && profile.authStatus ? profile.authStatus : null;
+      if (!authStatus || authStatus.state === "ok") {
+        return authStatus && authStatus.checkedAt ? "正常 · " + formatTime(authStatus.checkedAt) : "正常";
+      }
+
+      const prefix = authStatus.state === "token_invalidated" ? "登录失效" : "认证异常";
+      const detail = authStatus.code || authStatus.httpStatus ? " (" + (authStatus.code || authStatus.httpStatus) + ")" : "";
+      return prefix + detail + " · " + formatTime(authStatus.checkedAt);
     }
 
     function maskEmail(email) {
@@ -2619,6 +2647,10 @@ export function renderAdminPage(): string {
       return Math.max(0, Math.min(100, value));
     }
 
+    function getPrimaryRemaining(profile) {
+      return 100 - getPrimaryUsage(profile);
+    }
+
     function getSecondaryUsage(profile) {
       const value = profile && profile.quota && typeof profile.quota.secondaryUsedPercent === "number"
         ? profile.quota.secondaryUsedPercent
@@ -2663,6 +2695,22 @@ export function renderAdminPage(): string {
 
     function getProfileHealth(profile) {
       const now = Date.now();
+      if (profile && profile.authStatus && profile.authStatus.state === "token_invalidated") {
+        return {
+          key: "invalid",
+          label: "登录失效",
+          badgeClass: "red",
+          barClass: "red",
+        };
+      }
+      if (profile && profile.authStatus && profile.authStatus.state === "auth_error") {
+        return {
+          key: "invalid",
+          label: "认证异常",
+          badgeClass: "red",
+          barClass: "red",
+        };
+      }
       if (profile && profile.expiresAt && profile.expiresAt <= now) {
         return {
           key: "expired",
@@ -2699,6 +2747,22 @@ export function renderAdminPage(): string {
       };
     }
 
+    function isProfileUnavailable(profile) {
+      const health = getProfileHealth(profile);
+      return health.key === "invalid" || health.key === "expired";
+    }
+
+    function getProfileSortGroup(profile, codexAccountId) {
+      const isCodexActive = Boolean(codexAccountId && profile.accountId === codexAccountId);
+      if (profile.isActive || isCodexActive) {
+        return 0;
+      }
+      if (isProfileUnavailable(profile)) {
+        return 2;
+      }
+      return 1;
+    }
+
     function describeReset(profile, slot) {
       if (!profile || !profile.quota) {
         return "暂无数据";
@@ -2707,8 +2771,9 @@ export function renderAdminPage(): string {
       const quota = profile.quota;
       const resetAt = slot === "primary" ? quota.primaryResetAt : quota.secondaryResetAt;
       const resetAfter = slot === "primary" ? quota.primaryResetAfterSeconds : quota.secondaryResetAfterSeconds;
-      if (typeof resetAt === "number" && resetAt > 0) {
-        return formatTime(resetAt * 1000);
+      const resetAtMillis = timestampToMillis(resetAt);
+      if (resetAtMillis) {
+        return formatTime(resetAtMillis);
       }
       if (typeof resetAfter === "number" && resetAfter > 0) {
         return formatCompactDuration(resetAfter) + "后";
@@ -2738,11 +2803,13 @@ export function renderAdminPage(): string {
       const quota = profile.quota;
       const resetAt = slot === "primary" ? quota.primaryResetAt : quota.secondaryResetAt;
       const resetAfter = slot === "primary" ? quota.primaryResetAfterSeconds : quota.secondaryResetAfterSeconds;
-      if (typeof resetAt === "number" && resetAt > 0) {
-        return formatCompactDateTime(resetAt * 1000);
+      const resetAtMillis = timestampToMillis(resetAt);
+      if (resetAtMillis) {
+        return formatCompactDateTime(resetAtMillis);
       }
       if (typeof resetAfter === "number" && resetAfter > 0) {
-        return formatCompactDuration(resetAfter) + "后";
+        const capturedAt = timestampToMillis(quota.capturedAt);
+        return capturedAt ? formatCompactDateTime(capturedAt + resetAfter * 1000) : formatCompactDuration(resetAfter) + "后";
       }
       return "未知";
     }
@@ -3168,6 +3235,9 @@ export function renderAdminPage(): string {
         if (status === "warning" && health.key !== "warning") {
           return false;
         }
+        if (status === "invalid" && health.key !== "invalid") {
+          return false;
+        }
         if (status === "expired" && health.key !== "expired") {
           return false;
         }
@@ -3175,23 +3245,17 @@ export function renderAdminPage(): string {
       });
 
       filtered.sort(function (a, b) {
-        const aCodexActive = Boolean(codexAccountId && a.accountId === codexAccountId);
-        const bCodexActive = Boolean(codexAccountId && b.accountId === codexAccountId);
-        const activeDiff = Number(b.isActive || bCodexActive) - Number(a.isActive || aCodexActive);
-        if (activeDiff !== 0) {
-          return activeDiff;
-        }
-        const gatewayDiff = Number(b.isActive) - Number(a.isActive);
-        if (gatewayDiff !== 0) {
-          return gatewayDiff;
-        }
-        const codexDiff = Number(bCodexActive) - Number(aCodexActive);
-        if (codexDiff !== 0) {
-          return codexDiff;
+        const groupDiff = getProfileSortGroup(a, codexAccountId) - getProfileSortGroup(b, codexAccountId);
+        if (groupDiff !== 0) {
+          return groupDiff;
         }
         const planDiff = getPlanRank(b) - getPlanRank(a);
         if (planDiff !== 0) {
           return planDiff;
+        }
+        const primaryRemainingDiff = getPrimaryRemaining(b) - getPrimaryRemaining(a);
+        if (primaryRemainingDiff !== 0) {
+          return primaryRemainingDiff;
         }
         if (sort === "latency-asc") {
           const aCapturedAt = getQuotaSnapshotTime(a) || 0;
@@ -3343,6 +3407,7 @@ export function renderAdminPage(): string {
             ? '<div class="meta-grid">'
               + '<div class="meta-item"><label>套餐</label><strong>' + escapeHtml(planType) + "</strong></div>"
               + '<div class="meta-item"><label>生图能力</label><strong>' + escapeHtml(imageCapability.detail) + "</strong></div>"
+              + '<div class="meta-item"><label>认证状态</label><strong>' + escapeHtml(describeAuthStatus(profile)) + "</strong></div>"
               + '<div class="meta-item"><label>额度快照</label><strong>' + escapeHtml(describeQuotaSnapshot(profile)) + "</strong></div>"
               + '<div class="meta-item"><label>额度限制</label><strong>' + escapeHtml(describeQuotaLimit(profile)) + "</strong></div>"
               + '<div class="meta-item"><label>Account ID</label><code>' + escapeHtml(state.showEmails ? (profile.accountId || "未提供") : maskIdentifier(profile.accountId || "未提供")) + "</code></div>"
@@ -3352,6 +3417,7 @@ export function renderAdminPage(): string {
           +   '<div class="account-actions">'
           +     actionButton
           +     codexButton
+          +     '<button class="btn-secondary" type="button" data-profile-action="sync-quota" data-profile-id="' + escapeHtml(profile.profileId) + '">刷新额度</button>'
           +     '<button class="btn-secondary" type="button" data-profile-action="export" data-profile-id="' + escapeHtml(profile.profileId) + '">导出</button>'
           +     '<button class="btn-danger" type="button" data-profile-action="remove" data-profile-id="' + escapeHtml(profile.profileId) + '">删除</button>'
           +   "</div>"
@@ -3861,6 +3927,28 @@ export function renderAdminPage(): string {
         await applyProfileToCodex(profileId, button);
         return;
       }
+      if (action === "sync-quota") {
+        setBusy(button, true);
+        authStatus.textContent = "正在刷新账号额度...";
+        try {
+          const config = await fetchJson("/_gateway/admin/profiles/sync-quota", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: formatJson({
+              profileId: profileId,
+            }),
+          });
+          renderConfig(config);
+          authStatus.textContent = "额度信息已同步。";
+        } catch (error) {
+          authStatus.textContent = error.message;
+        } finally {
+          setBusy(button, false);
+        }
+        return;
+      }
 
       setBusy(button, true);
       authStatus.textContent = action === "activate" ? "正在切换当前账号..." : "正在删除账号...";
@@ -4284,7 +4372,12 @@ export function renderAdminPage(): string {
       authStatus.textContent = "正在同步额度与版本状态...";
       refreshConfig({
         syncRuntime: true,
-      }).then(function () {
+      }).then(function (config) {
+        if (config && config.quotaSync) {
+          const sync = config.quotaSync;
+          authStatus.textContent = "额度与版本状态已刷新: " + String(sync.synced) + "/" + String(sync.total) + " 个账号成功" + (sync.failed ? "，" + String(sync.failed) + " 个失败" : "") + (sync.skipped ? "，" + String(sync.skipped) + " 个登录失效已跳过" : "") + "。";
+          return;
+        }
         authStatus.textContent = "额度与版本状态已刷新。";
       }).catch(function (error) {
         authStatus.textContent = error && error.message ? error.message : String(error);

@@ -50,6 +50,15 @@ function finalizeTiming(startedAt: number, phases: Record<string, number>): Http
   };
 }
 
+function safeConsole(method: "info" | "warn", message: string, meta: Record<string, unknown>): void {
+  try {
+    console[method](message, meta);
+  } catch {
+    // Desktop apps may outlive their inherited stdout/stderr pipe. Logging must
+    // never crash an active gateway request.
+  }
+}
+
 function logHttpTiming(params: {
   requestId: string;
   method: TextRequestInit["method"];
@@ -60,7 +69,7 @@ function logHttpTiming(params: {
   bodyLength?: number;
   fallbackFrom?: "fetch";
 }): void {
-  console.info("[http] request timing", {
+  safeConsole("info", "[http] request timing", {
     requestId: params.requestId,
     method: params.method,
     url: params.url,
@@ -190,7 +199,7 @@ async function runCurlRequest(
     try {
       headers = normalizeCurlHeaders(JSON.parse(headersText));
     } catch (error) {
-      console.warn("[http] failed to parse curl response headers", {
+      safeConsole("warn", "[http] failed to parse curl response headers", {
         requestId,
         url: init.url,
         error: error instanceof Error ? error.message : String(error),
@@ -226,7 +235,7 @@ async function loadNetworkProxySettings(): Promise<NetworkProxySettings | undefi
     const settings = await loadSettings();
     return settings.networkProxy;
   } catch (error) {
-    console.warn("[http] failed to load network proxy settings", {
+    safeConsole("warn", "[http] failed to load network proxy settings", {
       error: error instanceof Error ? error.message : String(error),
     });
     return undefined;
@@ -280,7 +289,7 @@ export async function requestText(init: TextRequestInit): Promise<HttpTextRespon
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn("[http] fetch attempt failed", {
+      safeConsole("warn", "[http] fetch attempt failed", {
         requestId,
         method: init.method,
         url: init.url,

@@ -11,6 +11,13 @@ type CodexSseEvent = {
   [key: string]: unknown;
 };
 
+type UpstreamErrorBody = {
+  message?: string;
+  type?: string;
+  code?: string;
+  param?: string | null;
+};
+
 const URL_KEY_RE = /(url|uri|href|download|preview|thumbnail|image|asset|file)/i;
 const REFERENCE_KEY_RE = /(image|asset|file|media|blob|artifact|download|preview|thumbnail)/i;
 const REFERENCE_VALUE_RE = /^(file|asset|image|img|media|blob)-[\w-]+$/i;
@@ -52,6 +59,26 @@ function parseOptionalText(value: string | undefined): string | undefined {
 
   const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function parseUpstreamErrorBody(body: string): UpstreamErrorBody | undefined {
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown };
+    const error = parsed.error;
+    if (!error || typeof error !== "object") {
+      return undefined;
+    }
+
+    const record = error as Record<string, unknown>;
+    return {
+      message: typeof record.message === "string" ? record.message : undefined,
+      type: typeof record.type === "string" ? record.type : undefined,
+      code: typeof record.code === "string" ? record.code : undefined,
+      param: typeof record.param === "string" || record.param === null ? record.param : undefined,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 export function extractCodexQuotaSnapshot(
@@ -379,10 +406,19 @@ export async function askOpenAICodex(params: {
   const quota = extractCodexQuotaSnapshot(response.headers, response.requestId);
 
   if (response.status < 200 || response.status >= 300) {
+    const upstreamError = parseUpstreamErrorBody(response.body);
     const error = new Error(`调用 Responses API 失败: HTTP ${response.status} via ${response.transport} ${response.body}`) as Error & {
       quota?: CodexQuotaSnapshot;
+      upstreamStatus?: number;
+      upstreamErrorCode?: string;
+      upstreamErrorType?: string;
+      upstreamErrorMessage?: string;
     };
     error.quota = quota;
+    error.upstreamStatus = response.status;
+    error.upstreamErrorCode = upstreamError?.code;
+    error.upstreamErrorType = upstreamError?.type;
+    error.upstreamErrorMessage = upstreamError?.message;
     throw error;
   }
 

@@ -494,10 +494,10 @@ export class ImageService {
             include: ["reasoning.encrypted_content"],
           },
         });
-        await this.deps.authService.updateProfileQuota(profile.profileId, result.quota, "openai-codex");
+        await this.deps.authService.recordProfileRequestSuccess(profile.profileId, result.quota, "openai-codex");
       } catch (error) {
         const quota = (error as { quota?: import("../types.js").CodexQuotaSnapshot }).quota;
-        await this.deps.authService.updateProfileQuota(profile.profileId, quota, "openai-codex");
+        await this.deps.authService.recordProfileRequestFailure(profile.profileId, error, quota, "openai-codex");
         throw error;
       }
 

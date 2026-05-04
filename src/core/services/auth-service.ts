@@ -7,7 +7,14 @@ import {
   setActiveProfile,
   updateProfile,
 } from "../store/profile-store.js";
-import type { CodexQuotaSnapshot, GatewayStatus, OAuthProfile, ProfileSummary, ProviderId } from "../types.js";
+import type {
+  CodexQuotaSnapshot,
+  GatewayStatus,
+  OAuthProfile,
+  ProfileAuthStatus,
+  ProfileSummary,
+  ProviderId,
+} from "../types.js";
 import {
   loginOpenAICodex,
   refreshOpenAICodexToken,
@@ -59,7 +66,60 @@ export class AuthService {
       accessTokenPreview: this.maskSecret(profile.access),
       refreshTokenPreview: this.maskSecret(profile.refresh),
       isActive: profile.profileId === activeProfileId,
+      authStatus: profile.authStatus,
     };
+  }
+
+  private createOkAuthStatus(): ProfileAuthStatus {
+    return {
+      state: "ok",
+      checkedAt: Date.now(),
+    };
+  }
+
+  private createAuthStatusFromError(error: unknown): ProfileAuthStatus | undefined {
+    const normalized = error instanceof Error ? error : new Error(String(error));
+    const details = normalized as Error & {
+      upstreamStatus?: unknown;
+      upstreamErrorCode?: unknown;
+      upstreamErrorMessage?: unknown;
+    };
+    const httpStatus = typeof details.upstreamStatus === "number" ? details.upstreamStatus : undefined;
+    const code = typeof details.upstreamErrorCode === "string" ? details.upstreamErrorCode : undefined;
+    const upstreamMessage = typeof details.upstreamErrorMessage === "string" ? details.upstreamErrorMessage : undefined;
+    const message = upstreamMessage || normalized.message;
+    const fingerprint = `${code || ""} ${message}`.toLowerCase();
+
+    if (
+      code === "token_invalidated" ||
+      fingerprint.includes("token_invalidated") ||
+      fingerprint.includes("authentication token has been invalidated")
+    ) {
+      return {
+        state: "token_invalidated",
+        checkedAt: Date.now(),
+        message,
+        code: code || "token_invalidated",
+        httpStatus,
+      };
+    }
+
+    if (
+      httpStatus === 401 ||
+      httpStatus === 403 ||
+      /http\s+40[13]/i.test(message) ||
+      fingerprint.includes("刷新 token 失败")
+    ) {
+      return {
+        state: "auth_error",
+        checkedAt: Date.now(),
+        message,
+        code,
+        httpStatus,
+      };
+    }
+
+    return undefined;
   }
 
   private getQuotaPercents(profile: OAuthProfile): number[] {
@@ -79,8 +139,16 @@ export class AuthService {
   }
 
   private hasKnownAvailableQuota(profile: OAuthProfile): boolean {
+    if (profile.authStatus?.state === "token_invalidated" || profile.authStatus?.state === "auth_error") {
+      return false;
+    }
+
     const percents = this.getQuotaPercents(profile);
     return percents.length > 0 && percents.every((value) => value < 100);
+  }
+
+  private hasInvalidAuthStatus(profile: OAuthProfile): boolean {
+    return profile.authStatus?.state === "token_invalidated" || profile.authStatus?.state === "auth_error";
   }
 
   private getQuotaUsageScore(profile: OAuthProfile): number {
@@ -90,6 +158,64 @@ export class AuthService {
     }
 
     return Math.max(...percents);
+  }
+
+  private async applyProfileRuntimeUpdate(
+    profileId: string,
+    provider: ProviderId,
+    updater: (profile: OAuthProfile) => OAuthProfile,
+    options?: { skipAutoSwitch?: boolean; checkAutoSwitch?: boolean },
+  ): Promise<OAuthProfile | null> {
+    const updated = await updateProfile(profileId, (profile) => {
+      if (profile.provider !== provider) {
+        return profile;
+      }
+
+      return updater(profile);
+    });
+
+    if (
+      !options?.checkAutoSwitch ||
+      options.skipAutoSwitch ||
+      !updated ||
+      updated.provider !== provider ||
+      !this.isQuotaExhausted(updated)
+    ) {
+      return updated;
+    }
+
+    const activeProfile = await this.getActiveProfile(provider);
+    if (activeProfile?.profileId === updated.profileId) {
+      await this.maybeAutoSwitchProfile(updated, provider);
+    }
+
+    return updated;
+  }
+
+  private async refreshStoredProfile(profile: OAuthProfile, provider: ProviderId): Promise<OAuthProfile> {
+    try {
+      const refreshed = await refreshOpenAICodexToken(profile);
+      const merged = await this.applyProfileRuntimeUpdate(
+        profile.profileId,
+        provider,
+        (current) => ({
+          ...refreshed,
+          email: refreshed.email ?? current.email,
+          quota: current.quota,
+          authStatus: this.createOkAuthStatus(),
+        }),
+      );
+      return this.toManagedProfile(merged ?? {
+        ...refreshed,
+        quota: profile.quota,
+        authStatus: this.createOkAuthStatus(),
+      });
+    } catch (error) {
+      await this.recordProfileRequestFailure(profile.profileId, error, undefined, provider, {
+        skipAutoSwitch: true,
+      });
+      throw error;
+    }
   }
 
   private async maybeAutoSwitchProfile(profile: OAuthProfile, provider: ProviderId): Promise<OAuthProfile> {
@@ -304,9 +430,7 @@ export class AuthService {
       return profile;
     }
 
-    const refreshed = await refreshOpenAICodexToken(profile);
-    await saveProfile(refreshed);
-    return this.toManagedProfile(refreshed);
+    return this.refreshStoredProfile(profile, provider);
   }
 
   async requireFreshProfileWithIdToken(profileId: string, provider: ProviderId = "openai-codex"): Promise<OAuthProfile> {
@@ -320,8 +444,7 @@ export class AuthService {
       return this.toManagedProfile(profile);
     }
 
-    const refreshed = await refreshOpenAICodexToken(profile);
-    await saveProfile(refreshed);
+    const refreshed = await this.refreshStoredProfile(profile, provider);
     if (!refreshed.idToken) {
       throw new Error("刷新 token 成功，但上游没有返回 id_token。");
     }
@@ -349,10 +472,65 @@ export class AuthService {
       throw error;
     }
     const model = await this.configService.getDefaultModel(provider);
+    await this.syncQuotaForProfile(profile, model, provider, options);
+  }
 
+  async syncProfileQuota(
+    profileId: string,
+    provider: ProviderId = "openai-codex",
+    options?: { suppressErrors?: boolean; skipAutoSwitch?: boolean },
+  ): Promise<void> {
+    const profiles = await listProfiles();
+    const profile = profiles.find((item) => item.provider === provider && item.profileId === profileId);
+    if (!profile) {
+      throw new Error(`没有找到账号: ${profileId}`);
+    }
+
+    const model = await this.configService.getDefaultModel(provider);
+    await this.syncQuotaForProfile(profile, model, provider, options);
+  }
+
+  async syncAllProfileQuotas(
+    provider: ProviderId = "openai-codex",
+    options?: { suppressErrors?: boolean; skipAutoSwitch?: boolean },
+  ): Promise<{ total: number; synced: number; failed: number; skipped: number }> {
+    const [profiles, activeProfile, model] = await Promise.all([
+      listProfiles(),
+      this.getActiveProfile(provider),
+      this.configService.getDefaultModel(provider),
+    ]);
+    const providerProfiles = profiles.filter((profile) => profile.provider === provider);
+    const skipped = providerProfiles.filter((profile) => this.hasInvalidAuthStatus(profile)).length;
+    const targets = providerProfiles
+      .filter((profile) => !this.hasInvalidAuthStatus(profile))
+      .sort((left, right) => Number(left.profileId === activeProfile?.profileId) - Number(right.profileId === activeProfile?.profileId));
+    const results = [];
+
+    for (const profile of targets) {
+      results.push(await this.syncQuotaForProfile(profile, model, provider, options));
+    }
+
+    const failed = results.filter((item) => !item.ok).length;
+    return {
+      total: providerProfiles.length,
+      synced: results.length - failed,
+      failed,
+      skipped,
+    };
+  }
+
+  private async syncQuotaForProfile(
+    profile: OAuthProfile,
+    model: string,
+    provider: ProviderId,
+    options?: { suppressErrors?: boolean; skipAutoSwitch?: boolean },
+  ): Promise<{ ok: boolean; profileId: string; error?: string }> {
     try {
+      const usableProfile = Date.now() < profile.expires
+        ? this.toManagedProfile(profile)
+        : await this.refreshStoredProfile(profile, provider);
       const result = await askOpenAICodex({
-        profile,
+        profile: usableProfile,
         model,
         system: "Reply with OK only.",
         prompt: "ping",
@@ -360,12 +538,16 @@ export class AuthService {
           text: { verbosity: "low" },
         },
       });
-      await this.updateProfileQuota(profile.profileId, result.quota, provider, {
+      await this.recordProfileRequestSuccess(usableProfile.profileId, result.quota, provider, {
         skipAutoSwitch: options?.skipAutoSwitch,
       });
+      return {
+        ok: true,
+        profileId: usableProfile.profileId,
+      };
     } catch (error) {
       const quota = (error as { quota?: CodexQuotaSnapshot }).quota;
-      await this.updateProfileQuota(profile.profileId, quota, provider, {
+      await this.recordProfileRequestFailure(profile.profileId, error, quota, provider, {
         skipAutoSwitch: options?.skipAutoSwitch,
       });
 
@@ -373,12 +555,65 @@ export class AuthService {
         throw error;
       }
 
-      console.warn("[auth] sync active profile quota failed", {
+      console.warn("[auth] sync profile quota failed", {
         provider,
         profileId: profile.profileId,
         error: error instanceof Error ? error.message : String(error),
       });
+      return {
+        ok: false,
+        profileId: profile.profileId,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
+  }
+
+  async recordProfileRequestSuccess(
+    profileId: string,
+    quota: CodexQuotaSnapshot | undefined,
+    provider: ProviderId = "openai-codex",
+    options?: { skipAutoSwitch?: boolean },
+  ): Promise<void> {
+    await this.applyProfileRuntimeUpdate(
+      profileId,
+      provider,
+      (profile) => ({
+        ...profile,
+        ...(quota ? { quota } : {}),
+        authStatus: this.createOkAuthStatus(),
+      }),
+      {
+        skipAutoSwitch: options?.skipAutoSwitch,
+        checkAutoSwitch: Boolean(quota),
+      },
+    );
+  }
+
+  async recordProfileRequestFailure(
+    profileId: string,
+    error: unknown,
+    quota: CodexQuotaSnapshot | undefined,
+    provider: ProviderId = "openai-codex",
+    options?: { skipAutoSwitch?: boolean },
+  ): Promise<void> {
+    const authStatus = this.createAuthStatusFromError(error);
+    if (!quota && !authStatus) {
+      return;
+    }
+
+    await this.applyProfileRuntimeUpdate(
+      profileId,
+      provider,
+      (profile) => ({
+        ...profile,
+        ...(quota ? { quota } : {}),
+        ...(authStatus ? { authStatus } : {}),
+      }),
+      {
+        skipAutoSwitch: options?.skipAutoSwitch,
+        checkAutoSwitch: Boolean(quota),
+      },
+    );
   }
 
   async updateProfileQuota(
@@ -391,25 +626,18 @@ export class AuthService {
       return;
     }
 
-    const updated = await updateProfile(profileId, (profile) => {
-      if (profile.provider !== provider) {
-        return profile;
-      }
-
-      return {
+    await this.applyProfileRuntimeUpdate(
+      profileId,
+      provider,
+      (profile) => ({
         ...profile,
         quota,
-      };
-    });
-
-    if (options?.skipAutoSwitch || !updated || updated.provider !== provider || !this.isQuotaExhausted(updated)) {
-      return;
-    }
-
-    const activeProfile = await this.getActiveProfile(provider);
-    if (activeProfile?.profileId === updated.profileId) {
-      await this.maybeAutoSwitchProfile(updated, provider);
-    }
+      }),
+      {
+        skipAutoSwitch: options?.skipAutoSwitch,
+        checkAutoSwitch: true,
+      },
+    );
   }
 
   async getStatus(): Promise<GatewayStatus> {
