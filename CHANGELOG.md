@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.0.1 - 2026-05-04
+
+- Improved desktop sidebar navigation responsiveness by switching routes immediately and de-duplicating hash-change updates.
+- Removed the generated skill documentation zip from Git tracking and ignored it for future commits.
+
 ## 2.0.0 - 2026-05-04
 
 - Added the Electron desktop app, with a local gateway boot path and the management UI embedded in the desktop shell.

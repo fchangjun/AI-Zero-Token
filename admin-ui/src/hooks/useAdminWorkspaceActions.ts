@@ -47,8 +47,11 @@ export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceAction
   }, [state]);
 
   const goRoute = useCallback((route: AppRoute) => {
+    const nextHash = `#${route}`;
     state.setActiveRoute(route);
-    window.location.hash = route;
+    if (window.location.hash !== nextHash) {
+      window.location.hash = route;
+    }
   }, [state]);
 
   const copyBaseUrl = useCallback(() => {

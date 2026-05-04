@@ -81,7 +81,10 @@ export function useAdminWorkspaceState(): WorkspaceState {
   }, [refreshConfig]);
 
   useEffect(() => {
-    const handleHashChange = () => setActiveRoute(readRouteFromHash());
+    const handleHashChange = () => {
+      const route = readRouteFromHash();
+      setActiveRoute((current) => (current === route ? current : route));
+    };
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
