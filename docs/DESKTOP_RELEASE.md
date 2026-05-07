@@ -41,6 +41,13 @@ npm run dist:win
 
 Creates macOS and Windows distributables. macOS builds should be produced on macOS. Windows builds are best produced on Windows CI or a runner with a complete Windows packaging environment.
 
+`npm run dist:mac` must build both Apple Silicon and Intel macOS packages. It runs:
+
+```bash
+npm run dist:mac:arm64
+npm run dist:mac:x64
+```
+
 ## UI Engineering Standards
 
 Before building release artifacts, the desktop React UI should follow:
@@ -75,17 +82,38 @@ release/
 
 The folder is intentionally ignored by git.
 
+Every desktop GitHub Release must upload exactly these user-facing artifacts:
+
+```text
+AI Zero Token-{version}-mac-arm64.dmg
+AI Zero Token-{version}-mac-x64.dmg
+AI Zero Token Setup {version}.exe
+AI Zero Token-{version}-win.zip
+```
+
+Artifact purpose:
+
+- `AI Zero Token-{version}-mac-arm64.dmg`: macOS Apple Silicon builds for M1/M2/M3/M4 devices.
+- `AI Zero Token-{version}-mac-x64.dmg`: macOS Intel builds.
+- `AI Zero Token Setup {version}.exe`: Windows installer and primary Windows download.
+- `AI Zero Token-{version}-win.zip`: Windows portable zip.
+
+Do not upload unpacked app directories, debug metadata, universal macOS builds, or auto-update metadata unless the release explicitly enables an auto-update channel.
+
 ### Publish Flow
 
 1. Build the desktop package:
 
    ```bash
-   npm run dist:dir
+   npm run dist:mac
+   npm run dist:win
    ```
 
-2. Upload the generated files from `release/` to the matching GitHub Release tag.
+2. Rename the generated files, if needed, so the GitHub Release uses the standard artifact names listed above.
 
-3. Publish the npm package after confirming `package.json` and `package-lock.json` both point at the new version:
+3. Upload only the standard artifact files from `release/` to the matching GitHub Release tag.
+
+4. Publish the npm package after confirming `package.json` and `package-lock.json` both point at the new version:
 
    ```bash
    npm publish

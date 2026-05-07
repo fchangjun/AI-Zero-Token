@@ -50,7 +50,7 @@
     "desktop:dev": "node scripts/dev.mjs desktop",
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
-    "dist:mac": "npm run build && electron-builder --mac --universal",
+    "dist:mac": "npm run dist:mac:arm64 && npm run dist:mac:x64",
     "dist:mac:arm64": "npm run build && electron-builder --mac --arm64",
     "dist:mac:x64": "npm run build && electron-builder --mac --x64",
     "dist:win": "npm run build && electron-builder --win",
