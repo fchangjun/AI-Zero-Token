@@ -13,6 +13,7 @@ type DemoStore = {
 };
 
 const PROFILE_CLAIM_PATH = "https://api.openai.com/profile";
+let storeMutationQueue: Promise<void> = Promise.resolve();
 
 function createEmptyStore(): DemoStore {
   return {
@@ -92,27 +93,40 @@ export async function saveStore(store: DemoStore): Promise<void> {
   await fs.writeFile(getStorePath(), `${JSON.stringify(store, null, 2)}\n`, "utf8");
 }
 
+async function withStoreMutation<T>(operation: () => Promise<T>): Promise<T> {
+  const run = storeMutationQueue.then(operation, operation);
+  storeMutationQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 export async function saveProfile(profile: OAuthProfile): Promise<void> {
-  const store = await loadStore();
-  store.profiles[profile.profileId] = profile;
-  store.activeProfileId = profile.profileId;
-  await saveStore(store);
+  await withStoreMutation(async () => {
+    const store = await loadStore();
+    store.profiles[profile.profileId] = profile;
+    store.activeProfileId = profile.profileId;
+    await saveStore(store);
+  });
 }
 
 export async function updateProfile(
   profileId: string,
   updater: (profile: OAuthProfile) => OAuthProfile,
 ): Promise<OAuthProfile | null> {
-  const store = await loadStore();
-  const profile = store.profiles[profileId];
-  if (!profile) {
-    return null;
-  }
+  return withStoreMutation(async () => {
+    const store = await loadStore();
+    const profile = store.profiles[profileId];
+    if (!profile) {
+      return null;
+    }
 
-  const updated = updater(profile);
-  store.profiles[profileId] = updated;
-  await saveStore(store);
-  return updated;
+    const updated = updater(profile);
+    store.profiles[profileId] = updated;
+    await saveStore(store);
+    return updated;
+  });
 }
 
 export async function listProfiles(): Promise<OAuthProfile[]> {
@@ -121,15 +135,17 @@ export async function listProfiles(): Promise<OAuthProfile[]> {
 }
 
 export async function setActiveProfile(profileId: string): Promise<OAuthProfile | null> {
-  const store = await loadStore();
-  const profile = store.profiles[profileId];
-  if (!profile) {
-    return null;
-  }
+  return withStoreMutation(async () => {
+    const store = await loadStore();
+    const profile = store.profiles[profileId];
+    if (!profile) {
+      return null;
+    }
 
-  store.activeProfileId = profileId;
-  await saveStore(store);
-  return profile;
+    store.activeProfileId = profileId;
+    await saveStore(store);
+    return profile;
+  });
 }
 
 export async function getActiveProfile(): Promise<OAuthProfile | null> {
@@ -144,23 +160,27 @@ export async function getActiveProfile(): Promise<OAuthProfile | null> {
 }
 
 export async function removeProfile(profileId: string): Promise<OAuthProfile | null> {
-  const store = await loadStore();
-  if (!store.profiles[profileId]) {
-    return null;
-  }
+  return withStoreMutation(async () => {
+    const store = await loadStore();
+    if (!store.profiles[profileId]) {
+      return null;
+    }
 
-  delete store.profiles[profileId];
+    delete store.profiles[profileId];
 
-  if (store.activeProfileId === profileId) {
-    store.activeProfileId = Object.keys(store.profiles)[0];
-  }
+    if (store.activeProfileId === profileId) {
+      store.activeProfileId = Object.keys(store.profiles)[0];
+    }
 
-  await saveStore(store);
-  return store.activeProfileId ? store.profiles[store.activeProfileId] ?? null : null;
+    await saveStore(store);
+    return store.activeProfileId ? store.profiles[store.activeProfileId] ?? null : null;
+  });
 }
 
 export async function clearStore(): Promise<void> {
-  await fs.rm(getStateDir(), { recursive: true, force: true });
+  await withStoreMutation(async () => {
+    await fs.rm(getStateDir(), { recursive: true, force: true });
+  });
 }
 
 export { getStateDir, getStorePath };

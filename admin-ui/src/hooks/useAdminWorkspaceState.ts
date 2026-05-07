@@ -50,13 +50,19 @@ export function useAdminWorkspaceState(): WorkspaceState {
     try {
       const next = await fetchJson<AdminConfig & { quotaSync?: { total: number; synced: number; failed: number; skipped?: number } }>(
         options?.runtime ? "/_gateway/admin/runtime-refresh" : "/_gateway/admin/config",
-        options?.runtime ? { method: "POST" } : undefined,
+        options?.runtime
+          ? {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ staleOnly: Boolean(options.silent) }),
+            }
+          : undefined,
       );
       setConfig(next);
       const sync = next.quotaSync;
       setStatus(
         options?.runtime && sync
-          ? `状态和额度已刷新：${sync.synced}/${sync.total} 个账号成功${sync.failed ? `，${sync.failed} 个失败` : ""}${sync.skipped ? `，${sync.skipped} 个登录失效已跳过` : ""}。`
+          ? `状态和额度已刷新：${sync.synced}/${sync.total} 个账号成功${sync.failed ? `，${sync.failed} 个失败` : ""}${sync.skipped ? `，${sync.skipped} 个跳过` : ""}。`
           : options?.runtime
             ? "状态和额度已刷新。"
             : "网关状态已同步。",

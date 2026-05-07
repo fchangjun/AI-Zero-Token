@@ -172,6 +172,10 @@ const profileImportSchema = z.object({
   profile: z.unknown(),
 });
 
+const runtimeRefreshSchema = z.object({
+  staleOnly: z.boolean().optional(),
+});
+
 const profileExportSchema = z.object({
   profileId: z.string().min(1).optional(),
   profileIds: z.array(z.string().min(1)).optional(),
@@ -761,10 +765,22 @@ export function createApp(params?: {
     };
   });
 
-  app.post("/_gateway/admin/runtime-refresh", async (request) => {
+  app.post("/_gateway/admin/runtime-refresh", async (request, reply) => {
+    const parsed = runtimeRefreshSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
     const [quotaSync] = await Promise.all([
       ctx.authService.syncAllProfileQuotas("openai-codex", {
         suppressErrors: true,
+        staleAfterMs: parsed.data.staleOnly ? 30 * 60 * 1000 : undefined,
       }),
       ctx.versionService.getVersionStatus({
         force: true,

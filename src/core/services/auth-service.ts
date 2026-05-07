@@ -37,6 +37,28 @@ import {
   type ExportedProfile,
 } from "../store/profile-transfer.js";
 
+const QUOTA_SYNC_CONCURRENCY = 8;
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index] as T);
+    }
+  }));
+
+  return results;
+}
+
 export class AuthService {
   constructor(private readonly configService: ConfigService) {}
 
@@ -500,7 +522,7 @@ export class AuthService {
 
   async syncAllProfileQuotas(
     provider: ProviderId = "openai-codex",
-    options?: { suppressErrors?: boolean; skipAutoSwitch?: boolean },
+    options?: { suppressErrors?: boolean; skipAutoSwitch?: boolean; staleAfterMs?: number },
   ): Promise<{ total: number; synced: number; failed: number; skipped: number }> {
     const [profiles, activeProfile, model] = await Promise.all([
       listProfiles(),
@@ -508,15 +530,20 @@ export class AuthService {
       this.configService.getDefaultModel(provider),
     ]);
     const providerProfiles = profiles.filter((profile) => profile.provider === provider);
-    const skipped = providerProfiles.filter((profile) => this.hasInvalidAuthStatus(profile)).length;
+    const now = Date.now();
     const targets = providerProfiles
       .filter((profile) => !this.hasInvalidAuthStatus(profile))
-      .sort((left, right) => Number(left.profileId === activeProfile?.profileId) - Number(right.profileId === activeProfile?.profileId));
-    const results = [];
+      .filter((profile) => {
+        if (!options?.staleAfterMs) {
+          return true;
+        }
 
-    for (const profile of targets) {
-      results.push(await this.syncQuotaForProfile(profile, model, provider, options));
-    }
+        const capturedAt = profile.quota?.capturedAt;
+        return !capturedAt || now - capturedAt >= options.staleAfterMs;
+      })
+      .sort((left, right) => Number(right.profileId === activeProfile?.profileId) - Number(left.profileId === activeProfile?.profileId));
+    const skipped = providerProfiles.length - targets.length;
+    const results = await mapWithConcurrency(targets, QUOTA_SYNC_CONCURRENCY, (profile) => this.syncQuotaForProfile(profile, model, provider, options));
 
     const failed = results.filter((item) => !item.ok).length;
     return {
