@@ -307,6 +307,14 @@ export class AuthService {
     return this.toManagedProfile(profile);
   }
 
+  validateProfilesImport(value: unknown, provider: ProviderId = "openai-codex"): OAuthProfile[] {
+    if (provider !== "openai-codex") {
+      throw new Error(`暂不支持 provider: ${provider}`);
+    }
+
+    return importProfilesFromJson(value);
+  }
+
   async importProfiles(value: unknown, provider: ProviderId = "openai-codex"): Promise<OAuthProfile[]> {
     if (provider !== "openai-codex") {
       throw new Error(`暂不支持 provider: ${provider}`);

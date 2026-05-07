@@ -870,6 +870,25 @@ export function createApp(params?: {
     };
   });
 
+  app.post("/_gateway/admin/profiles/import/validate", async (request, reply) => {
+    const parsed = profileImportSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    const profiles = ctx.authService.validateProfilesImport(parsed.data.profile);
+    return {
+      valid: true,
+      profileCount: profiles.length,
+    };
+  });
+
   app.get("/_gateway/admin/profiles/import-template", async () => ({
     profile: ctx.authService.getProfileImportTemplate(),
   }));
