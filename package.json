@@ -94,6 +94,12 @@
       "README.zh-CN.md",
       "LICENSE"
     ],
+    "extraResources": [
+      {
+        "from": "build/mac-install-guide.txt",
+        "to": "mac-install-guide.txt"
+      }
+    ],
     "extraMetadata": {
       "main": "dist/desktop/main.js"
     },
@@ -104,6 +110,27 @@
       "target": [
         "dmg",
         "zip"
+      ]
+    },
+    "dmg": {
+      "contents": [
+        {
+          "x": 130,
+          "y": 160,
+          "type": "file"
+        },
+        {
+          "x": 410,
+          "y": 160,
+          "type": "link",
+          "path": "/Applications"
+        },
+        {
+          "x": 270,
+          "y": 300,
+          "type": "file",
+          "path": "build/mac-install-guide.txt"
+        }
       ]
     },
     "win": {
@@ -125,6 +152,7 @@
     "build/icon.png",
     "build/icon.icns",
     "build/icon.ico",
+    "build/mac-install-guide.txt",
     "CHANGELOG.md",
     "docs/API_USAGE.md",
     "docs/DESKTOP_RELEASE.md",

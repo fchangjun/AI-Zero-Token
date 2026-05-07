@@ -1,0 +1,25 @@
+AI Zero Token macOS 安装说明
+
+如果打开 App 时看到“Apple 无法验证 AI Zero Token 是否包含可能危害 Mac 安全或泄漏隐私的恶意软件”，这是因为当前安装包尚未接入 Apple Developer ID 公证。
+
+临时打开方式：
+
+1. 将 AI Zero Token 拖入 Applications。
+2. 打开“系统设置”。
+3. 进入“隐私与安全性”。
+4. 在安全提示区域点击“仍要打开”。
+5. 再次确认打开 AI Zero Token。
+
+也可以使用：
+
+1. 在 Applications 中找到 AI Zero Token。
+2. 按住 Control 并点击 App，选择“打开”。
+3. 在确认窗口中再次点击“打开”。
+
+安全说明：
+
+- 这是 macOS Gatekeeper 对未公证应用的标准提示。
+- 这不代表当前安装包一定有问题。
+- 如果你从 GitHub Releases 官方页面下载，并且版本号与发布说明一致，可以按上面的步骤打开。
+- 后续版本接入 Apple Developer ID 签名和 notarization 后，这个提示会消失。
+

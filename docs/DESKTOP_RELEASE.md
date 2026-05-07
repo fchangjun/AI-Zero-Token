@@ -72,6 +72,8 @@ Unsigned builds are suitable for internal testing only. Public commercial distri
 
 `electron-builder` reads the standard signing environment variables. Configure these in CI instead of committing credentials to the repository.
 
+Until macOS Developer ID signing and notarization are configured, each macOS DMG must include `build/mac-install-guide.txt` so users can handle the Gatekeeper verification prompt.
+
 ## Release Artifacts
 
 The packaged output is written to:
@@ -99,6 +101,8 @@ Artifact purpose:
 - `AI Zero Token-{version}-win.zip`: Windows portable zip.
 
 Do not upload unpacked app directories, debug metadata, universal macOS builds, or auto-update metadata unless the release explicitly enables an auto-update channel.
+
+macOS DMG files should include the in-package `mac-install-guide.txt` helper document. Do not upload this text file as a standalone GitHub Release asset.
 
 ### Publish Flow
 
