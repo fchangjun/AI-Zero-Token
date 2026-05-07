@@ -1,6 +1,6 @@
 {
   "name": "ai-zero-token",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Local-first OpenAI-compatible AI CLI and gateway with Codex OAuth, multi-account management, and gpt-image-2 image generation/editing.",
   "license": "MIT",
   "author": "AI Zero Token Contributors",
@@ -50,7 +50,9 @@
     "desktop:dev": "node scripts/dev.mjs desktop",
     "dist": "npm run build && electron-builder",
     "dist:dir": "npm run build && electron-builder --dir",
-    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:mac": "npm run build && electron-builder --mac --universal",
+    "dist:mac:arm64": "npm run build && electron-builder --mac --arm64",
+    "dist:mac:x64": "npm run build && electron-builder --mac --x64",
     "dist:win": "npm run build && electron-builder --win",
     "typecheck": "npm run typecheck:server && npm run typecheck:ui",
     "typecheck:server": "bunx tsc -p tsconfig.json --noEmit",
@@ -119,6 +121,7 @@
   "files": [
     "dist",
     "admin-ui/dist",
+    "build/icon.svg",
     "build/icon.png",
     "build/icon.icns",
     "build/icon.ico",

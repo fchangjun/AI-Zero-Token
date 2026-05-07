@@ -115,10 +115,14 @@ function normalizeCurlHeaders(value: unknown): Record<string, string> {
 
 async function runCurlRequest(
   init: TextRequestInit,
-  params?: { requestId?: string; fallbackFrom?: "fetch"; proxy?: NetworkProxySettings },
+  params?: { requestId?: string; fallbackFrom?: "fetch"; proxy?: NetworkProxySettings; timeoutMs?: number },
 ): Promise<HttpTextResponse> {
   const requestId = params?.requestId ?? nextRequestId();
   const startedAt = performance.now();
+  const timeoutSeconds =
+    typeof params?.timeoutMs === "number" && Number.isFinite(params.timeoutMs) && params.timeoutMs > 0
+      ? Math.max(1, Math.ceil(params.timeoutMs / 1000))
+      : undefined;
   const args = [
     "--silent",
     "--show-error",
@@ -129,6 +133,11 @@ async function runCurlRequest(
     "--write-out",
     `${CURL_STATUS_MARKER}%{http_code}${CURL_HEADERS_MARKER}%{header_json}`,
   ];
+
+  if (typeof timeoutSeconds === "number") {
+    args.push("--connect-timeout", String(Math.min(timeoutSeconds, 10)));
+    args.push("--max-time", String(timeoutSeconds));
+  }
 
   if (params?.proxy?.enabled && params.proxy.url.trim()) {
     args.push("--proxy", params.proxy.url.trim());
@@ -244,6 +253,7 @@ async function loadNetworkProxySettings(): Promise<NetworkProxySettings | undefi
 
 export async function requestText(init: TextRequestInit): Promise<HttpTextResponse> {
   const requestId = nextRequestId();
+  const requestStartedAt = performance.now();
   const proxy = init.ignoreProxy ? undefined : init.proxyOverride ?? await loadNetworkProxySettings();
   const useCurlOnly = process.env.OAUTH_DEMO_USE_CURL === "1";
   const useConfiguredProxy = !!proxy?.enabled && !!proxy.url.trim();
@@ -254,7 +264,6 @@ export async function requestText(init: TextRequestInit): Promise<HttpTextRespon
       : undefined;
 
   if (!useCurlOnly && !useConfiguredProxy) {
-    const startedAt = performance.now();
     const phases: Record<string, number> = {};
     try {
       const fetchStartedAt = performance.now();
@@ -269,7 +278,7 @@ export async function requestText(init: TextRequestInit): Promise<HttpTextRespon
       const readBodyStartedAt = performance.now();
       const body = await response.text();
       phases.readBodyMs = performance.now() - readBodyStartedAt;
-      const timing = finalizeTiming(startedAt, phases);
+      const timing = finalizeTiming(requestStartedAt, phases);
       logHttpTiming({
         requestId,
         method: init.method,
@@ -293,15 +302,21 @@ export async function requestText(init: TextRequestInit): Promise<HttpTextRespon
         requestId,
         method: init.method,
         url: init.url,
-        elapsedMs: roundMs(performance.now() - startedAt),
+        elapsedMs: roundMs(performance.now() - requestStartedAt),
         error: message,
       });
     }
   }
 
+  const remainingTimeoutMs =
+    typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? Math.max(1000, timeoutMs - (performance.now() - requestStartedAt))
+      : undefined;
+
   return runCurlRequest(init, {
     requestId,
     fallbackFrom: useCurlOnly || useConfiguredProxy ? undefined : "fetch",
     proxy,
+    timeoutMs: remainingTimeoutMs,
   });
 }

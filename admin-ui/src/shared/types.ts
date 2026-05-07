@@ -118,6 +118,7 @@ export type AdminConfig = {
   adminUrl: string;
   baseUrl: string;
   supportedEndpoints: SupportedEndpoint[];
+  restartSupported?: boolean;
 };
 
 export type RequestLog = {

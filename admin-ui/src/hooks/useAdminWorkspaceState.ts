@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { startTransition, useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { fetchJson } from "@/shared/api";
 import type { AdminConfig, RequestLog } from "@/shared/types";
 import type { BusyAction } from "@/shared/lib/app-types";
@@ -83,7 +83,9 @@ export function useAdminWorkspaceState(): WorkspaceState {
   useEffect(() => {
     const handleHashChange = () => {
       const route = readRouteFromHash();
-      setActiveRoute((current) => (current === route ? current : route));
+      startTransition(() => {
+        setActiveRoute((current) => (current === route ? current : route));
+      });
     };
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);

@@ -9,9 +9,14 @@ export type BusyAction =
   | "import"
   | "template"
   | "settings"
+  | "restart"
   | "proxy"
   | "models"
   | "test"
+  | "image-bed-save"
+  | "image-bed-test"
+  | "image-bed-delete"
+  | "image-bed-upload"
   | `profile:${string}:${string}`
   | null;
 
@@ -35,6 +40,7 @@ export type SettingDraft = {
   proxyUrl: string;
   proxyNoProxy: string;
   autoSwitchEnabled: boolean;
+  serverPort: string;
 };
 
 export type SelectOption<T extends string | number> = {

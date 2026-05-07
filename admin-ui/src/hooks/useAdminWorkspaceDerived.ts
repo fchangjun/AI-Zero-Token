@@ -34,6 +34,7 @@ export function useAdminWorkspaceDerived(state: DerivedSource): WorkspaceDerived
       : "还没有激活账号。你可以新增账号、导入账号 JSON，或先查看本地 API 信息。",
     accounts: "账号池、额度、套餐、Codex 应用状态集中管理，适合横向比较多个账号。",
     tester: "独立接口测试工作区，支持 Chat、Responses、Models 和 gpt-image-2 图片接口。",
+    "image-bed": "本地图片上传工作台，使用单个 GitHub token 维护个人图床并返回公网链接。",
     docs: "查看 AI-Zero-Token Skill.md，复制 Base URL、下载文档，并按步骤接入本地网关。",
     network: "单页总览 IPv4、IPv6、DNS、WebRTC、常用平台和版本状态。",
     logs: "查看本页快速测试产生的最近请求，包含接口、模型、状态和耗时。",

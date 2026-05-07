@@ -8,7 +8,6 @@ import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
 import type { ChatResult, OAuthProfile, ProfileSummary } from "../core/types.js";
 import { requestText } from "../core/providers/http-client.js";
-import { renderAdminPage } from "./admin-page.js";
 
 const packageRoot = path.dirname(fileURLToPath(new URL("../../package.json", import.meta.url)));
 const adminUiDistDir = path.join(packageRoot, "admin-ui", "dist");
@@ -28,15 +27,6 @@ const assetContentTypes: Record<string, string> = {
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
 };
-
-async function pathExists(targetPath: string): Promise<boolean> {
-  try {
-    await fs.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function getContentType(filePath: string): string {
   return assetContentTypes[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
@@ -159,6 +149,11 @@ const settingsUpdateSchema = z.object({
       enabled: z.boolean(),
     })
     .optional(),
+  server: z
+    .object({
+      port: z.number().int().min(1).max(65535),
+    })
+    .optional(),
 });
 
 const proxyTestSchema = z.object({
@@ -185,6 +180,23 @@ const profileExportSchema = z.object({
 
 const codexApplySchema = z.object({
   profileId: z.string().min(1),
+});
+
+const githubImageBedConfigSchema = z.object({
+  token: z.string().min(1),
+});
+
+const githubImageBedUploadSchema = z.object({
+  filename: z.string().min(1),
+  dataUrl: z.string().min(1),
+});
+
+const githubImageBedHistoryQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+const githubImageBedHistoryParamsSchema = z.object({
+  id: z.string().min(1),
 });
 
 const imageGenerationsBodySchema = z
@@ -608,6 +620,7 @@ function getErrorStatusCode(error: unknown): number {
 export function createApp(params?: {
   corsOrigin?: true | string | RegExp | Array<string | RegExp>;
   bodyLimit?: number;
+  onRestart?: () => void | Promise<void>;
 }) {
   const app = Fastify({
     logger: false,
@@ -617,7 +630,7 @@ export function createApp(params?: {
 
   void app.register(cors, {
     origin: params?.corsOrigin ?? true,
-    methods: ["GET", "POST", "PUT", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   });
 
   app.setErrorHandler((error, request, reply) => {
@@ -663,6 +676,7 @@ export function createApp(params?: {
       codex: codexStatus,
       adminUrl: `${origin}/`,
       baseUrl: `${origin}/v1`,
+      restartSupported: Boolean(params?.onRestart),
       supportedEndpoints: [
         {
           method: "GET",
@@ -694,13 +708,18 @@ export function createApp(params?: {
   }
 
   app.get("/", async (_request, reply) => {
-    if (await pathExists(adminUiIndexPath)) {
+    try {
       reply.header("Content-Type", "text/html; charset=utf-8");
       return fs.readFile(adminUiIndexPath, "utf8");
+    } catch {
+      reply.code(503);
+      return {
+        error: {
+          type: "admin_ui_missing",
+          message: "React 管理页未构建，请先运行 npm run build:ui。",
+        },
+      };
     }
-
-    reply.header("Content-Type", "text/html; charset=utf-8");
-    return renderAdminPage();
   });
 
   app.get("/assets/*", async (request, reply) => {
@@ -917,7 +936,33 @@ export function createApp(params?: {
     if (parsed.data.autoSwitch) {
       await ctx.configService.setAutoSwitch(parsed.data.autoSwitch);
     }
+    if (parsed.data.server) {
+      await ctx.configService.setServerConfig({ port: parsed.data.server.port });
+    }
     return buildAdminConfig(request);
+  });
+
+  app.post("/_gateway/admin/restart", async (_request, reply) => {
+    if (!params?.onRestart) {
+      reply.code(501);
+      return {
+        error: {
+          type: "not_supported",
+          message: "当前环境不支持重启。",
+        },
+      };
+    }
+
+    setTimeout(() => {
+      void Promise.resolve(params.onRestart?.()).catch((error) => {
+        console.error("[gateway:restart]", error);
+      });
+    }, 100);
+
+    return {
+      ok: true,
+      restarting: true,
+    };
   });
 
   app.post("/_gateway/admin/settings/proxy-test", async (request, reply) => {
@@ -978,6 +1023,76 @@ export function createApp(params?: {
     const settings = await ctx.configService.getSettings();
     return ctx.networkDetectService.collectReport(settings.networkProxy);
   });
+
+  app.get("/_gateway/image-bed/config", async () => ctx.githubImageBedService.getConfig());
+
+  app.post("/_gateway/image-bed/validate", async () => ctx.githubImageBedService.testConnection());
+
+  app.get("/_gateway/image-bed/history", async (request, reply) => {
+    const parsed = githubImageBedHistoryQuerySchema.safeParse(request.query ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求参数格式错误",
+        },
+      };
+    }
+
+    return ctx.githubImageBedService.listHistory(parsed.data.limit ?? 50);
+  });
+
+  app.put("/_gateway/image-bed/config", async (request, reply) => {
+    const parsed = githubImageBedConfigSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    return ctx.githubImageBedService.saveToken(parsed.data.token);
+  });
+
+  app.delete("/_gateway/image-bed/config", async () => ctx.githubImageBedService.clearToken());
+
+  app.post("/_gateway/image-bed/upload", async (request, reply) => {
+    const parsed = githubImageBedUploadSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    const uploaded = await ctx.githubImageBedService.uploadImage(parsed.data);
+    await ctx.githubImageBedService.rememberUpload(uploaded);
+    return uploaded;
+  });
+
+  app.delete("/_gateway/image-bed/history/:id", async (request, reply) => {
+    const parsed = githubImageBedHistoryParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求参数格式错误",
+        },
+      };
+    }
+
+    return ctx.githubImageBedService.deleteHistoryItem(parsed.data.id);
+  });
+
+  app.delete("/_gateway/image-bed/history", async () => ctx.githubImageBedService.clearHistory());
 
   app.get("/v1/models", async () => ({
     object: "list",

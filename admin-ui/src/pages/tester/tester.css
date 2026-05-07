@@ -132,15 +132,40 @@
 }
 
 .edit-upload-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 12px;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
   margin-top: -2px;
+}
+
+.edit-upload-mode {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.edit-upload-mode > span {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.edit-upload-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.edit-upload-toggle .tab-btn {
+  min-height: 34px;
+  padding: 0 12px;
 }
 
 .upload-btn {
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .upload-btn input {
@@ -148,6 +173,7 @@
 }
 
 .edit-upload-row span {
+  grid-column: 1 / -1;
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;

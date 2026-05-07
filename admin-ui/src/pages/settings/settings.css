@@ -49,6 +49,11 @@
   justify-content: flex-end;
 }
 
+.settings-page-footer-actions {
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
 .settings-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(220px, 1fr));

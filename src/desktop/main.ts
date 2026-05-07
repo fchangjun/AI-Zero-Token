@@ -1,4 +1,5 @@
 import { app as electronApp, BrowserWindow, dialog, shell } from "electron";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startServer } from "../server/index.js";
@@ -8,9 +9,13 @@ type GatewayServer = Awaited<ReturnType<typeof startServer>>;
 let gatewayServer: GatewayServer | null = null;
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
+let isRestarting = false;
+let currentGatewayUrl: string | null = null;
+let currentAdminUrl: string | null = null;
 
 const desktopDir = path.dirname(fileURLToPath(import.meta.url));
 const appIconPath = path.resolve(desktopDir, "../../build/icon.png");
+const startupPageUrl = buildStartupPageUrl("正在启动本地网关");
 
 electronApp.setName("AI Zero Token");
 
@@ -37,12 +42,158 @@ function resolveAdminUrl(gatewayUrl: string): string {
   return devUrl || gatewayUrl;
 }
 
+function resolvePreferredGatewayParams(): { host?: string; port?: number } | undefined {
+  const devUrl = process.env.AZT_DEV_GATEWAY_URL?.trim();
+  if (!devUrl) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(devUrl);
+    const host = parsed.hostname || undefined;
+    const port = Number.parseInt(parsed.port, 10);
+    return {
+      host,
+      port: Number.isFinite(port) ? port : undefined,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function isAllowedAppUrl(targetUrl: string): boolean {
+  return Boolean((currentAdminUrl && isGatewayUrl(targetUrl, currentAdminUrl)) || (currentGatewayUrl && isGatewayUrl(targetUrl, currentGatewayUrl)));
+}
+
+async function restartGateway(): Promise<void> {
+  if (isRestarting) {
+    return;
+  }
+
+  isRestarting = true;
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      await mainWindow.loadURL(buildStartupPageUrl("正在重启本地网关"));
+    }
+    await closeGatewayServer().catch((error) => {
+      console.error("[desktop:gateway:restart-close]", error);
+    });
+
+    const server = await ensureGatewayServer();
+    const gatewayUrl = createBrowserUrl(server.host, server.port);
+    const adminUrl = resolveAdminUrl(gatewayUrl);
+    currentGatewayUrl = gatewayUrl;
+    currentAdminUrl = adminUrl;
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      await mainWindow.loadURL(adminUrl);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[desktop:gateway:restart]", error);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      await mainWindow.loadURL(buildStartupPageUrl(`网关重启失败：${message}`)).catch(() => undefined);
+    }
+    dialog.showErrorBox("AI Zero Token 网关重启失败", message);
+  } finally {
+    isRestarting = false;
+  }
+}
+
+function buildStartupPageUrl(subtitle: string): string {
+  const iconUrl = `data:image/png;base64,${readFileSync(appIconPath).toString("base64")}`;
+  const html = `<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      :root { color-scheme: dark; }
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: #050816;
+        color: #f8fafc;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      body {
+        display: grid;
+        place-items: center;
+      }
+      .wrap {
+        display: grid;
+        gap: 18px;
+        justify-items: center;
+      }
+      .mark {
+        width: 96px;
+        height: 96px;
+        border-radius: 24px;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
+      }
+      .title {
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+      .sub {
+        font-size: 14px;
+        color: rgba(248, 250, 252, 0.66);
+      }
+      .bar {
+        width: 220px;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.08);
+        overflow: hidden;
+      }
+      .bar::after {
+        content: "";
+        display: block;
+        width: 45%;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, #93c5fd 0%, #66f0c0 55%, #f97316 100%);
+        animation: load 1.2s ease-in-out infinite;
+      }
+      @keyframes load {
+        0% { transform: translateX(-30%); }
+        50% { transform: translateX(80%); }
+        100% { transform: translateX(-30%); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <img class="mark" src="${iconUrl}" alt="" />
+      <div class="title">AI Zero Token</div>
+      <div class="sub">${escapeHtml(subtitle)}</div>
+      <div class="bar" aria-hidden="true"></div>
+    </div>
+  </body>
+</html>`;
+
+  return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
 async function ensureGatewayServer(): Promise<GatewayServer> {
   if (gatewayServer) {
     return gatewayServer;
   }
 
-  gatewayServer = await startServer();
+  gatewayServer = await startServer({
+    ...resolvePreferredGatewayParams(),
+    onRestart: restartGateway,
+  });
   const adminUrl = createBrowserUrl(gatewayServer.host, gatewayServer.port);
 
   console.log("AI Zero Token desktop gateway started.");
@@ -54,10 +205,6 @@ async function ensureGatewayServer(): Promise<GatewayServer> {
 }
 
 async function createMainWindow(): Promise<void> {
-  const server = await ensureGatewayServer();
-  const gatewayUrl = createBrowserUrl(server.host, server.port);
-  const adminUrl = resolveAdminUrl(gatewayUrl);
-
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 960,
@@ -65,7 +212,8 @@ async function createMainWindow(): Promise<void> {
     minHeight: 720,
     title: "AI Zero Token",
     icon: appIconPath,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#050816",
+    show: false,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -79,7 +227,7 @@ async function createMainWindow(): Promise<void> {
   });
 
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (isGatewayUrl(url, adminUrl) || isGatewayUrl(url, gatewayUrl)) {
+    if (isAllowedAppUrl(url)) {
       return;
     }
 
@@ -91,6 +239,26 @@ async function createMainWindow(): Promise<void> {
     mainWindow = null;
   });
 
+  mainWindow.once("ready-to-show", () => {
+    if (mainWindow) {
+      mainWindow.show();
+    }
+  });
+
+  await mainWindow.loadURL(startupPageUrl);
+  if (mainWindow && !mainWindow.isVisible()) {
+    mainWindow.show();
+  }
+
+  const server = await ensureGatewayServer();
+  if (!mainWindow) {
+    return;
+  }
+
+  const gatewayUrl = createBrowserUrl(server.host, server.port);
+  const adminUrl = resolveAdminUrl(gatewayUrl);
+  currentGatewayUrl = gatewayUrl;
+  currentAdminUrl = adminUrl;
   await mainWindow.loadURL(adminUrl);
 }
 

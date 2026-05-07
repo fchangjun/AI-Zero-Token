@@ -10,6 +10,7 @@
 @import "./pages/overview/overview.css";
 @import "./pages/accounts/accounts.css";
 @import "./pages/tester/tester.css";
+@import "./pages/image-bed/image-bed.css";
 @import "./pages/network-detect/network-detect.css";
 @import "./pages/logs/logs.css";
 @import "./pages/settings/settings.css";

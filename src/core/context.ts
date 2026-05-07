@@ -1,5 +1,6 @@
 import { ConfigService } from "./services/config-service.js";
 import { AuthService } from "./services/auth-service.js";
+import { GithubImageBedService } from "./services/github-image-bed-service.js";
 import { ChatService } from "./services/chat-service.js";
 import { ImageService } from "./services/image-service.js";
 import { ModelService } from "./services/model-service.js";
@@ -12,6 +13,7 @@ export function createGatewayContext() {
   const modelService = new ModelService(configService);
   const versionService = new VersionService();
   const networkDetectService = new NetworkDetectService();
+  const githubImageBedService = new GithubImageBedService();
   const chatService = new ChatService({
     authService,
     modelService,
@@ -27,6 +29,7 @@ export function createGatewayContext() {
     modelService,
     versionService,
     networkDetectService,
+    githubImageBedService,
     chatService,
     imageService,
   };

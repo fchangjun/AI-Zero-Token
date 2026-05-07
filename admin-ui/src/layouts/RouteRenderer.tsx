@@ -1,13 +1,29 @@
-import launchVisual from "@/assets/launch-visual.svg";
-import { AccountsPage } from "@/pages/accounts";
-import { LogsPage } from "@/pages/logs";
-import { OverviewPage } from "@/pages/overview";
-import { DocsPage } from "@/pages/docs";
-import { NetworkDetectPage } from "@/pages/network-detect";
-import { TesterPage } from "@/pages/tester";
-import { LaunchPage } from "@/pages/launch";
-import { SettingsPage } from "@/pages/settings";
+import { Suspense, lazy } from "react";
 import type { UseAdminWorkspaceResult } from "@/hooks/useAdminWorkspace";
+
+const LaunchPage = lazy(() => import("@/pages/launch").then((module) => ({ default: module.LaunchPage })));
+const OverviewPage = lazy(() => import("@/pages/overview").then((module) => ({ default: module.OverviewPage })));
+const DocsPage = lazy(() => import("@/pages/docs").then((module) => ({ default: module.DocsPage })));
+const AccountsPage = lazy(() => import("@/pages/accounts").then((module) => ({ default: module.AccountsPage })));
+const TesterPage = lazy(() => import("@/pages/tester").then((module) => ({ default: module.TesterPage })));
+const ImageBedPage = lazy(() => import("@/pages/image-bed").then((module) => ({ default: module.ImageBedPage })));
+const NetworkDetectPage = lazy(() => import("@/pages/network-detect").then((module) => ({ default: module.NetworkDetectPage })));
+const SettingsPage = lazy(() => import("@/pages/settings").then((module) => ({ default: module.SettingsPage })));
+const LogsPage = lazy(() => import("@/pages/logs").then((module) => ({ default: module.LogsPage })));
+
+function RouteLoading() {
+  return (
+    <section className="route-loading">
+      <div className="route-loading-card">
+        <div className="route-loading-bar" />
+        <div>
+          <strong>正在加载页面</strong>
+          <p>请稍候。</p>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export function RouteRenderer({ workspace }: { workspace: UseAdminWorkspaceResult }) {
   const { activeRoute, busy, config, refreshConfig } = workspace;
@@ -15,7 +31,6 @@ export function RouteRenderer({ workspace }: { workspace: UseAdminWorkspaceResul
     activeRoute === "launch" ? (
       <LaunchPage
         config={config}
-        visualSrc={launchVisual}
         status={workspace.status}
         showEmails={workspace.showEmails}
         activeProfile={workspace.activeProfile}
@@ -60,6 +75,8 @@ export function RouteRenderer({ workspace }: { workspace: UseAdminWorkspaceResul
         refreshConfig={refreshConfig}
         setPreviewImage={workspace.setPreviewImage}
       />
+    ) : activeRoute === "image-bed" ? (
+      <ImageBedPage busy={busy} setBusy={workspace.setBusy} setStatus={workspace.setStatus} />
     ) : activeRoute === "network" ? (
       <NetworkDetectPage />
     ) : activeRoute === "settings" ? (
@@ -77,5 +94,5 @@ export function RouteRenderer({ workspace }: { workspace: UseAdminWorkspaceResul
     ) : (
       <LogsPage logs={workspace.requestLogs} />
     );
-  return page;
+  return <Suspense fallback={<RouteLoading />}>{page}</Suspense>;
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { fetchJson } from "@/shared/api";
 import type { AdminConfig, RequestLog } from "@/shared/types";
 import type { BusyAction, PreviewImage, ResultTab } from "@/shared/lib/app-types";
 import { buildExample, copyText, errorMessage, extractPreviewImages, insertEditImageIntoBody, readFileAsDataUrl, summarizeJson } from "@/shared/lib/app-utils";
@@ -7,6 +8,16 @@ import { formatDuration, formatFileSize, formatJson } from "@/shared/lib/format"
 import { profileLabel } from "@/shared/lib/profiles";
 import { TesterPanel } from "./components/TesterPanel";
 import type { ModalImage } from "@/hooks/useAdminWorkspace";
+
+export type EditImageUploadMode = "base64" | "image-bed";
+
+type GithubImageBedUploadResult = {
+  filename: string;
+  url: string;
+  htmlUrl: string;
+  downloadUrl: string;
+  size: number;
+};
 
 export function TesterPage(props: {
   config: AdminConfig | null;
@@ -26,6 +37,7 @@ export function TesterPage(props: {
   const [timingBody, setTimingBody] = useState("等待请求...");
   const [resultTab, setResultTab] = useState<ResultTab>("response");
   const [previewImages, setPreviewImages] = useState<PreviewImage[]>([]);
+  const [imageUploadMode, setImageUploadMode] = useState<EditImageUploadMode>("base64");
 
   const endpoints = useMemo(() => [...(props.config?.supportedEndpoints || [])].sort(endpointSort), [props.config?.supportedEndpoints]);
   const activeEndpoint = useMemo(
@@ -142,17 +154,37 @@ export function TesterPage(props: {
     }
   }
 
-  async function uploadEditImage(file: File) {
+  async function uploadEditImage(file: File, mode: EditImageUploadMode) {
     if (!file.type.startsWith("image/")) {
       props.setStatus("请选择图片文件。");
       return;
     }
     try {
+      if (mode === "image-bed") {
+        props.setBusy("image-bed-upload");
+        const dataUrl = await readFileAsDataUrl(file);
+        const uploaded = await fetchJson<GithubImageBedUploadResult>("/_gateway/image-bed/upload", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            filename: file.name,
+            dataUrl,
+          }),
+        });
+        setRequestBody(insertEditImageIntoBody(requestBody, uploaded.url, props.config?.settings.defaultModel || "gpt-image-2"));
+        props.setStatus(`已上传到图床并写入公网链接（${file.name}，${formatFileSize(file.size)}）。`);
+        return;
+      }
+
       const dataUrl = await readFileAsDataUrl(file);
       setRequestBody(insertEditImageIntoBody(requestBody, dataUrl, props.config?.settings.defaultModel || "gpt-image-2"));
       props.setStatus(`已将 ${file.name} 转成 base64 data URL，并写入请求体 images[0].image_url（${formatFileSize(file.size)}）。`);
     } catch (error) {
       props.setStatus(`图片写入失败: ${errorMessage(error)}`);
+    } finally {
+      if (mode === "image-bed") {
+        props.setBusy(null);
+      }
     }
   }
 
@@ -170,6 +202,7 @@ export function TesterPage(props: {
       busy={props.busy}
       previewImages={previewImages}
       capability={props.capability}
+      imageUploadMode={imageUploadMode}
       onEndpoint={changeEndpoint}
       onRequestBody={setRequestBody}
       onResultTab={setResultTab}
@@ -178,6 +211,7 @@ export function TesterPage(props: {
       onCopyRequest={copyRequest}
       onCopyResponse={copyResponse}
       onCopyTiming={copyTiming}
+      onImageUploadMode={setImageUploadMode}
       onPreview={props.setPreviewImage}
       onImageUpload={uploadEditImage}
     />

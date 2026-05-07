@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { startTransition, useCallback } from "react";
 import { fetchJson } from "@/shared/api";
 import type { AdminConfig } from "@/shared/types";
 import { errorMessage } from "@/shared/lib/app-utils";
@@ -48,7 +48,9 @@ export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceAction
 
   const goRoute = useCallback((route: AppRoute) => {
     const nextHash = `#${route}`;
-    state.setActiveRoute(route);
+    startTransition(() => {
+      state.setActiveRoute(route);
+    });
     if (window.location.hash !== nextHash) {
       window.location.hash = route;
     }

@@ -1,4 +1,7 @@
+import fs from "node:fs/promises";
+import { getServers as getDnsServers } from "node:dns";
 import { execFile } from "node:child_process";
+import { isIP } from "node:net";
 import { promisify } from "node:util";
 import type { GatewaySettings } from "../types.js";
 import { requestText } from "../providers/http-client.js";
@@ -21,11 +24,13 @@ export type NetworkPlatformProbe = {
 export type NetworkDetectReport = {
   checkedAt: number;
   publicIpv4: {
+    available: boolean;
     ip: string;
     countryCode?: string;
     countryName?: string;
     colo?: string;
     source: string;
+    detail: string;
     elapsedMs: number;
   };
   publicIpv6: {
@@ -64,6 +69,20 @@ const PLATFORM_PROBE_HEADERS = {
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 };
 
+const PUBLIC_IPV4_CANDIDATES = [
+  "https://ifconfig.me/ip",
+  "https://api.ipify.org/",
+  "https://icanhazip.com/",
+  "https://checkip.amazonaws.com/",
+];
+
+const PUBLIC_IPV6_CANDIDATES = [
+  "https://ifconfig.me/ipv6",
+  "https://api6.ipify.org/",
+  "https://ipv6.icanhazip.com/",
+  "https://ipv6.test-ipv6.com/",
+];
+
 function parseKeyValueText(input: string): Record<string, string> {
   return Object.fromEntries(
     input
@@ -89,19 +108,74 @@ function parseDnsServers(text: string): string[] {
   return [...servers];
 }
 
+function parseResolvConfServers(text: string): string[] {
+  const servers = new Set<string>();
+  for (const line of text.split(/\r?\n/)) {
+    const match = line.trim().match(/^nameserver\s+([0-9a-fA-F:.%]+)/i);
+    if (match) {
+      servers.add(match[1]);
+    }
+  }
+  return [...servers];
+}
+
+function parseWindowsDnsServers(text: string): string[] {
+  const servers = new Set<string>();
+  let collecting = false;
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      collecting = false;
+      continue;
+    }
+
+    const match = trimmed.match(/^(DNS Servers?|DNS 服务器)[^:]*:\s*(.*)$/i);
+    if (match) {
+      const first = match[2].trim();
+      if (first) {
+        servers.add(first);
+      }
+      collecting = true;
+      continue;
+    }
+
+    if (collecting && /^[0-9a-fA-F:.%]+$/.test(trimmed)) {
+      servers.add(trimmed);
+      continue;
+    }
+
+    collecting = false;
+  }
+
+  return [...servers];
+}
+
+function normalizeIpAddress(ip: string): string {
+  return ip.trim().replace(/%[0-9A-Za-z._-]+$/, "");
+}
+
+function collectDnsServer(servers: Set<string>, value: string): void {
+  const normalized = normalizeIpAddress(value);
+  if (isIP(normalized) > 0) {
+    servers.add(normalized);
+  }
+}
+
 function isPrivateOrReservedIp(ip: string): boolean {
+  const normalizedIp = normalizeIpAddress(ip);
   return (
-    /^(10|127|169\.254|172\.(1[6-9]|2\d|3[0-1])|192\.168)\./.test(ip) ||
-    /^0\./.test(ip) ||
-    /^100\.(6[4-9]|[7-9]\d|1\d\d|2[0-3]\d|24[0-7])\./.test(ip) ||
-    /^198\.(18|19)\./.test(ip) ||
-    /^203\.0\.113\./.test(ip) ||
-    /^192\.0\.2\./.test(ip) ||
-    /^198\.51\.100\./.test(ip) ||
-    /^fc00:/i.test(ip) ||
-    /^fd00:/i.test(ip) ||
-    /^fe80:/i.test(ip) ||
-    /^::1$/.test(ip)
+    /^(10|127|169\.254|172\.(1[6-9]|2\d|3[0-1])|192\.168)\./.test(normalizedIp) ||
+    /^0\./.test(normalizedIp) ||
+    /^100\.(6[4-9]|[7-9]\d|1\d\d|2[0-3]\d|24[0-7])\./.test(normalizedIp) ||
+    /^198\.(18|19)\./.test(normalizedIp) ||
+    /^203\.0\.113\./.test(normalizedIp) ||
+    /^192\.0\.2\./.test(normalizedIp) ||
+    /^198\.51\.100\./.test(normalizedIp) ||
+    /^fc00:/i.test(normalizedIp) ||
+    /^fd00:/i.test(normalizedIp) ||
+    /^fe80:/i.test(normalizedIp) ||
+    /^::1$/.test(normalizedIp)
   );
 }
 
@@ -117,6 +191,48 @@ function toCountryName(code?: string): string | undefined {
   }
 }
 
+function normalizeProbeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function describeSourceUrl(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, "");
+  } catch {
+    return url;
+  }
+}
+
+async function probePublicIpCandidate(
+  url: string,
+  family: 4 | 6,
+  proxy?: NetworkProxySettings,
+  timeoutMs = 4000,
+): Promise<{ url: string; label: string; ip?: string; error?: string }> {
+  const label = describeSourceUrl(url);
+  try {
+    const response = await requestText({
+      method: "GET",
+      url,
+      timeoutMs,
+      proxyOverride: proxy,
+    });
+
+    if (response.status < 200 || response.status >= 300) {
+      return { url, label, error: `HTTP ${response.status}` };
+    }
+
+    const ip = normalizeIpAddress(response.body);
+    if (isIP(ip) !== family) {
+      return { url, label, error: `未返回 IPv${family} 地址` };
+    }
+
+    return { url, label, ip };
+  } catch (error) {
+    return { url, label, error: normalizeProbeError(error) };
+  }
+}
+
 async function runCommand(command: string, args: string[], timeoutMs = 2500): Promise<string> {
   const result = await execFileAsync(command, args, {
     timeout: timeoutMs,
@@ -127,112 +243,143 @@ async function runCommand(command: string, args: string[], timeoutMs = 2500): Pr
 
 async function readDnsServers(): Promise<{ servers: string[]; source: string }> {
   const servers = new Set<string>();
-  let source = "系统 DNS";
+  const sources = new Set<string>();
 
-  try {
-    const scutil = await runCommand("scutil", ["--dns"], 2500);
-    parseDnsServers(scutil).forEach((item) => servers.add(item));
-    source = "scutil --dns";
-  } catch {
-    // ignored
+  for (const server of getDnsServers()) {
+    collectDnsServer(servers, server);
+  }
+  if (servers.size > 0) {
+    sources.add("node:dns");
   }
 
-  try {
-    const wifiDns = await runCommand("networksetup", ["-getdnsservers", "Wi-Fi"], 2500);
-    for (const line of wifiDns.split(/\r?\n/)) {
-      const value = line.trim();
-      if (value && /^[0-9a-fA-F:.]+$/.test(value)) {
-        servers.add(value);
+  if (process.platform === "darwin") {
+    try {
+      const scutil = await runCommand("scutil", ["--dns"], 2500);
+      parseDnsServers(scutil).forEach((item) => collectDnsServer(servers, item));
+      if (servers.size > 0) {
+        sources.add("scutil --dns");
       }
+    } catch {
+      // ignored
     }
-    if (servers.size > 0) {
-      source = `${source} + networksetup`;
+
+    try {
+      const wifiDns = await runCommand("networksetup", ["-getdnsservers", "Wi-Fi"], 2500);
+      for (const line of wifiDns.split(/\r?\n/)) {
+        const value = line.trim();
+        if (value && /^[0-9a-fA-F:.%]+$/.test(value)) {
+          collectDnsServer(servers, value);
+        }
+      }
+      if (servers.size > 0) {
+        sources.add("networksetup");
+      }
+    } catch {
+      // ignored
     }
-  } catch {
-    // ignored
+  } else if (process.platform === "linux") {
+    try {
+      const resolvConf = await fs.readFile("/etc/resolv.conf", "utf8");
+      parseResolvConfServers(resolvConf).forEach((item) => collectDnsServer(servers, item));
+      if (servers.size > 0) {
+        sources.add("/etc/resolv.conf");
+      }
+    } catch {
+      // ignored
+    }
+  } else if (process.platform === "win32") {
+    try {
+      const ipconfig = await runCommand("ipconfig", ["/all"], 3000);
+      parseWindowsDnsServers(ipconfig).forEach((item) => collectDnsServer(servers, item));
+      if (servers.size > 0) {
+        sources.add("ipconfig /all");
+      }
+    } catch {
+      // ignored
+    }
   }
 
   return {
     servers: [...servers],
-    source,
+    source: sources.size > 0 ? [...sources].join(" + ") : "系统 DNS",
   };
 }
 
 async function probePublicIpv4(proxy?: NetworkProxySettings): Promise<NetworkDetectReport["publicIpv4"]> {
   const startedAt = performance.now();
-  const response = await requestText({
-    method: "GET",
-    url: "https://ifconfig.me/ip",
-    timeoutMs: 8000,
-    proxyOverride: proxy,
-  });
+  const sourceLabels = PUBLIC_IPV4_CANDIDATES.map(describeSourceUrl);
+  const results = await Promise.all(
+    PUBLIC_IPV4_CANDIDATES.map((url) => probePublicIpCandidate(url, 4, proxy, 3500)),
+  );
+  const matched = results.find((item) => item.ip);
 
-  if (response.status < 200 || response.status >= 500) {
-    throw new Error(`公网 IPv4 探测失败: HTTP ${response.status}`);
+  if (matched?.ip) {
+    let trace: CloudflareTrace = {};
+    try {
+      const traceResponse = await requestText({
+        method: "GET",
+        url: "https://www.cloudflare.com/cdn-cgi/trace",
+        timeoutMs: 5000,
+        proxyOverride: proxy,
+      });
+      trace = parseKeyValueText(traceResponse.body) as CloudflareTrace;
+    } catch {
+      trace = {};
+    }
+    const countryCode = trace.loc;
+    const countryName = toCountryName(countryCode);
+
+    return {
+      available: true,
+      ip: matched.ip,
+      countryCode,
+      countryName,
+      colo: trace.colo,
+      source: `${matched.label}${trace.loc || trace.colo ? " + cloudflare trace" : ""}`,
+      detail: countryName
+        ? `出口位于 ${countryName}${trace.colo ? ` · ${trace.colo}` : ""}`
+        : "检测到公网 IPv4 出口。",
+      elapsedMs: Math.round(performance.now() - startedAt),
+    };
   }
 
-  const ip = response.body.trim();
-  let trace: CloudflareTrace = {};
-  try {
-    const traceResponse = await requestText({
-      method: "GET",
-      url: "https://www.cloudflare.com/cdn-cgi/trace",
-      timeoutMs: 8000,
-      proxyOverride: proxy,
-    });
-    trace = parseKeyValueText(traceResponse.body) as CloudflareTrace;
-  } catch {
-    trace = {};
-  }
-  const countryCode = trace.loc;
-
+  const attemptedSources = results.map((item) => `${item.label}: ${item.error || "未返回结果"}`);
   return {
-    ip,
-    countryCode,
-    countryName: toCountryName(countryCode),
-    colo: trace.colo,
-    source: "ifconfig.me + cloudflare trace",
+    available: false,
+    ip: "",
+    source: sourceLabels.join(" / "),
+    detail: attemptedSources.length > 0
+      ? `未获得公网 IPv4。${attemptedSources.slice(0, 2).join("；")}`
+      : "未获得公网 IPv4。",
     elapsedMs: Math.round(performance.now() - startedAt),
   };
 }
 
 async function probePublicIpv6(proxy?: NetworkProxySettings): Promise<NetworkDetectReport["publicIpv6"]> {
   const startedAt = performance.now();
-  const ipv6Candidates = [
-    "https://ifconfig.me/ipv6",
-    "https://ipv6.test-ipv6.com/",
-  ];
+  const results = await Promise.all(
+    PUBLIC_IPV6_CANDIDATES.map((url) => probePublicIpCandidate(url, 6, proxy, 3000)),
+  );
+  const matched = results.find((item) => item.ip);
 
-  for (const url of ipv6Candidates) {
-    try {
-      const response = await requestText({
-        method: "GET",
-        url,
-        timeoutMs: 6000,
-        proxyOverride: proxy,
-      });
-      const body = response.body.trim();
-      if (!body) {
-        continue;
-      }
-      if (/^[0-9a-fA-F:]+$/.test(body) && body.includes(":")) {
-        return {
-          available: true,
-          ip: body,
-          source: url,
-          detail: "检测到独立 IPv6 出口。",
-          elapsedMs: Math.round(performance.now() - startedAt),
-        };
-      }
-    } catch {
-      // try next candidate
-    }
+  if (matched?.ip) {
+    return {
+      available: true,
+      ip: matched.ip,
+      source: matched.label,
+      detail: "检测到独立 IPv6 出口。",
+      elapsedMs: Math.round(performance.now() - startedAt),
+    };
   }
 
+  const attemptedSources = results.map((item) => `${item.label}: ${item.error || "未返回结果"}`);
   return {
     available: false,
-    source: "ifconfig.me / test-ipv6.com",
-    detail: "未检测到独立 IPv6 出口，当前连接可能只走 IPv4。",
+    source: PUBLIC_IPV6_CANDIDATES.map(describeSourceUrl).join(" / "),
+    detail: attemptedSources.length > 0
+      ? `未检测到独立 IPv6 出口。${attemptedSources.slice(0, 2).join("；")}`
+      : "未检测到独立 IPv6 出口，当前连接可能只走 IPv4。",
+    elapsedMs: Math.round(performance.now() - startedAt),
   };
 }
 
@@ -312,7 +459,7 @@ export class NetworkDetectService {
     const dnsDetail =
       dns.servers.length > 0
         ? `系统 DNS: ${dns.servers.join(" / ")}`
-        : "未读取到系统 DNS。";
+        : `${dns.source} 未读取到系统 DNS。`;
 
     return {
       checkedAt: Date.now(),

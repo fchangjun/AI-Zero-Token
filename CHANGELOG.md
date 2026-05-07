@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.2 - 2026-05-07
+
+- Added a GitHub image-bed workflow to the React desktop UI, including upload history, configuration storage, and gateway service support.
+- Reworked the network diagnostics page around overseas app reachability for reverse-proxy scenarios, with clearer access verdicts, exit/proxy signals, DNS/WebRTC context, and a more productized matrix layout.
+- Removed the legacy server-rendered embedded admin page; production now serves the React admin UI build only.
+- Improved desktop and tester UI polish, routing, shared workspace state, icons, and request helpers.
+- Hardened network detection with more resilient IPv4/IPv6 probing, DNS collection, and partial-result handling.
+- Updated macOS desktop packaging so `dist:mac` builds a universal app, with explicit `dist:mac:arm64` and `dist:mac:x64` scripts for Apple Silicon and Intel-only installers.
+
 ## 2.0.1 - 2026-05-04
 
 - Improved desktop sidebar navigation responsiveness by switching routes immediately and de-duplicating hash-change updates.

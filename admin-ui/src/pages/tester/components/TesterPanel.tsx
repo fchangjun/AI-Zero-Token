@@ -3,6 +3,7 @@ import { ChangeEvent } from "react";
 import type { AdminConfig, SupportedEndpoint } from "@/shared/types";
 import type { BusyAction, PreviewImage, ResultTab } from "@/shared/lib/app-types";
 import { endpointOrder, tabLabels } from "@/shared/lib/endpoints";
+import type { EditImageUploadMode } from "../index";
 
 export function TesterPanel(props: {
   config: AdminConfig | null;
@@ -17,6 +18,7 @@ export function TesterPanel(props: {
   busy: BusyAction;
   previewImages: PreviewImage[];
   capability: { ok: boolean; detail: string };
+  imageUploadMode: EditImageUploadMode;
   onEndpoint: (endpoint: string) => void;
   onRequestBody: (value: string) => void;
   onResultTab: (tab: ResultTab) => void;
@@ -25,15 +27,16 @@ export function TesterPanel(props: {
   onCopyRequest: () => void;
   onCopyResponse: () => void;
   onCopyTiming: () => void;
+  onImageUploadMode: (mode: EditImageUploadMode) => void;
   onPreview: (value: { src: string; meta: string; filename?: string }) => void;
-  onImageUpload: (file: File) => Promise<void>;
+  onImageUpload: (file: File, mode: EditImageUploadMode) => Promise<void>;
 }) {
   const isImageEndpoint = props.endpoint.startsWith("/v1/images/");
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
     if (!file) return;
-    props.onImageUpload(file).catch(() => undefined);
+    props.onImageUpload(file, props.imageUploadMode).catch(() => undefined);
   }
 
   return (
@@ -92,12 +95,23 @@ export function TesterPanel(props: {
           </label>
           {props.endpoint === "/v1/images/edits" && (
             <div className="edit-upload-row">
-              <label className="btn-secondary upload-btn" title="上传图片并写入 images[0].image_url">
-                <Upload size={16} />
-                上传图片写入 Body
+              <div className="edit-upload-mode" role="group" aria-label="图片写入方式">
+                <span>写入方式</span>
+                <div className="edit-upload-toggle">
+                  <button className={`tab-btn ${props.imageUploadMode === "base64" ? "is-active" : ""}`} type="button" onClick={() => props.onImageUploadMode("base64")}>
+                    Base64
+                  </button>
+                  <button className={`tab-btn ${props.imageUploadMode === "image-bed" ? "is-active" : ""}`} type="button" onClick={() => props.onImageUploadMode("image-bed")}>
+                    图床
+                  </button>
+                </div>
+              </div>
+              <label className="btn-secondary upload-btn" title={props.imageUploadMode === "base64" ? "上传图片并写入 base64 data URL" : "上传图片到图床并写入公网链接"}>
+                {props.imageUploadMode === "image-bed" && props.busy === "image-bed-upload" ? <Loader2 className="spin" size={16} /> : <Upload size={16} />}
+                {props.imageUploadMode === "base64" ? "上传并写入 Base64" : "上传并写入图床链接"}
                 <input type="file" accept="image/*" onChange={handleImageUpload} />
               </label>
-              <span>目标字段：images[0].image_url</span>
+              <span>目标字段：images[0].image_url · {props.imageUploadMode === "base64" ? "直接写入 data URL" : "先上传图床再写入公网链接"}</span>
             </div>
           )}
           <p className="hint">{isImageEndpoint ? props.capability.detail : props.activeEndpoint.description || "GET /v1/models 无需请求体。"}</p>

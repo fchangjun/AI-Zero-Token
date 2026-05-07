@@ -13,6 +13,7 @@ function createSettingsDraft(config: AdminConfig): SettingDraft {
     proxyUrl: config.settings.networkProxy.url,
     proxyNoProxy: config.settings.networkProxy.noProxy || "localhost,127.0.0.1,::1",
     autoSwitchEnabled: config.settings.autoSwitch.enabled,
+    serverPort: String(config.settings.server.port || 8787),
   };
 }
 
@@ -33,6 +34,7 @@ export function SettingsPage(props: {
     proxyUrl: "",
     proxyNoProxy: "localhost,127.0.0.1,::1",
     autoSwitchEnabled: false,
+    serverPort: "8787",
   });
   const [settingsDirty, setSettingsDirty] = useState(false);
 
@@ -48,8 +50,15 @@ export function SettingsPage(props: {
     setSettingsDirty(true);
   }
 
-  async function saveSettings() {
-    props.setBusy("settings");
+  async function saveSettings(options?: { restart?: boolean }) {
+    const serverPort = Number.parseInt(settingsDraft.serverPort, 10);
+    if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535) {
+      props.setStatus("端口必须是 1 到 65535 之间的整数。");
+      return;
+    }
+
+    const busyAction: BusyAction = options?.restart ? "restart" : "settings";
+    props.setBusy(busyAction);
     try {
       const next = await fetchJson<AdminConfig>("/_gateway/admin/settings", {
         method: "PUT",
@@ -64,11 +73,20 @@ export function SettingsPage(props: {
           autoSwitch: {
             enabled: settingsDraft.autoSwitchEnabled,
           },
+          server: {
+            port: serverPort,
+          },
         }),
       });
       props.setConfig(next);
       setSettingsDirty(false);
-      props.setStatus("设置已保存。");
+      if (options?.restart) {
+        props.setStatus("设置已保存，正在重启本地网关...");
+        await fetchJson<{ ok: boolean; restarting?: boolean }>("/_gateway/admin/restart", { method: "POST" });
+        props.setStatus("本地网关正在重启，页面会自动恢复。");
+      } else {
+        props.setStatus("设置已保存。");
+      }
     } catch (error) {
       props.setStatus(errorMessage(error));
     } finally {
@@ -127,9 +145,6 @@ export function SettingsPage(props: {
             {props.busy === "models" ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
             同步 Codex 模型
           </button>
-          <button className="btn-primary" type="button" onClick={saveSettings} disabled={props.busy === "settings" || !settingsDirty}>
-            保存设置
-          </button>
         </div>
       </div>
 
@@ -169,6 +184,15 @@ export function SettingsPage(props: {
         </section>
 
         <section className="settings-section">
+          <h4>端口</h4>
+          <label className="field">
+            <span>网关端口</span>
+            <input className="input" inputMode="numeric" type="number" min={1} max={65535} value={settingsDraft.serverPort} onChange={(event) => markSettingsDirty({ serverPort: event.target.value })} />
+          </label>
+          <p className="hint">修改后重启本地网关生效，桌面窗口不会退出。若端口被占用，启动时会自动顺延到下一个可用端口。</p>
+        </section>
+
+        <section className="settings-section">
           <h4>账号自动切换</h4>
           <label className="switch-line">
             <input type="checkbox" checked={settingsDraft.autoSwitchEnabled} onChange={(event) => markSettingsDirty({ autoSwitchEnabled: event.target.checked })} />
@@ -185,6 +209,15 @@ export function SettingsPage(props: {
           </label>
           <p className="hint">开启后账号邮箱将以脱敏形式展示。</p>
         </section>
+      </div>
+
+      <div className="settings-page-actions settings-page-footer-actions">
+        <button className="btn-secondary" type="button" onClick={() => void saveSettings()} disabled={props.busy === "settings" || props.busy === "restart" || !settingsDirty}>
+          保存设置
+        </button>
+        <button className="btn-primary" type="button" onClick={() => void saveSettings({ restart: true })} disabled={props.busy === "settings" || props.busy === "restart" || !settingsDirty || !props.config?.restartSupported}>
+          保存并重启网关
+        </button>
       </div>
     </section>
   );

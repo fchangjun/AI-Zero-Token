@@ -31,27 +31,58 @@ function resolveBodyLimitBytes(): number {
   return Math.floor(value * 1024 * 1024);
 }
 
-export async function startServer(params?: { host?: string; port?: number }) {
+function isPortInUseError(error: unknown): boolean {
+  const normalized = error as { code?: unknown; message?: unknown };
+  if (normalized.code === "EADDRINUSE") {
+    return true;
+  }
+
+  return typeof normalized.message === "string" && normalized.message.includes("EADDRINUSE");
+}
+
+export async function startServer(params?: { host?: string; port?: number; onRestart?: () => void | Promise<void> }) {
   const bodyLimit = resolveBodyLimitBytes();
-  const app = createApp({
-    corsOrigin: resolveCorsOrigin(),
-    bodyLimit,
-  });
   const configService = new ConfigService();
   const defaults = await configService.getServerConfig();
   const host = params?.host ?? defaults.host;
   const port = params?.port ?? defaults.port;
+  const maxPortAttempts = 20;
+  let lastError: unknown;
 
-  await app.listen({
-    host,
-    port,
-  });
+  for (let offset = 0; offset <= maxPortAttempts; offset += 1) {
+    const listenPort = port + offset;
+    const app = createApp({
+      corsOrigin: resolveCorsOrigin(),
+      bodyLimit,
+      onRestart: params?.onRestart,
+    });
 
-  return {
-    app,
-    host,
-    port,
-    corsOrigin: process.env.AZT_CORS_ORIGIN?.trim() || "*",
-    bodyLimit,
-  };
+    try {
+      await app.listen({
+        host,
+        port: listenPort,
+      });
+
+      if (offset > 0) {
+        console.warn(`[server] port ${port} was busy, using ${listenPort} instead.`);
+        await configService.setServerConfig({ port: listenPort });
+      }
+
+      return {
+        app,
+        host,
+        port: listenPort,
+        corsOrigin: process.env.AZT_CORS_ORIGIN?.trim() || "*",
+        bodyLimit,
+      };
+    } catch (error) {
+      await app.close().catch(() => undefined);
+      if (!isPortInUseError(error) || offset === maxPortAttempts) {
+        throw error;
+      }
+      lastError = error;
+    }
+  }
+
+  throw lastError ?? new Error("无法启动本地服务。");
 }
