@@ -41,6 +41,24 @@ Image model: gpt-image-2
 
 Use `GET /v1/models` to see the models available through the current local Codex cache.
 
+## OpenClaw Settings
+
+Use the OpenAI-compatible provider mode in OpenClaw:
+
+```text
+Provider: OpenAI compatible
+Base URL: http://127.0.0.1:8787/v1
+API Key: local
+Model: gpt-5.4
+Chat endpoint: /chat/completions
+Streaming: enabled
+Tools / function calling: enabled
+```
+
+The gateway accepts OpenClaw-style `chat.completions` requests with `tools`, `tool_choice`, `parallel_tool_calls`, `reasoning_effort`, assistant `tool_calls`, and tool-role result messages. It translates those fields to the upstream Codex Responses shape and returns OpenAI-style chat responses.
+
+OpenClaw requests are visible in the management console request log when the client sends an OpenClaw user agent. The log keeps safe summaries only; it does not store full access tokens.
+
 ## Models
 
 ```bash
@@ -74,6 +92,50 @@ curl http://127.0.0.1:8787/v1/chat/completions \
     "messages": [
       { "role": "user", "content": "Reply with OK only." }
     ]
+}'
+```
+
+Streaming chat completions:
+
+```bash
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.4",
+    "stream": true,
+    "messages": [
+      { "role": "user", "content": "Reply with OK only." }
+    ]
+  }'
+```
+
+Tool-call compatible request:
+
+```bash
+curl http://127.0.0.1:8787/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-5.4",
+    "messages": [
+      { "role": "user", "content": "What is the weather tool argument for Shanghai?" }
+    ],
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "get_weather",
+          "description": "Get weather for a city.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "city": { "type": "string" }
+            },
+            "required": ["city"]
+          }
+        }
+      }
+    ],
+    "tool_choice": "auto"
   }'
 ```
 
@@ -134,5 +196,7 @@ console.log(response.choices[0]?.message?.content);
 
 - Login first through the management page or `azt login`.
 - A model appearing in `/v1/models` means the local Codex cache lists it. Final availability still depends on the active account.
-- `stream=true` is not supported yet.
+- `stream=true` is supported for `/v1/chat/completions` through OpenAI-style SSE chunks. `/v1/responses` streaming is still not implemented.
+- `n > 1` is not supported for `/v1/chat/completions`.
+- Tool/function calling is supported for common OpenAI-compatible clients, including OpenClaw, but exact upstream behavior still depends on the active Codex model and account.
 - The default listener is `0.0.0.0:8787`, so local-network clients can call the gateway by using the machine IP.

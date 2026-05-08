@@ -1,0 +1,205 @@
+<svg width="1600" height="1000" viewBox="0 0 1600 1000" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="wallpaper" x1="0" y1="0" x2="1600" y2="1000" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F7F8FB"/>
+      <stop offset="0.42" stop-color="#E9F0F6"/>
+      <stop offset="1" stop-color="#F5E7DE"/>
+    </linearGradient>
+    <linearGradient id="dock" x1="417" y1="874" x2="1183" y2="965" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.82"/>
+      <stop offset="1" stop-color="#EEF2F6" stop-opacity="0.74"/>
+    </linearGradient>
+    <filter id="panelShadow" x="925" y="38" width="476" height="788" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="26"/>
+      <feGaussianBlur stdDeviation="28"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.06 0 0 0 0 0.08 0 0 0 0 0.12 0 0 0 0.22 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_1_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_1_1" result="shape"/>
+    </filter>
+    <filter id="softShadow" x="305" y="171" width="776" height="562" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feFlood flood-opacity="0" result="BackgroundImageFix"/>
+      <feColorMatrix in="SourceAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" result="hardAlpha"/>
+      <feOffset dy="20"/>
+      <feGaussianBlur stdDeviation="34"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.11 0 0 0 0 0.13 0 0 0 0 0.16 0 0 0 0.14 0"/>
+      <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow_2_1"/>
+      <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow_2_1" result="shape"/>
+    </filter>
+    <style>
+      .sf { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Microsoft YaHei", Arial, sans-serif; }
+      .t12 { font-size: 12px; }
+      .t13 { font-size: 13px; }
+      .t14 { font-size: 14px; }
+      .t15 { font-size: 15px; }
+      .t16 { font-size: 16px; }
+      .t18 { font-size: 18px; }
+      .t20 { font-size: 20px; }
+      .t24 { font-size: 24px; }
+      .t30 { font-size: 30px; }
+      .muted { fill: #667085; }
+      .soft { fill: #344054; }
+      .ink { fill: #101828; }
+      .white { fill: #FFFFFF; }
+      .w500 { font-weight: 500; }
+      .w600 { font-weight: 600; }
+      .w700 { font-weight: 700; }
+      .w800 { font-weight: 800; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="url(#wallpaper)"/>
+  <path d="M0 690C170 630 266 714 434 646C585 585 671 436 819 452C1014 473 1050 708 1240 706C1418 704 1492 548 1600 594V1000H0V690Z" fill="#FFFFFF" fill-opacity="0.36"/>
+  <path d="M0 511C180 458 277 512 446 474C672 423 728 275 898 325C1091 383 1110 523 1300 498C1434 481 1518 415 1600 452V1000H0V511Z" fill="#CFE0EA" fill-opacity="0.28"/>
+
+  <rect x="0" y="0" width="1600" height="36" fill="#F8FAFC" fill-opacity="0.78"/>
+  <line x1="0" y1="35.5" x2="1600" y2="35.5" stroke="#D0D5DD" stroke-opacity="0.62"/>
+  <text class="sf t14 w700 ink" x="20" y="23">AI Zero Token</text>
+  <text class="sf t14 w500 soft" x="142" y="23">文件</text>
+  <text class="sf t14 w500 soft" x="188" y="23">编辑</text>
+  <text class="sf t14 w500 soft" x="234" y="23">窗口</text>
+  <text class="sf t14 w500 soft" x="280" y="23">帮助</text>
+  <text class="sf t13 w600 soft" x="1310" y="23">5月8日 周五 12:48</text>
+  <g transform="translate(1484 8)">
+    <path d="M2 10C7 5 15 5 20 10" stroke="#344054" stroke-width="1.8" stroke-linecap="round"/>
+    <path d="M6 14C9 11.5 13 11.5 16 14" stroke="#344054" stroke-width="1.8" stroke-linecap="round"/>
+    <circle cx="11" cy="18" r="1.4" fill="#344054"/>
+  </g>
+  <g transform="translate(1522 6)">
+    <rect x="1" y="5" width="25" height="12" rx="3" stroke="#344054" stroke-width="1.6"/>
+    <rect x="27" y="9" width="2.8" height="4" rx="1.4" fill="#344054"/>
+    <rect x="4" y="8" width="18" height="6" rx="2" fill="#22C55E"/>
+  </g>
+
+  <g transform="translate(1242 3)">
+    <rect x="0" y="0" width="48" height="30" rx="8" fill="#111827"/>
+    <circle cx="14" cy="15" r="5" fill="#22C55E"/>
+    <path d="M27 10L35 15L27 20V10Z" fill="#FFFFFF"/>
+  </g>
+
+  <g filter="url(#softShadow)">
+    <rect x="350" y="200" width="686" height="474" rx="22" fill="#FFFFFF" fill-opacity="0.86" stroke="#EAECF0"/>
+    <rect x="350" y="200" width="686" height="58" rx="22" fill="#FCFCFD"/>
+    <circle cx="378" cy="229" r="6.5" fill="#FF5F57"/>
+    <circle cx="400" cy="229" r="6.5" fill="#FEBC2E"/>
+    <circle cx="422" cy="229" r="6.5" fill="#28C840"/>
+    <text class="sf t15 w700 ink" x="462" y="234">AI Zero Token 控制台</text>
+    <text class="sf t13 w600 muted" x="866" y="234">http://127.0.0.1:8799</text>
+    <rect x="386" y="292" width="278" height="118" rx="16" fill="#F8FAFC" stroke="#EAECF0"/>
+    <text class="sf t13 w700 muted" x="410" y="324">本地网关</text>
+    <text class="sf t30 w800 ink" x="410" y="363">运行中</text>
+    <rect x="410" y="378" width="78" height="24" rx="12" fill="#DCFCE7"/>
+    <text class="sf t12 w800" x="426" y="395" fill="#15803D">HTTP 200</text>
+    <circle cx="626" cy="335" r="18" fill="#DCFCE7"/>
+    <path d="M617 335L624 342L637 326" stroke="#15803D" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="692" y="292" width="278" height="118" rx="16" fill="#F8FAFC" stroke="#EAECF0"/>
+    <text class="sf t13 w700 muted" x="716" y="324">当前 Codex</text>
+    <text class="sf t24 w800 ink" x="716" y="359">work@example.com</text>
+    <rect x="716" y="378" width="94" height="24" rx="12" fill="#E0EAFF"/>
+    <text class="sf t12 w800" x="734" y="395" fill="#3538CD">已应用</text>
+    <rect x="386" y="438" width="584" height="190" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+    <text class="sf t18 w800 ink" x="414" y="478">账号池</text>
+    <text class="sf t13 w600 muted" x="414" y="502">管理页保留完整操作，菜单栏负责快速切换。</text>
+    <line x1="414" y1="528" x2="942" y2="528" stroke="#EAECF0"/>
+    <text class="sf t14 w700 ink" x="414" y="562">work@example.com</text>
+    <rect x="620" y="544" width="72" height="24" rx="12" fill="#DCFCE7"/>
+    <text class="sf t12 w800" x="639" y="561" fill="#15803D">网关</text>
+    <rect x="704" y="544" width="78" height="24" rx="12" fill="#E0EAFF"/>
+    <text class="sf t12 w800" x="724" y="561" fill="#3538CD">Codex</text>
+    <text class="sf t14 w700 muted" x="414" y="600">backup@example.com</text>
+    <rect x="620" y="582" width="72" height="24" rx="12" fill="#F2F4F7"/>
+    <text class="sf t12 w800 muted" x="639" y="599">备用</text>
+  </g>
+
+  <g filter="url(#panelShadow)">
+    <rect x="970" y="70" width="386" height="698" rx="22" fill="#FCFCFD"/>
+    <rect x="970" y="70" width="386" height="698" rx="22" stroke="#EAECF0"/>
+    <path d="M1230 70L1249 48L1268 70H1230Z" fill="#FCFCFD"/>
+    <path d="M1230 70L1249 48L1268 70" stroke="#EAECF0" stroke-linejoin="round"/>
+
+    <rect x="994" y="94" width="338" height="74" rx="16" fill="#101828"/>
+    <rect x="1014" y="114" width="34" height="34" rx="9" fill="#FFFFFF"/>
+    <path d="M1023 125H1034M1023 134H1039M1040 121L1048 131L1040 141L1032 131L1040 121Z" stroke="#101828" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sf t16 w800 white" x="1060" y="126">AI Zero Token</text>
+    <text class="sf t13 w600" x="1060" y="149" fill="#D0D5DD">本地网关与 Codex 快速控制</text>
+    <circle cx="1308" cy="121" r="6" fill="#22C55E"/>
+    <text class="sf t12 w800" x="1280" y="148" fill="#86EFAC">运行中</text>
+
+    <rect x="994" y="184" width="338" height="86" rx="16" fill="#F8FAFC" stroke="#EAECF0"/>
+    <text class="sf t12 w800 muted" x="1016" y="212">本地网关</text>
+    <text class="sf t15 w800 ink" x="1016" y="240">work@example.com</text>
+    <rect x="1208" y="204" width="98" height="28" rx="14" fill="#DCFCE7"/>
+    <circle cx="1224" cy="218" r="4.5" fill="#16A34A"/>
+    <text class="sf t12 w800" x="1235" y="222" fill="#15803D">API 使用中</text>
+    <text class="sf t12 w600 muted" x="1016" y="258">Base URL 127.0.0.1:8799/v1</text>
+
+    <rect x="994" y="282" width="338" height="86" rx="16" fill="#F8FAFC" stroke="#EAECF0"/>
+    <text class="sf t12 w800 muted" x="1016" y="310">本机 Codex</text>
+    <text class="sf t15 w800 ink" x="1016" y="338">backup@example.com</text>
+    <rect x="1194" y="302" width="112" height="28" rx="14" fill="#E0EAFF"/>
+    <circle cx="1210" cy="316" r="4.5" fill="#3538CD"/>
+    <text class="sf t12 w800" x="1221" y="320" fill="#3538CD">Codex 当前</text>
+    <text class="sf t12 w600 muted" x="1016" y="356">~/.codex/auth.json 已应用</text>
+
+    <text class="sf t13 w800 muted" x="994" y="404">快速切换</text>
+
+    <rect x="994" y="420" width="338" height="74" rx="14" fill="#FFFFFF" stroke="#EAECF0"/>
+    <circle cx="1022" cy="457" r="16" fill="#E0F2FE"/>
+    <text class="sf t13 w800" x="1015" y="462" fill="#0369A1">W</text>
+    <text class="sf t14 w800 ink" x="1052" y="449">work@example.com</text>
+    <text class="sf t12 w600 muted" x="1052" y="471">Plus · 额度健康 · 最近同步 2 分钟前</text>
+    <path d="M1286 449L1294 457L1308 441" stroke="#16A34A" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="1052" y="480" width="78" height="1" fill="#FFFFFF"/>
+
+    <rect x="994" y="502" width="338" height="74" rx="14" fill="#FFFFFF" stroke="#EAECF0"/>
+    <circle cx="1022" cy="539" r="16" fill="#FFF7ED"/>
+    <text class="sf t13 w800" x="1016" y="544" fill="#C2410C">B</text>
+    <text class="sf t14 w800 ink" x="1052" y="531">backup@example.com</text>
+    <text class="sf t12 w600 muted" x="1052" y="553">Team · Codex 当前 · 额度 62%</text>
+    <rect x="1262" y="522" width="46" height="28" rx="14" fill="#EEF4FF"/>
+    <text class="sf t12 w800" x="1275" y="540" fill="#3538CD">切换</text>
+
+    <rect x="994" y="584" width="338" height="74" rx="14" fill="#FFFFFF" stroke="#EAECF0"/>
+    <circle cx="1022" cy="621" r="16" fill="#FEE2E2"/>
+    <text class="sf t13 w800" x="1017" y="626" fill="#B42318">T</text>
+    <text class="sf t14 w800 ink" x="1052" y="613">test@example.com</text>
+    <text class="sf t12 w600 muted" x="1052" y="635">Free · 登录可能失效 · 需要确认</text>
+    <rect x="1248" y="604" width="60" height="28" rx="14" fill="#FEF3F2"/>
+    <text class="sf t12 w800" x="1261" y="622" fill="#B42318">不可用</text>
+
+    <line x1="994" y1="680" x2="1332" y2="680" stroke="#EAECF0"/>
+    <rect x="994" y="698" width="102" height="42" rx="12" fill="#101828"/>
+    <path d="M1017 711V727M1009 719H1025" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+    <text class="sf t13 w800 white" x="1036" y="724">同时应用</text>
+    <rect x="1108" y="698" width="102" height="42" rx="12" fill="#FFFFFF" stroke="#D0D5DD"/>
+    <path d="M1130 713L1122 721L1130 729" stroke="#344054" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sf t13 w800 soft" x="1142" y="724">打开控制台</text>
+    <rect x="1222" y="698" width="110" height="42" rx="12" fill="#FFFFFF" stroke="#D0D5DD"/>
+    <path d="M1244 713C1251 708 1261 713 1261 722C1261 731 1251 736 1244 731M1243 712V719H1250" stroke="#344054" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sf t13 w800 soft" x="1270" y="724">重启网关</text>
+  </g>
+
+  <g transform="translate(425 872)">
+    <rect x="0" y="0" width="750" height="72" rx="24" fill="url(#dock)" stroke="#FFFFFF" stroke-opacity="0.82"/>
+    <g transform="translate(42 14)">
+      <rect width="44" height="44" rx="12" fill="#101828"/>
+      <path d="M13 17H27M13 26H32M31 12L39 22L31 32L23 22L31 12Z" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g transform="translate(112 14)">
+      <rect width="44" height="44" rx="12" fill="#EEF4FF"/>
+      <circle cx="22" cy="22" r="11" fill="#3538CD"/>
+    </g>
+    <g transform="translate(182 14)">
+      <rect width="44" height="44" rx="12" fill="#ECFDF3"/>
+      <path d="M13 22L20 29L32 15" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <g transform="translate(252 14)">
+      <rect width="44" height="44" rx="12" fill="#FFF7ED"/>
+      <circle cx="22" cy="22" r="12" fill="#FDB022"/>
+    </g>
+  </g>
+
+  <text class="sf t20 w800 ink" x="86" y="116">菜单栏快速切换视觉稿</text>
+  <text class="sf t14 w600 muted" x="86" y="146">macOS 原生菜单栏入口，聚焦网关账号、Codex 账号与常用运行操作。</text>
+</svg>

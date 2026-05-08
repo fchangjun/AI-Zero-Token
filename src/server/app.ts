@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Fastify, { type FastifyRequest } from "fastify";
+import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
@@ -12,6 +12,7 @@ import { requestText } from "../core/providers/http-client.js";
 const packageRoot = path.dirname(fileURLToPath(new URL("../../package.json", import.meta.url)));
 const adminUiDistDir = path.join(packageRoot, "admin-ui", "dist");
 const adminUiIndexPath = path.join(adminUiDistDir, "index.html");
+const MAX_GATEWAY_REQUEST_LOGS = 100;
 
 const assetContentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -26,6 +27,19 @@ const assetContentTypes: Record<string, string> = {
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
+};
+
+type GatewayRequestLog = {
+  id: string;
+  time: number;
+  method: string;
+  endpoint: string;
+  account: string;
+  model: string;
+  statusCode: number;
+  durationMs: number;
+  source: string;
+  details?: Record<string, unknown>;
 };
 
 function getContentType(filePath: string): string {
@@ -257,14 +271,6 @@ const imageEditsBodySchema = z
   })
   .passthrough();
 
-const chatCompletionExcludedKeys = new Set([
-  "messages",
-  "n",
-  "stream",
-  "max_tokens",
-  "max_completion_tokens",
-]);
-
 function extractTextInput(input: z.infer<typeof responsesBodySchema>["input"]): string {
   if (typeof input === "undefined") {
     return "";
@@ -311,7 +317,26 @@ function normalizeChatRole(role?: string): string {
   return role ?? "user";
 }
 
-function normalizeChatContentPart(part: z.infer<typeof chatCompletionContentPartSchema>): Record<string, unknown> {
+function safeJsonStringify(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "undefined" || value === null) {
+    return "";
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function normalizeChatContentPart(
+  part: z.infer<typeof chatCompletionContentPartSchema>,
+  textType: "input_text" | "output_text",
+): Record<string, unknown> {
   if (part.type === "image_url") {
     const url = typeof part.image_url === "string" ? part.image_url : part.image_url?.url;
     if (!url) {
@@ -330,50 +355,271 @@ function normalizeChatContentPart(part: z.infer<typeof chatCompletionContentPart
 
   const text = typeof part.text === "string" ? part.text : "";
   return {
-    type: "input_text",
+    type: textType,
     text,
   };
 }
 
 function normalizeChatContent(
   content: z.infer<typeof chatCompletionMessageSchema>["content"],
+  role?: string,
 ): Array<Record<string, unknown>> {
+  const textType = role === "assistant" ? "output_text" : "input_text";
+
   if (typeof content === "string") {
-    return [{ type: "input_text", text: content }];
+    return [{ type: textType, text: content }];
   }
 
   if (!Array.isArray(content) || content.length === 0) {
-    return [{ type: "input_text", text: "" }];
+    return [{ type: textType, text: "" }];
   }
 
-  return content.map((part) => normalizeChatContentPart(part));
+  return content.map((part) => normalizeChatContentPart(part, textType));
 }
 
 function normalizeChatMessages(
   messages: z.infer<typeof chatCompletionsBodySchema>["messages"],
 ): Array<Record<string, unknown>> {
-  return messages.map((message) => ({
-    role: normalizeChatRole(message.role),
-    content: normalizeChatContent(message.content),
-    ...(message.name ? { name: message.name } : {}),
-    ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+  const normalized: Array<Record<string, unknown>> = [];
+
+  for (const message of messages) {
+    const record = message as Record<string, unknown>;
+
+    if (message.role === "tool") {
+      normalized.push({
+        type: "function_call_output",
+        call_id: message.tool_call_id,
+        output: typeof message.content === "string" ? message.content : safeJsonStringify(message.content),
+      });
+      continue;
+    }
+
+    normalized.push({
+      role: normalizeChatRole(message.role),
+      content: normalizeChatContent(message.content, message.role),
+      ...(message.name ? { name: message.name } : {}),
+      ...(message.tool_call_id ? { tool_call_id: message.tool_call_id } : {}),
+    });
+
+    const toolCalls = Array.isArray(record.tool_calls) ? record.tool_calls : [];
+    for (const toolCall of toolCalls) {
+      const call = toolCall && typeof toolCall === "object" ? (toolCall as Record<string, unknown>) : {};
+      const fn = call.function && typeof call.function === "object" ? (call.function as Record<string, unknown>) : {};
+      const name = typeof fn.name === "string" ? fn.name : undefined;
+      if (!name) {
+        continue;
+      }
+
+      normalized.push({
+        type: "function_call",
+        call_id: typeof call.id === "string" ? call.id : `call_${normalized.length}`,
+        name,
+        arguments: safeJsonStringify(fn.arguments),
+      });
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeChatTools(tools: unknown[] | undefined): unknown[] | undefined {
+  if (!tools) {
+    return undefined;
+  }
+
+  return tools.map((tool) => {
+    if (!tool || typeof tool !== "object") {
+      return tool;
+    }
+
+    const record = tool as Record<string, unknown>;
+    const fn = record.function && typeof record.function === "object" ? (record.function as Record<string, unknown>) : null;
+    if (record.type !== "function" || !fn) {
+      return tool;
+    }
+
+    return {
+      type: "function",
+      name: fn.name,
+      description: fn.description,
+      parameters: fn.parameters,
+    };
+  });
+}
+
+function normalizeChatToolChoice(toolChoice: unknown): unknown {
+  if (!toolChoice || typeof toolChoice !== "object") {
+    return toolChoice;
+  }
+
+  const record = toolChoice as Record<string, unknown>;
+  const fn = record.function && typeof record.function === "object" ? (record.function as Record<string, unknown>) : null;
+  if (record.type === "function" && fn && typeof fn.name === "string") {
+    return {
+      type: "function",
+      name: fn.name,
+    };
+  }
+
+  return toolChoice;
+}
+
+function normalizeReasoningEffort(value: unknown): string | undefined {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+  if (value === "minimal") {
+    return "low";
+  }
+  if (value === "xhigh") {
+    return "high";
+  }
+
+  return undefined;
+}
+
+function normalizeChatReasoning(data: z.infer<typeof chatCompletionsBodySchema>): Record<string, unknown> | undefined {
+  const record = data as Record<string, unknown>;
+  const existing = record.reasoning;
+  if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+    return existing as Record<string, unknown>;
+  }
+
+  const effort = normalizeReasoningEffort(record.reasoning_effort);
+  return effort ? { effort } : undefined;
+}
+
+function truncateForLog(value: string, maxLength = 300): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) {
+    return normalized;
+  }
+
+  return `${normalized.slice(0, maxLength)}...`;
+}
+
+function extractChatMessageText(message: z.infer<typeof chatCompletionMessageSchema>): string {
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+
+  if (!Array.isArray(message.content)) {
+    return "";
+  }
+
+  return message.content
+    .map((part) => (typeof part.text === "string" ? part.text : part.image_url ? "[image]" : ""))
+    .filter(Boolean)
+    .join("\n");
+}
+
+function countRoles(messages: z.infer<typeof chatCompletionsBodySchema>["messages"]): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const message of messages) {
+    const role = message.role ?? "user";
+    counts[role] = (counts[role] ?? 0) + 1;
+  }
+  return counts;
+}
+
+function summarizeRecentMessages(
+  messages: z.infer<typeof chatCompletionsBodySchema>["messages"],
+): Array<Record<string, unknown>> {
+  return messages.slice(-8).map((message) => ({
+    role: message.role ?? "user",
+    textPreview: truncateForLog(extractChatMessageText(message), 180),
+    toolCallId: message.tool_call_id,
   }));
+}
+
+function summarizeToolNames(tools: unknown[] | undefined): string[] {
+  if (!tools) {
+    return [];
+  }
+
+  return tools
+    .map((tool) => {
+      if (!tool || typeof tool !== "object") {
+        return "";
+      }
+      const record = tool as Record<string, unknown>;
+      const fn = record.function && typeof record.function === "object" ? (record.function as Record<string, unknown>) : null;
+      return typeof fn?.name === "string" ? fn.name : typeof record.name === "string" ? record.name : "";
+    })
+    .filter(Boolean);
+}
+
+function summarizeChatCompletionsRequest(data: z.infer<typeof chatCompletionsBodySchema>): Record<string, unknown> {
+  const lastUserMessage = [...data.messages].reverse().find((message) => (message.role ?? "user") === "user");
+  const toolNames = summarizeToolNames(data.tools);
+  return {
+    endpoint: "/v1/chat/completions",
+    model: data.model ?? "default",
+    stream: data.stream ?? false,
+    messageCount: data.messages.length,
+    roleCounts: countRoles(data.messages),
+    recentMessages: summarizeRecentMessages(data.messages),
+    lastUserTextPreview: lastUserMessage ? truncateForLog(extractChatMessageText(lastUserMessage)) : "",
+    toolCount: data.tools?.length ?? 0,
+    toolNames: toolNames.slice(0, 50),
+    toolNamesTruncated: toolNames.length > 50,
+    toolChoice: typeof data.tool_choice === "undefined" ? "default" : typeof data.tool_choice,
+    parallelToolCalls: data.parallel_tool_calls,
+    hasReasoning: Boolean((data as Record<string, unknown>).reasoning || (data as Record<string, unknown>).reasoning_effort),
+    maxTokens: data.max_completion_tokens ?? data.max_tokens,
+  };
+}
+
+function summarizeCodexChatBody(body: Record<string, unknown>): Record<string, unknown> {
+  const toolNames = summarizeToolNames(Array.isArray(body.tools) ? body.tools : undefined);
+  return {
+    keys: Object.keys(body).sort(),
+    model: body.model ?? "default",
+    stream: body.stream,
+    store: body.store,
+    inputItems: Array.isArray(body.input) ? body.input.length : undefined,
+    tools: Array.isArray(body.tools) ? body.tools.length : undefined,
+    toolNames: toolNames.slice(0, 50),
+    toolNamesTruncated: toolNames.length > 50,
+    toolChoice: typeof body.tool_choice === "undefined" ? "default" : typeof body.tool_choice,
+    parallelToolCalls: body.parallel_tool_calls,
+    hasReasoning: Boolean(body.reasoning),
+  };
+}
+
+function profileLogLabel(profile: OAuthProfile | null): string {
+  return profile?.email || profile?.accountId || profile?.profileId || "-";
+}
+
+function requestSourceFromUserAgent(userAgent: unknown): string {
+  return typeof userAgent === "string" && userAgent.toLowerCase().includes("openclaw") ? "OpenClaw" : "API";
 }
 
 function createChatCompletionsCodexBody(
   data: z.infer<typeof chatCompletionsBodySchema>,
 ): Record<string, unknown> {
-  const body = Object.fromEntries(
-    Object.entries(data).filter(([key]) => !chatCompletionExcludedKeys.has(key)),
-  );
+  const body: Record<string, unknown> = {
+    store: false,
+    stream: true,
+    input: normalizeChatMessages(data.messages),
+  };
 
-  if (typeof data.max_completion_tokens === "number") {
-    body.max_output_tokens = data.max_completion_tokens;
-  } else if (typeof data.max_tokens === "number") {
-    body.max_output_tokens = data.max_tokens;
+  if (data.model) {
+    body.model = data.model;
   }
-
-  body.input = normalizeChatMessages(data.messages);
+  if (typeof data.parallel_tool_calls === "boolean") {
+    body.parallel_tool_calls = data.parallel_tool_calls;
+  }
+  if (data.tools) {
+    body.tools = normalizeChatTools(data.tools);
+  }
+  if (typeof data.tool_choice !== "undefined") {
+    body.tool_choice = normalizeChatToolChoice(data.tool_choice);
+  }
+  const reasoning = normalizeChatReasoning(data);
+  if (reasoning) {
+    body.reasoning = reasoning;
+  }
   return body;
 }
 
@@ -474,6 +720,7 @@ function buildResponseApiBody(result: ChatResult, includeRaw?: boolean): Record<
 }
 
 function buildChatCompletionsBody(result: ChatResult): Record<string, unknown> {
+  const hasToolCalls = result.toolCalls.length > 0;
   const body: Record<string, unknown> = {
     id: `chatcmpl_${randomUUID().replace(/-/g, "")}`,
     object: "chat.completion",
@@ -482,10 +729,11 @@ function buildChatCompletionsBody(result: ChatResult): Record<string, unknown> {
     choices: [
       {
         index: 0,
-        finish_reason: "stop",
+        finish_reason: hasToolCalls ? "tool_calls" : "stop",
         message: {
           role: "assistant",
-          content: result.text,
+          content: hasToolCalls ? result.text || null : result.text,
+          ...(hasToolCalls ? { tool_calls: result.toolCalls } : {}),
         },
       },
     ],
@@ -496,6 +744,91 @@ function buildChatCompletionsBody(result: ChatResult): Record<string, unknown> {
   }
 
   return body;
+}
+
+function writeChatCompletionsSseEvent(reply: FastifyReply, data: unknown): void {
+  reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+}
+
+function buildChatCompletionChunk(params: {
+  id: string;
+  created: number;
+  model: string;
+  delta: Record<string, unknown>;
+  finishReason?: "stop" | "tool_calls";
+}): Record<string, unknown> {
+  return {
+    id: params.id,
+    object: "chat.completion.chunk",
+    created: params.created,
+    model: params.model,
+    choices: [
+      {
+        index: 0,
+        delta: params.delta,
+        finish_reason: params.finishReason ?? null,
+      },
+    ],
+  };
+}
+
+function sendChatCompletionsStream(reply: FastifyReply, result: ChatResult): void {
+  const id = `chatcmpl_${randomUUID().replace(/-/g, "")}`;
+  const created = Math.floor(Date.now() / 1000);
+
+  reply.raw.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+
+  writeChatCompletionsSseEvent(reply, buildChatCompletionChunk({
+    id,
+    created,
+    model: result.model,
+    delta: { role: "assistant" },
+  }));
+
+  if (result.text) {
+    writeChatCompletionsSseEvent(reply, buildChatCompletionChunk({
+      id,
+      created,
+      model: result.model,
+      delta: { content: result.text },
+    }));
+  }
+
+  result.toolCalls.forEach((toolCall, index) => {
+    writeChatCompletionsSseEvent(reply, buildChatCompletionChunk({
+      id,
+      created,
+      model: result.model,
+      delta: {
+        tool_calls: [
+          {
+            index,
+            id: toolCall.id,
+            type: toolCall.type,
+            function: {
+              name: toolCall.function.name,
+              arguments: toolCall.function.arguments,
+            },
+          },
+        ],
+      },
+    }));
+  });
+
+  writeChatCompletionsSseEvent(reply, buildChatCompletionChunk({
+    id,
+    created,
+    model: result.model,
+    delta: {},
+    finishReason: result.toolCalls.length > 0 ? "tool_calls" : "stop",
+  }));
+  reply.raw.write("data: [DONE]\n\n");
+  reply.raw.end();
 }
 
 function validateImageRequest(data: z.infer<typeof imageGenerationsBodySchema>): string | null {
@@ -636,12 +969,32 @@ export function createApp(params?: {
   corsOrigin?: true | string | RegExp | Array<string | RegExp>;
   bodyLimit?: number;
   onRestart?: () => void | Promise<void>;
+  onRestartCodex?: () => void | Promise<void>;
 }) {
   const app = Fastify({
     logger: false,
     bodyLimit: params?.bodyLimit,
   });
   const ctx = createGatewayContext();
+  const gatewayRequestLogs: GatewayRequestLog[] = [];
+
+  function pushGatewayRequestLog(log: Omit<GatewayRequestLog, "id" | "time"> & { id?: string; time?: number }): void {
+    gatewayRequestLogs.unshift({
+      id: log.id ?? randomUUID(),
+      time: log.time ?? Date.now(),
+      method: log.method,
+      endpoint: log.endpoint,
+      account: log.account,
+      model: log.model,
+      statusCode: log.statusCode,
+      durationMs: log.durationMs,
+      source: log.source,
+      details: log.details,
+    });
+    if (gatewayRequestLogs.length > MAX_GATEWAY_REQUEST_LOGS) {
+      gatewayRequestLogs.length = MAX_GATEWAY_REQUEST_LOGS;
+    }
+  }
 
   void app.register(cors, {
     origin: params?.corsOrigin ?? true,
@@ -666,6 +1019,10 @@ export function createApp(params?: {
       },
     };
   });
+
+  app.get("/_gateway/admin/request-logs", async () => ({
+    data: gatewayRequestLogs,
+  }));
 
   async function buildAdminConfig(request: FastifyRequest) {
     const [status, models, modelCatalog, versionStatus, settings, profile, profiles, codexStatus] = await Promise.all([
@@ -692,6 +1049,7 @@ export function createApp(params?: {
       adminUrl: `${origin}/`,
       baseUrl: `${origin}/v1`,
       restartSupported: Boolean(params?.onRestart),
+      codexRestartSupported: Boolean(params?.onRestartCodex),
       supportedEndpoints: [
         {
           method: "GET",
@@ -1021,6 +1379,24 @@ export function createApp(params?: {
     };
   });
 
+  app.post("/_gateway/admin/desktop/restart-codex", async (_request, reply) => {
+    if (!params?.onRestartCodex) {
+      reply.code(501);
+      return {
+        error: {
+          type: "not_supported",
+          message: "当前环境不支持重启 Codex。",
+        },
+      };
+    }
+
+    await params.onRestartCodex();
+    return {
+      ok: true,
+      restarted: true,
+    };
+  });
+
   app.post("/_gateway/admin/settings/proxy-test", async (request, reply) => {
     const parsed = proxyTestSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -1238,8 +1614,27 @@ export function createApp(params?: {
   });
 
   app.post("/v1/chat/completions", async (request, reply) => {
+    const startedAt = performance.now();
     const parsed = chatCompletionsBodySchema.safeParse(request.body);
     if (!parsed.success) {
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: "-",
+        statusCode: 400,
+        durationMs: performance.now() - startedAt,
+        source: "API",
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          error: {
+            type: "validation_error",
+            message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+          },
+        },
+      });
       reply.code(400);
       return {
         error: {
@@ -1249,17 +1644,24 @@ export function createApp(params?: {
       };
     }
 
-    if (parsed.data.stream) {
-      reply.code(501);
-      return {
-        error: {
-          type: "not_supported",
-          message: "当前网关暂不支持 chat.completions 的 stream=true",
-        },
-      };
-    }
-
     if (typeof parsed.data.n === "number" && parsed.data.n > 1) {
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: parsed.data.model ?? "default",
+        statusCode: 501,
+        durationMs: performance.now() - startedAt,
+        source: "API",
+        details: {
+          requestId: request.id,
+          request: summarizeChatCompletionsRequest(parsed.data),
+          error: {
+            type: "not_supported",
+            message: "当前网关暂不支持一次返回多个 choices（n > 1）",
+          },
+        },
+      });
       reply.code(501);
       return {
         error: {
@@ -1270,6 +1672,13 @@ export function createApp(params?: {
     }
 
     const codexBody = createChatCompletionsCodexBody(parsed.data);
+    console.info("[gateway:chat:request]", {
+      requestId: request.id,
+      remoteAddress: request.ip,
+      userAgent: request.headers["user-agent"],
+      ...summarizeChatCompletionsRequest(parsed.data),
+      codex: summarizeCodexChatBody(codexBody),
+    });
     const fallbackInput = parsed.data.messages
       .map((message) =>
         typeof message.content === "string"
@@ -1283,13 +1692,85 @@ export function createApp(params?: {
       .join("\n")
       .trim();
 
-    const result = await ctx.chatService.chat({
-      model: parsed.data.model,
-      input: fallbackInput || undefined,
-      experimental: {
-        codexBody,
+    let result: ChatResult;
+    try {
+      result = await ctx.chatService.chat({
+        model: parsed.data.model,
+        input: fallbackInput || undefined,
+        experimental: {
+          codexBody,
+        },
+      });
+    } catch (error) {
+      const normalized = normalizeError(error);
+      const statusCode = getErrorStatusCode(normalized);
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: profileLogLabel(await ctx.authService.getActiveProfile()),
+        model: parsed.data.model ?? "default",
+        statusCode,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeChatCompletionsRequest(parsed.data),
+          codex: summarizeCodexChatBody(codexBody),
+          error: {
+            message: normalized.message,
+            upstreamStatus: (normalized as Error & { upstreamStatus?: unknown }).upstreamStatus,
+            upstreamErrorCode: (normalized as Error & { upstreamErrorCode?: unknown }).upstreamErrorCode,
+            upstreamErrorMessage: (normalized as Error & { upstreamErrorMessage?: unknown }).upstreamErrorMessage,
+          },
+        },
+      });
+      throw error;
+    }
+
+    pushGatewayRequestLog({
+      method: request.method,
+      endpoint: request.url,
+      account: profileLogLabel(await ctx.authService.getActiveProfile()),
+      model: result.model,
+      statusCode: 200,
+      durationMs: performance.now() - startedAt,
+      source: requestSourceFromUserAgent(request.headers["user-agent"]),
+      details: {
+        requestId: request.id,
+        remoteAddress: request.ip,
+        userAgent: request.headers["user-agent"],
+        request: summarizeChatCompletionsRequest(parsed.data),
+        codex: summarizeCodexChatBody(codexBody),
+        response: {
+          textPreview: truncateForLog(result.text),
+          textLength: result.text.length,
+          toolCallCount: result.toolCalls.length,
+          toolCalls: result.toolCalls.map((toolCall) => ({
+            id: toolCall.id,
+            name: toolCall.function.name,
+            argumentsPreview: truncateForLog(toolCall.function.arguments),
+          })),
+          artifactCount: result.artifacts.length,
+          stream: parsed.data.stream ?? false,
+        },
       },
     });
+    console.info("[gateway:chat:response]", {
+      requestId: request.id,
+      model: result.model,
+      stream: parsed.data.stream ?? false,
+      durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
+      textLength: result.text.length,
+      toolCallCount: result.toolCalls.length,
+      artifactCount: result.artifacts.length,
+    });
+
+    if (parsed.data.stream) {
+      sendChatCompletionsStream(reply, result);
+      return reply;
+    }
 
     return buildChatCompletionsBody(result);
   });

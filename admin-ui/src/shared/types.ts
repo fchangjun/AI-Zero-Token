@@ -131,6 +131,7 @@ export type AdminConfig = {
   baseUrl: string;
   supportedEndpoints: SupportedEndpoint[];
   restartSupported?: boolean;
+  codexRestartSupported?: boolean;
 };
 
 export type RequestLog = {
@@ -143,4 +144,5 @@ export type RequestLog = {
   statusCode: number;
   durationMs: number;
   source: string;
+  details?: Record<string, unknown>;
 };

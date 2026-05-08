@@ -40,7 +40,12 @@ function isPortInUseError(error: unknown): boolean {
   return typeof normalized.message === "string" && normalized.message.includes("EADDRINUSE");
 }
 
-export async function startServer(params?: { host?: string; port?: number; onRestart?: () => void | Promise<void> }) {
+export async function startServer(params?: {
+  host?: string;
+  port?: number;
+  onRestart?: () => void | Promise<void>;
+  onRestartCodex?: () => void | Promise<void>;
+}) {
   const bodyLimit = resolveBodyLimitBytes();
   const configService = new ConfigService();
   const defaults = await configService.getServerConfig();
@@ -55,6 +60,7 @@ export async function startServer(params?: { host?: string; port?: number; onRes
       corsOrigin: resolveCorsOrigin(),
       bodyLimit,
       onRestart: params?.onRestart,
+      onRestartCodex: params?.onRestartCodex,
     });
 
     try {

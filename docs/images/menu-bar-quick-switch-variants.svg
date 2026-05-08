@@ -1,0 +1,193 @@
+<svg width="1800" height="1400" viewBox="0 0 1800 1400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1800" y2="1400" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFC"/>
+      <stop offset="0.52" stop-color="#EEF3F7"/>
+      <stop offset="1" stop-color="#F7EEE8"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#101828" flood-opacity="0.16"/>
+    </filter>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#101828" flood-opacity="0.11"/>
+    </filter>
+    <style>
+      .sf{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Microsoft YaHei",Arial,sans-serif}
+      .ink{fill:#101828}.softText{fill:#344054}.muted{fill:#667085}.faint{fill:#98A2B3}.white{fill:#fff}
+      .t11{font-size:11px}.t12{font-size:12px}.t13{font-size:13px}.t14{font-size:14px}.t15{font-size:15px}.t16{font-size:16px}.t18{font-size:18px}.t22{font-size:22px}.t28{font-size:28px}
+      .w500{font-weight:500}.w600{font-weight:600}.w700{font-weight:700}.w800{font-weight:800}
+    </style>
+  </defs>
+
+  <rect width="1800" height="1400" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1800" height="36" fill="#F8FAFC" fill-opacity="0.82"/>
+  <line x1="0" y1="35.5" x2="1800" y2="35.5" stroke="#D0D5DD"/>
+  <text class="sf t14 w700 ink" x="22" y="23">AI Zero Token</text>
+  <text class="sf t14 w500 softText" x="145" y="23">文件</text>
+  <text class="sf t14 w500 softText" x="192" y="23">编辑</text>
+  <text class="sf t14 w500 softText" x="238" y="23">窗口</text>
+  <text class="sf t13 w700 softText" x="1512" y="23">5月8日 周五 15:58</text>
+  <rect x="1438" y="4" width="50" height="28" rx="8" fill="#101828"/>
+  <circle cx="1454" cy="18" r="5" fill="#22C55E"/>
+  <path d="M1467 13L1475 18L1467 23V13Z" fill="#fff"/>
+
+  <text class="sf t28 w800 ink" x="80" y="96">菜单栏快速切换：三种正式视觉方案</text>
+  <text class="sf t15 w600 muted" x="80" y="126">围绕同一功能目标：快速查看网关/Codex 状态、切换账号、同步应用、重启网关。</text>
+
+  <!-- Variant A -->
+  <g transform="translate(86 180)">
+    <text class="sf t22 w800 ink" x="0" y="0">方案 A · macOS 原生紧凑菜单</text>
+    <text class="sf t14 w600 muted" x="0" y="28">最贴近系统菜单，开发成本最低，适合作为第一版。</text>
+
+    <g filter="url(#shadow)" transform="translate(210 70)">
+      <rect width="420" height="520" rx="18" fill="#FCFCFD" stroke="#EAECF0"/>
+      <path d="M252 0L270 -22L288 0H252Z" fill="#FCFCFD"/>
+      <rect x="18" y="18" width="384" height="62" rx="14" fill="#101828"/>
+      <rect x="34" y="32" width="34" height="34" rx="8" fill="#fff"/>
+      <path d="M43 43H55M43 52H60M60 39L68 49L60 59L52 49L60 39Z" stroke="#101828" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="sf t16 w800 white" x="82" y="44">AI Zero Token</text>
+      <text class="sf t12 w700" x="82" y="63" fill="#D0D5DD">网关 8799 · 3 个账号</text>
+      <circle cx="370" cy="41" r="5.5" fill="#22C55E"/>
+      <text class="sf t12 w800" x="340" y="62" fill="#86EFAC">运行中</text>
+
+      <text class="sf t12 w800 muted" x="24" y="112">网关账号</text>
+      <rect x="18" y="126" width="384" height="48" rx="12" fill="#F8FAFC"/>
+      <path d="M38 149L46 157L60 141" stroke="#16A34A" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="sf t14 w800 ink" x="76" y="156">work@example.com</text>
+      <rect x="300" y="137" width="78" height="26" rx="13" fill="#DCFCE7"/>
+      <text class="sf t12 w800" x="320" y="154" fill="#15803D">使用中</text>
+      <rect x="18" y="178" width="384" height="48" rx="12" fill="#fff"/>
+      <text class="sf t14 w700 softText" x="76" y="208">backup@example.com</text>
+      <text class="sf t13 w700 muted" x="318" y="208">切换</text>
+
+      <line x1="18" y1="244" x2="402" y2="244" stroke="#EAECF0"/>
+      <text class="sf t12 w800 muted" x="24" y="276">Codex 账号</text>
+      <rect x="18" y="290" width="384" height="48" rx="12" fill="#F8FAFC"/>
+      <path d="M38 313L46 321L60 305" stroke="#3538CD" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="sf t14 w800 ink" x="76" y="320">backup@example.com</text>
+      <rect x="292" y="301" width="86" height="26" rx="13" fill="#E0EAFF"/>
+      <text class="sf t12 w800" x="310" y="318" fill="#3538CD">Codex</text>
+      <rect x="18" y="342" width="384" height="48" rx="12" fill="#fff"/>
+      <text class="sf t14 w700 softText" x="76" y="372">work@example.com</text>
+      <text class="sf t13 w700 muted" x="318" y="372">应用</text>
+
+      <line x1="18" y1="408" x2="402" y2="408" stroke="#EAECF0"/>
+      <text class="sf t14 w800 ink" x="42" y="444">同时应用选中账号</text>
+      <path d="M350 435L360 445L350 455" stroke="#667085" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="sf t14 w800 ink" x="42" y="480">复制 Base URL</text>
+      <text class="sf t14 w800 ink" x="246" y="480">重启网关</text>
+    </g>
+  </g>
+
+  <!-- Variant B -->
+  <g transform="translate(940 180)">
+    <text class="sf t22 w800 ink" x="0" y="0">方案 B · 迷你仪表盘面板</text>
+    <text class="sf t14 w600 muted" x="0" y="28">信息密度更高，可以显示健康、额度、最近请求。</text>
+
+    <g filter="url(#shadow)" transform="translate(150 70)">
+      <rect width="500" height="560" rx="24" fill="#FCFCFD" stroke="#EAECF0"/>
+      <path d="M306 0L324 -22L342 0H306Z" fill="#FCFCFD"/>
+      <rect x="24" y="24" width="452" height="82" rx="18" fill="#101828"/>
+      <text class="sf t18 w800 white" x="48" y="58">AI Zero Token</text>
+      <text class="sf t13 w600" x="48" y="82" fill="#D0D5DD">本地 OpenAI 兼容网关</text>
+      <rect x="362" y="42" width="86" height="30" rx="15" fill="#064E3B"/>
+      <circle cx="381" cy="57" r="5" fill="#22C55E"/>
+      <text class="sf t12 w800" x="392" y="61" fill="#A7F3D0">运行中</text>
+
+      <rect x="24" y="126" width="214" height="112" rx="18" fill="#F8FAFC" stroke="#EAECF0"/>
+      <text class="sf t12 w800 muted" x="46" y="156">网关</text>
+      <text class="sf t18 w800 ink" x="46" y="187">work</text>
+      <text class="sf t12 w600 muted" x="46" y="211">@example.com</text>
+      <rect x="146" y="150" width="66" height="26" rx="13" fill="#DCFCE7"/>
+      <text class="sf t12 w800" x="164" y="167" fill="#15803D">健康</text>
+
+      <rect x="262" y="126" width="214" height="112" rx="18" fill="#F8FAFC" stroke="#EAECF0"/>
+      <text class="sf t12 w800 muted" x="284" y="156">Codex</text>
+      <text class="sf t18 w800 ink" x="284" y="187">backup</text>
+      <text class="sf t12 w600 muted" x="284" y="211">@example.com</text>
+      <rect x="378" y="150" width="74" height="26" rx="13" fill="#E0EAFF"/>
+      <text class="sf t12 w800" x="394" y="167" fill="#3538CD">已应用</text>
+
+      <rect x="24" y="258" width="452" height="104" rx="18" fill="#fff" stroke="#EAECF0"/>
+      <text class="sf t14 w800 ink" x="48" y="292">额度概览</text>
+      <rect x="48" y="316" width="380" height="10" rx="5" fill="#F2F4F7"/>
+      <rect x="48" y="316" width="268" height="10" rx="5" fill="#3B82F6"/>
+      <text class="sf t12 w700 muted" x="48" y="346">当前网关账号剩余额度 71%</text>
+      <text class="sf t12 w700 muted" x="324" y="346">2 分钟前同步</text>
+
+      <text class="sf t13 w800 muted" x="24" y="394">快速动作</text>
+      <rect x="24" y="412" width="138" height="48" rx="14" fill="#101828"/>
+      <text class="sf t14 w800 white" x="52" y="442">同时应用</text>
+      <rect x="181" y="412" width="138" height="48" rx="14" fill="#fff" stroke="#D0D5DD"/>
+      <text class="sf t14 w800 softText" x="206" y="442">切换网关</text>
+      <rect x="338" y="412" width="138" height="48" rx="14" fill="#fff" stroke="#D0D5DD"/>
+      <text class="sf t14 w800 softText" x="363" y="442">切换 Codex</text>
+
+      <rect x="24" y="480" width="452" height="54" rx="16" fill="#F8FAFC" stroke="#EAECF0"/>
+      <text class="sf t12 w800 muted" x="48" y="512">最近请求</text>
+      <rect x="138" y="494" width="54" height="26" rx="13" fill="#DCFCE7"/>
+      <text class="sf t12 w800" x="155" y="511" fill="#15803D">200</text>
+      <text class="sf t13 w700 softText" x="212" y="512">POST /v1/chat/completions · 868ms</text>
+    </g>
+  </g>
+
+  <!-- Variant C -->
+  <g transform="translate(86 840)">
+    <text class="sf t22 w800 ink" x="0" y="0">方案 C · 命令面板式切换器</text>
+    <text class="sf t14 w600 muted" x="0" y="28">偏效率工具，支持搜索账号和键盘操作，适合账号很多的用户。</text>
+
+    <g filter="url(#shadow)" transform="translate(310 72)">
+      <rect width="720" height="410" rx="24" fill="#FCFCFD" stroke="#EAECF0"/>
+      <path d="M412 0L430 -22L448 0H412Z" fill="#FCFCFD"/>
+      <rect x="28" y="28" width="664" height="58" rx="16" fill="#F8FAFC" stroke="#D0D5DD"/>
+      <circle cx="56" cy="57" r="8" stroke="#667085" stroke-width="2"/>
+      <path d="M62 63L70 71" stroke="#667085" stroke-width="2" stroke-linecap="round"/>
+      <text class="sf t16 w700 muted" x="86" y="63">搜索账号、动作或模型...</text>
+      <rect x="602" y="43" width="60" height="28" rx="8" fill="#fff" stroke="#D0D5DD"/>
+      <text class="sf t12 w800 muted" x="618" y="61">⌘ K</text>
+
+      <text class="sf t12 w800 muted" x="34" y="122">建议操作</text>
+      <rect x="28" y="140" width="664" height="64" rx="16" fill="#101828"/>
+      <circle cx="60" cy="172" r="15" fill="#22C55E"/>
+      <path d="M53 172L58 177L68 166" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text class="sf t15 w800 white" x="88" y="166">让 Codex 跟随当前网关账号</text>
+      <text class="sf t12 w600" x="88" y="186" fill="#D0D5DD">work@example.com 将同时作为网关与 Codex 账号</text>
+      <text class="sf t12 w800" x="606" y="176" fill="#A7F3D0">Enter</text>
+
+      <text class="sf t12 w800 muted" x="34" y="236">账号</text>
+      <rect x="28" y="254" width="664" height="56" rx="14" fill="#fff" stroke="#EAECF0"/>
+      <circle cx="58" cy="282" r="15" fill="#E0F2FE"/>
+      <text class="sf t12 w800" x="52" y="286" fill="#0369A1">W</text>
+      <text class="sf t14 w800 ink" x="88" y="277">work@example.com</text>
+      <text class="sf t12 w600 muted" x="88" y="295">网关使用中 · 额度健康 · Plus</text>
+      <rect x="486" y="269" width="62" height="26" rx="13" fill="#DCFCE7"/>
+      <text class="sf t12 w800" x="505" y="286" fill="#15803D">网关</text>
+      <rect x="560" y="269" width="82" height="26" rx="13" fill="#EEF4FF"/>
+      <text class="sf t12 w800" x="578" y="286" fill="#3538CD">应用 Codex</text>
+
+      <rect x="28" y="318" width="664" height="56" rx="14" fill="#fff" stroke="#EAECF0"/>
+      <circle cx="58" cy="346" r="15" fill="#FFF7ED"/>
+      <text class="sf t12 w800" x="53" y="350" fill="#C2410C">B</text>
+      <text class="sf t14 w800 ink" x="88" y="341">backup@example.com</text>
+      <text class="sf t12 w600 muted" x="88" y="359">Codex 当前 · 额度 62% · Team</text>
+      <rect x="486" y="333" width="82" height="26" rx="13" fill="#F2F4F7"/>
+      <text class="sf t12 w800 muted" x="504" y="350">切换网关</text>
+      <rect x="580" y="333" width="62" height="26" rx="13" fill="#E0EAFF"/>
+      <text class="sf t12 w800" x="596" y="350" fill="#3538CD">Codex</text>
+    </g>
+  </g>
+
+  <g transform="translate(1190 898)">
+    <rect width="476" height="296" rx="26" fill="#FFFFFF" fill-opacity="0.72" stroke="#EAECF0" filter="url(#soft)"/>
+    <text class="sf t18 w800 ink" x="34" y="48">推荐落地顺序</text>
+    <circle cx="44" cy="86" r="12" fill="#101828"/><text class="sf t12 w800 white" x="41" y="90">1</text>
+    <text class="sf t14 w800 ink" x="70" y="91">先做方案 A</text>
+    <text class="sf t13 w600 muted" x="70" y="114">Electron Tray 原生菜单，风险最低。</text>
+    <circle cx="44" cy="152" r="12" fill="#344054"/><text class="sf t12 w800 white" x="40" y="156">2</text>
+    <text class="sf t14 w800 ink" x="70" y="157">再增强成方案 B</text>
+    <text class="sf t13 w600 muted" x="70" y="180">加入额度、最近请求、健康状态。</text>
+    <circle cx="44" cy="218" r="12" fill="#667085"/><text class="sf t12 w800 white" x="40" y="222">3</text>
+    <text class="sf t14 w800 ink" x="70" y="223">账号多时补方案 C</text>
+    <text class="sf t13 w600 muted" x="70" y="246">搜索和键盘操作解决长列表问题。</text>
+  </g>
+</svg>

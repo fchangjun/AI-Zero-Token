@@ -24,6 +24,7 @@ AI Zero Token provides a local CLI, web console, and HTTP gateway that expose sa
 - Optional quota-exhaustion auto switch to the next saved API account with available quota, plus configurable quota refresh concurrency.
 - Optional upstream proxy configuration for OAuth, model refresh, and gateway forwarding.
 - Local model discovery from the Codex model cache with manual refresh support.
+- OpenClaw-oriented chat compatibility for streaming, tool calls, tool result messages, and request-log diagnostics.
 
 ## Architecture
 
@@ -79,6 +80,8 @@ For local clients, keep using:
 http://127.0.0.1:8787/v1
 ```
 
+On macOS, the desktop app also adds a menu-bar panel for quick account switching. The panel can switch the active gateway account, apply an account to local Codex, refresh quota status, copy the API Base URL, and restart the local gateway.
+
 ## Web Console
 
 The web console is the recommended entry point:
@@ -128,6 +131,19 @@ curl http://127.0.0.1:8787/v1/chat/completions \
     ]
   }'
 ```
+
+For OpenClaw or other OpenAI-compatible coding clients, configure:
+
+```text
+Provider: OpenAI compatible
+Base URL: http://127.0.0.1:8787/v1
+API Key: local
+Model: gpt-5.4
+Streaming: enabled
+Tools / function calling: enabled
+```
+
+`/v1/chat/completions` accepts `stream=true`, `tools`, `tool_choice`, `parallel_tool_calls`, assistant `tool_calls`, tool-role result messages, and `reasoning_effort`. OpenClaw requests also appear in the management console request log with safe summaries.
 
 ### Image Generation
 
@@ -254,7 +270,8 @@ For JSON image editing, base64 payloads are about 33% larger than the original i
 ## Limitations
 
 - This project is intended for local single-user use.
-- Streaming request fields are recognized, but full streaming parity is not implemented for every endpoint.
+- `/v1/chat/completions` supports OpenAI-style SSE for `stream=true`; `/v1/responses` streaming is not implemented yet.
+- `/v1/chat/completions` supports common tool/function-calling fields, but `n > 1` is not supported.
 - `/v1/images/generations` currently returns `b64_json`; hosted image URLs are not supported.
 - `/v1/images/generations` does not support `n > 1`.
 - `/v1/images/edits` currently supports JSON only. `multipart/form-data`, `mask`, and `file_id` are not yet supported.

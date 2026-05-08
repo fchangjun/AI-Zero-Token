@@ -2,7 +2,7 @@ import { startTransition, useCallback, useEffect, useState, type Dispatch, type 
 import { fetchJson } from "@/shared/api";
 import type { AdminConfig, RequestLog } from "@/shared/types";
 import type { BusyAction } from "@/shared/lib/app-types";
-import { buildSeedRequests, errorMessage } from "@/shared/lib/app-utils";
+import { errorMessage } from "@/shared/lib/app-utils";
 import { readRouteFromHash, type AppRoute } from "@/routes/routes";
 
 export type ModalImage = { src: string; meta: string; filename?: string };
@@ -31,6 +31,7 @@ export type WorkspaceState = {
 
 const RUNTIME_AUTO_REFRESH_MS = 5 * 60 * 1000;
 const ACTIVE_PROFILE_REFRESH_MS = 15 * 1000;
+const REQUEST_LOGS_REFRESH_MS = 5 * 1000;
 const SHOW_EMAILS_STORAGE_KEY = "azt:settings:show-emails";
 
 function readStoredShowEmails(): boolean {
@@ -87,13 +88,32 @@ export function useAdminWorkspaceState(): WorkspaceState {
     }
   }, []);
 
+  const refreshRequestLogs = useCallback(async () => {
+    try {
+      const next = await fetchJson<{ data: RequestLog[] }>("/_gateway/admin/request-logs");
+      setRequestLogs(next.data);
+    } catch {
+      // Request logs are diagnostic only; keep the rest of the console usable.
+    }
+  }, []);
+
   useEffect(() => {
     refreshConfig().catch(() => undefined);
+    refreshRequestLogs().catch(() => undefined);
     const timer = window.setInterval(() => {
       refreshConfig({ silent: true }).catch(() => undefined);
     }, 60_000);
     return () => window.clearInterval(timer);
-  }, [refreshConfig]);
+  }, [refreshConfig, refreshRequestLogs]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!document.hidden) {
+        refreshRequestLogs().catch(() => undefined);
+      }
+    }, REQUEST_LOGS_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [refreshRequestLogs]);
 
   useEffect(() => {
     try {
@@ -144,12 +164,6 @@ export function useAdminWorkspaceState(): WorkspaceState {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
-
-  useEffect(() => {
-    if (config && requestLogs.length === 0) {
-      setRequestLogs(buildSeedRequests(config, showEmails));
-    }
-  }, [config, requestLogs.length, showEmails]);
 
   return {
     config,

@@ -6,7 +6,7 @@ import type { AdminConfig } from "@/shared/types";
 import { skillMarkdown } from "@/content/skill-doc";
 import "./docs.css";
 
-type DocsTab = "quick-start" | "skill" | "examples";
+type DocsTab = "quick-start" | "openclaw" | "skill" | "examples";
 
 function SnippetCard({
   title,
@@ -71,6 +71,8 @@ export function DocsPage({
   const quickStartSnippet = `baseURL = "${baseUrl}"\napiKey = "${apiKey}"`;
   const openAIExample = `import OpenAI from "openai";\n\nconst client = new OpenAI({\n  apiKey: "${apiKey}",\n  baseURL: "${baseUrl}",\n});`;
   const curlExample = `curl ${baseUrl}/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${config?.settings.defaultModel || "gpt-5.4"}",\n    "messages": [{ "role": "user", "content": "Reply with OK only." }]\n  }'`;
+  const openClawSettings = `Provider: OpenAI compatible\nBase URL: ${baseUrl}\nAPI Key: ${apiKey}\nModel: ${config?.settings.defaultModel || "gpt-5.4"}\nChat endpoint: /chat/completions\nStreaming: enabled\nTools / function calling: enabled`;
+  const openClawToolExample = `curl ${baseUrl}/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${config?.settings.defaultModel || "gpt-5.4"}",\n    "stream": true,\n    "messages": [{ "role": "user", "content": "Call the weather tool for Shanghai." }],\n    "tools": [{\n      "type": "function",\n      "function": {\n        "name": "get_weather",\n        "description": "Get weather for a city.",\n        "parameters": {\n          "type": "object",\n          "properties": { "city": { "type": "string" } },\n          "required": ["city"]\n        }\n      }\n    }],\n    "tool_choice": "auto"\n  }'`;
   const responsesExample = `curl ${baseUrl}/responses \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${config?.settings.defaultModel || "gpt-5.4"}",\n    "input": "Reply with OK only."\n  }'`;
 
   async function copyDoc() {
@@ -126,6 +128,9 @@ export function DocsPage({
           <nav className="docs-tab-bar" aria-label="Skill 文档视图切换">
             <button className={activeTab === "quick-start" ? "is-active" : ""} type="button" onClick={() => setActiveTab("quick-start")}>
               快速接入
+            </button>
+            <button className={activeTab === "openclaw" ? "is-active" : ""} type="button" onClick={() => setActiveTab("openclaw")}>
+              OpenClaw
             </button>
             <button className={activeTab === "skill" ? "is-active" : ""} type="button" onClick={() => setActiveTab("skill")}>
               Skill.md
@@ -199,6 +204,33 @@ export function DocsPage({
                     </div>
                   ))}
                 </div>
+              </section>
+            </div>
+          ) : null}
+
+          {activeTab === "openclaw" ? (
+            <div className="docs-example-grid">
+              <SnippetCard
+                title="OpenClaw 接入参数"
+                description="在 OpenClaw 里选择 OpenAI-compatible provider。"
+                code={openClawSettings}
+                onCopy={() => void copyText(openClawSettings).then((ok) => setStatus(ok ? "OpenClaw 接入参数已复制。" : "复制失败。"))}
+              />
+              <SnippetCard
+                title="流式工具调用自测"
+                description="验证 stream=true、tools 和 tool_choice 是否能被客户端识别。"
+                code={openClawToolExample}
+                onCopy={() => void copyText(openClawToolExample).then((ok) => setStatus(ok ? "OpenClaw 工具调用示例已复制。" : "复制失败。"))}
+              />
+              <section className="docs-panel docs-note-panel">
+                <h3>兼容范围</h3>
+                <ul>
+                  <li>支持 <code>stream=true</code>，返回 OpenAI 风格 SSE chunk。</li>
+                  <li>支持 <code>tools</code>、<code>tool_choice</code>、<code>parallel_tool_calls</code> 和 <code>reasoning_effort</code>。</li>
+                  <li>支持 assistant <code>tool_calls</code> 和 tool role 结果消息回传。</li>
+                  <li>请求日志会识别 OpenClaw user agent，并展示安全摘要。</li>
+                  <li><code>/v1/responses</code> 暂不支持流式，<code>n &gt; 1</code> 暂不支持。</li>
+                </ul>
               </section>
             </div>
           ) : null}

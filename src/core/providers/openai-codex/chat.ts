@@ -1,4 +1,4 @@
-import type { ArtifactCandidate, CodexQuotaSnapshot, OAuthProfile } from "../../types.js";
+import type { ArtifactCandidate, ChatToolCall, CodexQuotaSnapshot, OAuthProfile } from "../../types.js";
 import { DEFAULT_CODEX_MODEL } from "../../models/openai-codex-models.js";
 import { requestText } from "../http-client.js";
 
@@ -185,6 +185,100 @@ function extractOutputText(payload: unknown): string {
   return "";
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function stringifyToolArguments(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "undefined" || value === null) {
+    return "";
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function upsertFunctionCall(items: Map<string, ChatToolCall>, value: unknown): void {
+  const record = asRecord(value);
+  if (!record || record.type !== "function_call") {
+    return;
+  }
+
+  const name = optionalString(record.name);
+  const id = optionalString(record.call_id) ?? optionalString(record.id);
+  if (!name || !id) {
+    return;
+  }
+
+  items.set(id, {
+    id,
+    type: "function",
+    function: {
+      name,
+      arguments: stringifyToolArguments(record.arguments),
+    },
+  });
+}
+
+function appendFunctionCallArgumentsDelta(
+  items: Map<string, ChatToolCall>,
+  argumentDeltas: Map<string, string>,
+  event: CodexSseEvent,
+): void {
+  if (event.type !== "response.function_call_arguments.delta") {
+    return;
+  }
+
+  const itemId = optionalString(event.item_id) ?? optionalString(event.call_id);
+  if (!itemId || typeof event.delta !== "string") {
+    return;
+  }
+
+  argumentDeltas.set(itemId, `${argumentDeltas.get(itemId) ?? ""}${event.delta}`);
+  const existing = items.get(itemId);
+  if (existing) {
+    existing.function.arguments = argumentDeltas.get(itemId) ?? existing.function.arguments;
+  }
+}
+
+function extractToolCalls(responsePayload: unknown, events: CodexSseEvent[]): ChatToolCall[] {
+  const calls = new Map<string, ChatToolCall>();
+  const argumentDeltas = new Map<string, string>();
+
+  const response = asRecord(responsePayload);
+  const output = Array.isArray(response?.output) ? response.output : [];
+  for (const item of output) {
+    upsertFunctionCall(calls, item);
+  }
+
+  for (const event of events) {
+    if (event.type === "response.output_item.added" || event.type === "response.output_item.done") {
+      upsertFunctionCall(calls, event.item);
+    }
+    appendFunctionCallArgumentsDelta(calls, argumentDeltas, event);
+  }
+
+  for (const [id, argumentsDelta] of argumentDeltas) {
+    const existing = calls.get(id);
+    if (existing && !existing.function.arguments) {
+      existing.function.arguments = argumentsDelta;
+    }
+  }
+
+  return Array.from(calls.values()).filter((call) => call.function.name);
+}
+
 function parseSseEvents(body: string): CodexSseEvent[] {
   const events: CodexSseEvent[] = [];
   for (const chunk of body.split("\n\n")) {
@@ -318,6 +412,7 @@ function buildDefaultRequestBody(params: {
 
 function extractCodexText(body: string, requestBody: Record<string, unknown>): {
   text: string;
+  toolCalls: ChatToolCall[];
   raw: unknown;
   artifacts: ArtifactCandidate[];
 } {
@@ -345,6 +440,7 @@ function extractCodexText(body: string, requestBody: Record<string, unknown>): {
   }
 
   const completedText = extractOutputText(responsePayload);
+  const toolCalls = extractToolCalls(responsePayload, events);
   const artifacts = [
     ...collectArtifactCandidates(responsePayload, "response"),
     ...collectArtifactCandidates(events, "event"),
@@ -353,6 +449,7 @@ function extractCodexText(body: string, requestBody: Record<string, unknown>): {
   if (completedText) {
     return {
       text: completedText,
+      toolCalls,
       raw: {
         request: requestBody,
         response: responsePayload ?? null,
@@ -364,6 +461,7 @@ function extractCodexText(body: string, requestBody: Record<string, unknown>): {
 
   return {
     text: accumulated.trim(),
+    toolCalls,
     raw: {
       request: requestBody,
       response: responsePayload ?? null,
@@ -379,7 +477,7 @@ export async function askOpenAICodex(params: {
   model?: string;
   system?: string;
   bodyOverride?: Record<string, unknown>;
-}): Promise<{ text: string; raw: unknown; artifacts: ArtifactCandidate[]; quota?: CodexQuotaSnapshot }> {
+}): Promise<{ text: string; toolCalls: ChatToolCall[]; raw: unknown; artifacts: ArtifactCandidate[]; quota?: CodexQuotaSnapshot }> {
   const requestBody = {
     ...buildDefaultRequestBody(params),
     ...(params.bodyOverride ?? {}),

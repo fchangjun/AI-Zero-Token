@@ -1,0 +1,220 @@
+<svg width="1800" height="1200" viewBox="0 0 1800 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1800" y2="1200" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F7FAFC"/>
+      <stop offset="0.55" stop-color="#ECF2F7"/>
+      <stop offset="1" stop-color="#F8EEE7"/>
+    </linearGradient>
+    <filter id="panelShadow" x="-20%" y="-18%" width="145%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="26" stdDeviation="30" flood-color="#101828" flood-opacity="0.18"/>
+    </filter>
+    <filter id="softShadow" x="-20%" y="-18%" width="145%" height="150%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#101828" flood-opacity="0.12"/>
+    </filter>
+    <style>
+      .sf{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","PingFang SC","Microsoft YaHei",Arial,sans-serif}
+      .ink{fill:#101828}.soft{fill:#344054}.muted{fill:#667085}.faint{fill:#98A2B3}.white{fill:#fff}
+      .t11{font-size:11px}.t12{font-size:12px}.t13{font-size:13px}.t14{font-size:14px}.t15{font-size:15px}.t16{font-size:16px}.t18{font-size:18px}.t20{font-size:20px}.t24{font-size:24px}.t30{font-size:30px}
+      .w500{font-weight:500}.w600{font-weight:600}.w700{font-weight:700}.w800{font-weight:800}
+    </style>
+  </defs>
+
+  <rect width="1800" height="1200" fill="url(#bg)"/>
+  <path d="M0 650C196 572 318 700 508 620C692 542 747 392 920 436C1148 494 1162 702 1390 638C1554 592 1650 511 1800 572V1200H0V650Z" fill="#CFE0EA" fill-opacity="0.25"/>
+  <path d="M0 868C210 788 365 872 568 806C782 736 870 678 1054 744C1226 806 1374 925 1800 808V1200H0V868Z" fill="#FFFFFF" fill-opacity="0.38"/>
+
+  <rect x="0" y="0" width="1800" height="36" fill="#F8FAFC" fill-opacity="0.84"/>
+  <line x1="0" y1="35.5" x2="1800" y2="35.5" stroke="#D0D5DD"/>
+  <text class="sf t14 w700 ink" x="22" y="23">AI Zero Token</text>
+  <text class="sf t14 w500 soft" x="145" y="23">文件</text>
+  <text class="sf t14 w500 soft" x="192" y="23">编辑</text>
+  <text class="sf t14 w500 soft" x="238" y="23">窗口</text>
+  <text class="sf t14 w500 soft" x="284" y="23">帮助</text>
+  <rect x="1438" y="4" width="50" height="28" rx="8" fill="#101828"/>
+  <circle cx="1454" cy="18" r="5" fill="#22C55E"/>
+  <path d="M1467 13L1475 18L1467 23V13Z" fill="#fff"/>
+  <text class="sf t13 w700 soft" x="1512" y="23">5月8日 周五 16:06</text>
+
+  <text class="sf t30 w800 ink" x="96" y="104">账号列表优先版菜单栏视觉稿</text>
+  <text class="sf t15 w600 muted" x="96" y="136">为大量账号场景设计：搜索、分组、可滚动列表、每行三种快速应用动作。</text>
+
+  <g filter="url(#softShadow)" transform="translate(120 216)">
+    <rect width="622" height="660" rx="26" fill="#FFFFFF" fill-opacity="0.82" stroke="#EAECF0"/>
+    <rect x="34" y="34" width="554" height="72" rx="18" fill="#101828"/>
+    <rect x="58" y="53" width="34" height="34" rx="9" fill="#fff"/>
+    <path d="M67 64H80M67 73H85M84 60L92 70L84 80L76 70L84 60Z" stroke="#101828" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sf t18 w800 white" x="108" y="64">AI Zero Token 控制台</text>
+    <text class="sf t13 w600" x="108" y="88" fill="#D0D5DD">完整管理仍在主窗口，菜单栏只做高频切换。</text>
+    <circle cx="546" cy="62" r="6" fill="#22C55E"/>
+    <text class="sf t12 w800" x="514" y="86" fill="#86EFAC">运行中</text>
+
+    <rect x="34" y="136" width="260" height="120" rx="18" fill="#F8FAFC" stroke="#EAECF0"/>
+    <text class="sf t12 w800 muted" x="58" y="168">当前网关</text>
+    <text class="sf t20 w800 ink" x="58" y="200">work@example.com</text>
+    <rect x="58" y="216" width="84" height="26" rx="13" fill="#DCFCE7"/>
+    <text class="sf t12 w800" x="78" y="233" fill="#15803D">API 使用中</text>
+
+    <rect x="328" y="136" width="260" height="120" rx="18" fill="#F8FAFC" stroke="#EAECF0"/>
+    <text class="sf t12 w800 muted" x="352" y="168">当前 Codex</text>
+    <text class="sf t20 w800 ink" x="352" y="200">backup@example.com</text>
+    <rect x="352" y="216" width="86" height="26" rx="13" fill="#E0EAFF"/>
+    <text class="sf t12 w800" x="370" y="233" fill="#3538CD">Codex 当前</text>
+
+    <rect x="34" y="286" width="554" height="86" rx="18" fill="#FFFFFF" stroke="#EAECF0"/>
+    <text class="sf t14 w800 ink" x="58" y="322">账号池摘要</text>
+    <text class="sf t13 w600 muted" x="58" y="348">共 42 个账号，可用 31 个，需处理 7 个，额度耗尽 4 个。</text>
+    <rect x="398" y="313" width="150" height="36" rx="18" fill="#101828"/>
+    <text class="sf t13 w800 white" x="426" y="336">打开完整管理</text>
+
+    <text class="sf t16 w800 ink" x="34" y="428">设计重点</text>
+    <circle cx="48" cy="466" r="6" fill="#22C55E"/><text class="sf t14 w700 soft" x="66" y="471">列表默认只展示可用账号，失效账号折叠到底部。</text>
+    <circle cx="48" cy="506" r="6" fill="#3B82F6"/><text class="sf t14 w700 soft" x="66" y="511">账号很多时先搜索，再用最近使用和推荐可用兜底。</text>
+    <circle cx="48" cy="546" r="6" fill="#F59E0B"/><text class="sf t14 w700 soft" x="66" y="551">每行保留三种动作：网关、Codex、同时应用。</text>
+    <circle cx="48" cy="586" r="6" fill="#667085"/><text class="sf t14 w700 soft" x="66" y="591">列表区域固定高度滚动，菜单不会无限变长。</text>
+  </g>
+
+  <g filter="url(#panelShadow)" transform="translate(920 82)">
+    <rect width="512" height="992" rx="26" fill="#FCFCFD" stroke="#EAECF0"/>
+    <path d="M296 0L316 -24L336 0H296Z" fill="#FCFCFD"/>
+
+    <rect x="26" y="26" width="460" height="76" rx="18" fill="#101828"/>
+    <rect x="48" y="47" width="34" height="34" rx="9" fill="#fff"/>
+    <path d="M57 58H70M57 67H75M74 54L82 64L74 74L66 64L74 54Z" stroke="#101828" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text class="sf t17 w800 white" x="98" y="58">AI Zero Token</text>
+    <text class="sf t12 w600" x="98" y="80" fill="#D0D5DD">快速切换账号</text>
+    <rect x="372" y="47" width="88" height="30" rx="15" fill="#064E3B"/>
+    <circle cx="390" cy="62" r="5" fill="#22C55E"/>
+    <text class="sf t12 w800" x="402" y="66" fill="#A7F3D0">运行中</text>
+
+    <rect x="26" y="120" width="220" height="86" rx="16" fill="#F8FAFC" stroke="#EAECF0"/>
+    <text class="sf t12 w800 muted" x="48" y="150">网关</text>
+    <text class="sf t15 w800 ink" x="48" y="176">work@example.com</text>
+    <text class="sf t12 w600 muted" x="48" y="194">127.0.0.1:8799/v1</text>
+    <rect x="266" y="120" width="220" height="86" rx="16" fill="#F8FAFC" stroke="#EAECF0"/>
+    <text class="sf t12 w800 muted" x="288" y="150">Codex</text>
+    <text class="sf t15 w800 ink" x="288" y="176">backup@example.com</text>
+    <text class="sf t12 w600 muted" x="288" y="194">auth.json 已应用</text>
+
+    <rect x="26" y="224" width="460" height="52" rx="16" fill="#FFFFFF" stroke="#D0D5DD"/>
+    <circle cx="54" cy="250" r="8" stroke="#667085" stroke-width="2"/>
+    <path d="M60 256L68 264" stroke="#667085" stroke-width="2" stroke-linecap="round"/>
+    <text class="sf t15 w700 muted" x="84" y="256">搜索邮箱、标签、套餐...</text>
+    <rect x="402" y="236" width="54" height="28" rx="8" fill="#F8FAFC" stroke="#D0D5DD"/>
+    <text class="sf t12 w800 muted" x="416" y="254">⌘ K</text>
+
+    <g transform="translate(26 292)">
+      <rect width="460" height="38" rx="14" fill="#F2F4F7"/>
+      <rect x="4" y="4" width="134" height="30" rx="11" fill="#101828"/>
+      <text class="sf t12 w800 white" x="36" y="24">推荐可用</text>
+      <text class="sf t12 w800 muted" x="170" y="24">最近使用</text>
+      <text class="sf t12 w800 muted" x="296" y="24">全部 42</text>
+    </g>
+
+    <text class="sf t12 w800 muted" x="26" y="364">推荐可用 · 按健康和最近使用排序</text>
+
+    <g transform="translate(26 380)">
+      <rect width="460" height="92" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+      <circle cx="31" cy="34" r="16" fill="#E0F2FE"/>
+      <text class="sf t12 w800" x="24" y="39" fill="#0369A1">W</text>
+      <text class="sf t15 w800 ink" x="60" y="28">work@example.com</text>
+      <text class="sf t12 w600 muted" x="60" y="49">Plus · 额度 82% · 2 分钟前同步</text>
+      <rect x="334" y="17" width="86" height="26" rx="13" fill="#DCFCE7"/>
+      <text class="sf t12 w800" x="354" y="34" fill="#15803D">网关当前</text>
+      <rect x="60" y="60" width="88" height="24" rx="12" fill="#F2F4F7"/>
+      <text class="sf t11 w800 muted" x="80" y="76">应用网关</text>
+      <rect x="158" y="60" width="88" height="24" rx="12" fill="#EEF4FF"/>
+      <text class="sf t11 w800" x="178" y="76" fill="#3538CD">应用 Codex</text>
+      <rect x="256" y="60" width="88" height="24" rx="12" fill="#101828"/>
+      <text class="sf t11 w800 white" x="274" y="76">同时应用</text>
+    </g>
+
+    <g transform="translate(26 482)">
+      <rect width="460" height="92" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+      <circle cx="31" cy="34" r="16" fill="#FFF7ED"/>
+      <text class="sf t12 w800" x="25" y="39" fill="#C2410C">B</text>
+      <text class="sf t15 w800 ink" x="60" y="28">backup@example.com</text>
+      <text class="sf t12 w600 muted" x="60" y="49">Team · 额度 61% · Codex 当前</text>
+      <rect x="326" y="17" width="94" height="26" rx="13" fill="#E0EAFF"/>
+      <text class="sf t12 w800" x="346" y="34" fill="#3538CD">Codex 当前</text>
+      <rect x="60" y="60" width="88" height="24" rx="12" fill="#ECFDF3"/>
+      <text class="sf t11 w800" x="80" y="76" fill="#15803D">应用网关</text>
+      <rect x="158" y="60" width="88" height="24" rx="12" fill="#F2F4F7"/>
+      <text class="sf t11 w800 muted" x="178" y="76">应用 Codex</text>
+      <rect x="256" y="60" width="88" height="24" rx="12" fill="#101828"/>
+      <text class="sf t11 w800 white" x="274" y="76">同时应用</text>
+    </g>
+
+    <g transform="translate(26 584)">
+      <rect width="460" height="92" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+      <circle cx="31" cy="34" r="16" fill="#ECFDF3"/>
+      <text class="sf t12 w800" x="25" y="39" fill="#047857">P</text>
+      <text class="sf t15 w800 ink" x="60" y="28">plus-cn@example.com</text>
+      <text class="sf t12 w600 muted" x="60" y="49">Plus · 额度 74% · 代理 cn-hk</text>
+      <rect x="348" y="17" width="72" height="26" rx="13" fill="#DCFCE7"/>
+      <text class="sf t12 w800" x="366" y="34" fill="#15803D">健康</text>
+      <rect x="60" y="60" width="88" height="24" rx="12" fill="#ECFDF3"/>
+      <text class="sf t11 w800" x="80" y="76" fill="#15803D">应用网关</text>
+      <rect x="158" y="60" width="88" height="24" rx="12" fill="#EEF4FF"/>
+      <text class="sf t11 w800" x="178" y="76" fill="#3538CD">应用 Codex</text>
+      <rect x="256" y="60" width="88" height="24" rx="12" fill="#101828"/>
+      <text class="sf t11 w800 white" x="274" y="76">同时应用</text>
+    </g>
+
+    <g transform="translate(26 686)">
+      <rect width="460" height="92" rx="16" fill="#FFFFFF" stroke="#EAECF0"/>
+      <circle cx="31" cy="34" r="16" fill="#FEF3C7"/>
+      <text class="sf t12 w800" x="25" y="39" fill="#B45309">F</text>
+      <text class="sf t15 w800 ink" x="60" y="28">free-lab@example.com</text>
+      <text class="sf t12 w600 muted" x="60" y="49">Free · 额度 27% · 可用于测试</text>
+      <rect x="348" y="17" width="72" height="26" rx="13" fill="#FEF3C7"/>
+      <text class="sf t12 w800" x="366" y="34" fill="#B45309">偏低</text>
+      <rect x="60" y="60" width="88" height="24" rx="12" fill="#ECFDF3"/>
+      <text class="sf t11 w800" x="80" y="76" fill="#15803D">应用网关</text>
+      <rect x="158" y="60" width="88" height="24" rx="12" fill="#EEF4FF"/>
+      <text class="sf t11 w800" x="178" y="76" fill="#3538CD">应用 Codex</text>
+      <rect x="256" y="60" width="88" height="24" rx="12" fill="#101828"/>
+      <text class="sf t11 w800 white" x="274" y="76">同时应用</text>
+    </g>
+
+    <rect x="476" y="392" width="4" height="374" rx="2" fill="#EAECF0"/>
+    <rect x="476" y="500" width="4" height="112" rx="2" fill="#98A2B3"/>
+
+    <rect x="26" y="802" width="460" height="44" rx="14" fill="#F8FAFC" stroke="#EAECF0"/>
+    <text class="sf t13 w800 soft" x="48" y="830">显示 4 / 31 个可用账号</text>
+    <text class="sf t13 w800 muted" x="336" y="830">查看全部账号</text>
+
+    <text class="sf t12 w800 muted" x="26" y="878">需要处理 · 默认折叠</text>
+    <rect x="26" y="894" width="460" height="42" rx="14" fill="#FFFFFF" stroke="#EAECF0"/>
+    <text class="sf t13 w800 soft" x="48" y="920">7 个登录失效或额度耗尽账号</text>
+    <path d="M442 908L452 918L442 928" stroke="#667085" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <line x1="26" y1="956" x2="486" y2="956" stroke="#EAECF0"/>
+    <rect x="26" y="974" width="110" height="42" rx="13" fill="#101828"/>
+    <text class="sf t13 w800 white" x="52" y="1000">刷新状态</text>
+    <rect x="148" y="974" width="124" height="42" rx="13" fill="#FFFFFF" stroke="#D0D5DD"/>
+    <text class="sf t13 w800 soft" x="176" y="1000">打开控制台</text>
+    <rect x="284" y="974" width="94" height="42" rx="13" fill="#FFFFFF" stroke="#D0D5DD"/>
+    <text class="sf t13 w800 soft" x="309" y="1000">复制 URL</text>
+    <rect x="390" y="974" width="96" height="42" rx="13" fill="#FFFFFF" stroke="#D0D5DD"/>
+    <text class="sf t13 w800 soft" x="414" y="1000">重启网关</text>
+  </g>
+
+  <g transform="translate(1490 250)" filter="url(#softShadow)">
+    <rect width="232" height="430" rx="24" fill="#FFFFFF" fill-opacity="0.78" stroke="#EAECF0"/>
+    <text class="sf t18 w800 ink" x="28" y="44">列表策略</text>
+    <text class="sf t13 w700 soft" x="28" y="84">默认展示</text>
+    <text class="sf t12 w600 muted" x="28" y="108">当前账号、最近使用、</text>
+    <text class="sf t12 w600 muted" x="28" y="128">健康可用账号。</text>
+    <line x1="28" y1="154" x2="204" y2="154" stroke="#EAECF0"/>
+    <text class="sf t13 w700 soft" x="28" y="188">账号很多</text>
+    <text class="sf t12 w600 muted" x="28" y="212">固定高度滚动，不让</text>
+    <text class="sf t12 w600 muted" x="28" y="232">菜单无限向下增长。</text>
+    <line x1="28" y1="258" x2="204" y2="258" stroke="#EAECF0"/>
+    <text class="sf t13 w700 soft" x="28" y="292">快速操作</text>
+    <text class="sf t12 w600 muted" x="28" y="316">应用网关、应用 Codex、</text>
+    <text class="sf t12 w600 muted" x="28" y="336">同时应用都在账号行内。</text>
+    <line x1="28" y1="362" x2="204" y2="362" stroke="#EAECF0"/>
+    <text class="sf t13 w700 soft" x="28" y="396">异常账号</text>
+    <text class="sf t12 w600 muted" x="28" y="420">默认折叠，避免干扰。</text>
+  </g>
+</svg>

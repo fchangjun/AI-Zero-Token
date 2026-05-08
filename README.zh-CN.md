@@ -24,6 +24,7 @@ AI Zero Token 是一个本地优先的 OpenAI 兼容网关，用于把 ChatGPT/C
 - 支持 API 账号额度耗尽后自动切换到下一个仍有额度的账号，并可配置全局额度刷新并发数。
 - 支持上游代理配置，覆盖 OAuth、模型刷新和接口转发。
 - 模型列表优先读取本机 Codex 模型缓存，并支持手动刷新。
+- 面向 OpenClaw 增强 Chat Completions 兼容，支持流式、工具调用、工具结果消息和请求日志诊断。
 
 ## 技术架构
 
@@ -79,6 +80,8 @@ npm run dist:win
 http://127.0.0.1:8787/v1
 ```
 
+macOS 桌面端还会常驻菜单栏，提供快速账号面板。可以从菜单栏切换网关账号、把账号应用到本机 Codex、刷新额度、复制 API Base URL 和重启本地网关。
+
 ## 管理页
 
 管理页是推荐入口，可以完成：
@@ -128,6 +131,19 @@ curl http://127.0.0.1:8787/v1/chat/completions \
     ]
   }'
 ```
+
+OpenClaw 或其他 OpenAI 兼容编程客户端可以这样配置：
+
+```text
+Provider: OpenAI compatible
+Base URL: http://127.0.0.1:8787/v1
+API Key: local
+Model: gpt-5.4
+Streaming: enabled
+Tools / function calling: enabled
+```
+
+`/v1/chat/completions` 支持 `stream=true`、`tools`、`tool_choice`、`parallel_tool_calls`、assistant `tool_calls`、tool role 结果消息和 `reasoning_effort`。OpenClaw 请求也会在管理页请求日志里显示，并只保存安全摘要。
 
 ### 文生图
 
@@ -254,7 +270,8 @@ ChatGPT Images 的可用性和额度由上游账号决定。Free 账号可以尝
 ## 当前限制
 
 - 项目默认面向本地单用户使用。
-- `stream=true` 目前只识别，并未对所有接口实现完整流式兼容。
+- `/v1/chat/completions` 已支持 OpenAI 风格 SSE 流式；`/v1/responses` 暂未实现流式。
+- `/v1/chat/completions` 支持常见工具/函数调用字段，但暂不支持 `n > 1`。
 - `/v1/images/generations` 当前返回 `b64_json`，暂不支持托管图片 URL。
 - `/v1/images/generations` 暂不支持 `n > 1`。
 - `/v1/images/edits` 当前只支持 JSON，暂不支持 `multipart/form-data`、`mask` 和 `file_id`。

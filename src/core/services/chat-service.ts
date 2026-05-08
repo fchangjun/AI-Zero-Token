@@ -31,6 +31,7 @@ export class ChatService {
         provider,
         model,
         text: result.text,
+        toolCalls: result.toolCalls,
         raw: result.raw,
         artifacts: result.artifacts,
       };

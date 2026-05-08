@@ -54,7 +54,7 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
       <div className="section-head compact">
         <div>
           <h2>请求日志</h2>
-          <p>记录本页快速测试产生的最近请求。</p>
+          <p>记录网关最近收到的 API 请求，详情为安全摘要。</p>
         </div>
       </div>
       <div className="log-toolbar">
@@ -108,7 +108,7 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
           <tbody>
             {filteredLogs.length === 0 ? (
               <tr>
-                <td colSpan={8}>最近请求会在你使用调试面板后持续追加到这里。</td>
+                <td colSpan={8}>最近 API 请求会在这里显示。</td>
               </tr>
             ) : (
               filteredLogs.map((item) => (

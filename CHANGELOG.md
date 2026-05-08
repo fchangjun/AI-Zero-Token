@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.4 - 2026-05-08
+
+- Added the macOS menu-bar account panel for quick gateway/Codex account switching, quota refresh, Base URL copy, and gateway restart.
+- Added OpenClaw-oriented `chat.completions` compatibility for `tools`, `tool_choice`, assistant `tool_calls`, tool-role follow-up messages, `reasoning_effort`, `parallel_tool_calls`, and `stream=true` SSE responses.
+- Added gateway request logs backed by real API traffic, including safe request/response summaries and OpenClaw source detection.
+- Added desktop support for restarting Codex after applying a saved account.
+- Added the tray template icon to npm and Electron desktop package resources.
+- Updated API docs and in-app usage docs with OpenClaw setup and streaming/tool-call compatibility notes.
+
 ## 2.0.3 - 2026-05-08
 
 - Added ZIP batch account import with preflight validation for bundled account JSON files.

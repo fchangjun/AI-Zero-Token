@@ -122,8 +122,21 @@ export function AccountsPage(props: {
         headers: { "Content-Type": "application/json" },
         body: formatJson({ profileId: profile.profileId }),
       });
-      props.setConfig("config" in result ? result.config : result);
+      const nextConfig = "config" in result ? result.config : result;
+      props.setConfig(nextConfig);
       props.setStatus(action === "activate" ? "已应用到网关。" : action === "apply-codex" ? "已应用到本机 Codex。" : action === "sync-quota" ? "额度信息已同步。" : "账号已删除。");
+      if (action === "apply-codex") {
+        if (nextConfig.codexRestartSupported && window.confirm("Codex 账号已切换，是否现在重启 Codex 客户端？\n\nCodex 通常在启动时读取本机 auth.json，重启后新账号会立即生效。")) {
+          try {
+            await fetchJson<{ ok: boolean; restarted?: boolean }>("/_gateway/admin/desktop/restart-codex", { method: "POST" });
+            props.setStatus("已应用到本机 Codex，并已重启 Codex 客户端。");
+          } catch (error) {
+            props.setStatus(`已应用到本机 Codex，但重启 Codex 失败: ${errorMessage(error)}`);
+          }
+        } else {
+          props.setStatus("已应用到本机 Codex，重启 Codex 客户端后生效。");
+        }
+      }
     } catch (error) {
       props.setStatus(errorMessage(error));
     } finally {

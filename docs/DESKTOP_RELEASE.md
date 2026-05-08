@@ -2,6 +2,16 @@
 
 This project ships the desktop app with Electron. The desktop main process starts the existing local Fastify gateway and loads the React management UI served by that gateway.
 
+## 2.0.4 Release Notes
+
+Version `2.0.4` adds the macOS menu-bar account panel and OpenClaw compatibility work:
+
+- Menu-bar quick account panel for switching gateway/Codex accounts.
+- Menu actions for quota refresh, Base URL copy, console open, gateway restart, and quit.
+- Desktop Codex restart hook after applying an account to local Codex.
+- OpenClaw-compatible `chat.completions` streaming and tool-call fields.
+- Real gateway request log entries for recent API traffic.
+
 ## 2.0.0 Release Notes
 
 Version `2.0.0` is the first desktop-focused major release. It includes:
@@ -93,6 +103,8 @@ AI Zero Token Setup {version}.exe
 AI Zero Token-{version}-win.zip
 ```
 
+For `2.0.4`, replace `{version}` with `2.0.4`.
+
 Artifact purpose:
 
 - `AI Zero Token-{version}-mac-arm64.dmg`: macOS Apple Silicon builds for M1/M2/M3/M4 devices.
@@ -131,6 +143,7 @@ App icon files live in:
 build/icon.png
 build/icon.icns
 build/icon.ico
+build/tray-icon-template.png
 ```
 
 They are included in Electron packaging and npm packing.

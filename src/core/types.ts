@@ -103,10 +103,20 @@ export type ArtifactCandidate = {
   value: string;
 };
 
+export type ChatToolCall = {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+};
+
 export type ChatResult = {
   provider: ProviderId;
   model: string;
   text: string;
+  toolCalls: ChatToolCall[];
   raw: unknown;
   artifacts: ArtifactCandidate[];
 };
