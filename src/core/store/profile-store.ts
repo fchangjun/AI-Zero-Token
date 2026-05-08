@@ -177,6 +177,31 @@ export async function removeProfile(profileId: string): Promise<OAuthProfile | n
   });
 }
 
+export async function removeProfiles(profileIds: string[]): Promise<number> {
+  return withStoreMutation(async () => {
+    const idSet = new Set(profileIds.map((id) => id.trim()).filter(Boolean));
+    if (idSet.size === 0) {
+      return 0;
+    }
+
+    const store = await loadStore();
+    let removed = 0;
+    for (const profileId of idSet) {
+      if (store.profiles[profileId]) {
+        delete store.profiles[profileId];
+        removed += 1;
+      }
+    }
+
+    if (store.activeProfileId && !store.profiles[store.activeProfileId]) {
+      store.activeProfileId = Object.keys(store.profiles)[0];
+    }
+
+    await saveStore(store);
+    return removed;
+  });
+}
+
 export async function clearStore(): Promise<void> {
   await withStoreMutation(async () => {
     await fs.rm(getStateDir(), { recursive: true, force: true });

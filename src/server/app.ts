@@ -149,6 +149,11 @@ const settingsUpdateSchema = z.object({
       enabled: z.boolean(),
     })
     .optional(),
+  runtime: z
+    .object({
+      quotaSyncConcurrency: z.number().int().min(1).max(32).optional(),
+    })
+    .optional(),
   server: z
     .object({
       port: z.number().int().min(1).max(65535),
@@ -166,6 +171,10 @@ const proxyTestSchema = z.object({
 
 const profileActionSchema = z.object({
   profileId: z.string().min(1),
+});
+
+const profileRemoveBatchSchema = z.object({
+  profileIds: z.array(z.string().min(1)).min(1),
 });
 
 const profileImportSchema = z.object({
@@ -558,6 +567,7 @@ function serializeProfile(profile: OAuthProfile | null): Record<string, unknown>
     email: profile.email,
     quota: profile.quota,
     authStatus: profile.authStatus,
+    exportAudit: profile.exportAudit,
     expiresAt: profile.expires,
     accessTokenPreview: maskSecret(profile.access),
     refreshTokenPreview: maskSecret(profile.refresh),
@@ -572,6 +582,7 @@ function serializeManagedProfile(profile: ProfileSummary): Record<string, unknow
     email: profile.email,
     quota: profile.quota,
     authStatus: profile.authStatus,
+    exportAudit: profile.exportAudit,
     expiresAt: profile.expiresAt,
     accessTokenPreview: profile.accessTokenPreview,
     refreshTokenPreview: profile.refreshTokenPreview,
@@ -864,6 +875,25 @@ export function createApp(params?: {
     return buildAdminConfig(request);
   });
 
+  app.post("/_gateway/admin/profiles/remove-batch", async (request, reply) => {
+    const parsed = profileRemoveBatchSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    const removedProfileCount = await ctx.authService.removeProfiles(parsed.data.profileIds);
+    return {
+      ...(await buildAdminConfig(request)),
+      removedProfileCount,
+    };
+  });
+
   app.post("/_gateway/admin/profiles/import", async (request, reply) => {
     const parsed = profileImportSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -923,12 +953,14 @@ export function createApp(params?: {
 
     if (parsed.data.all || parsed.data.profileIds) {
       return {
-        profile: await ctx.authService.exportProfiles(parsed.data.profileIds),
+        profile: await ctx.authService.exportProfiles(parsed.data.profileIds, "openai-codex", parsed.data.all ? "all" : "batch"),
+        config: await buildAdminConfig(request),
       };
     }
 
     return {
       profile: await ctx.authService.exportProfile(parsed.data.profileId),
+      config: await buildAdminConfig(request),
     };
   });
 
@@ -962,18 +994,7 @@ export function createApp(params?: {
       };
     }
 
-    if (parsed.data.defaultModel) {
-      await ctx.configService.setDefaultModel(parsed.data.defaultModel);
-    }
-    if (parsed.data.networkProxy) {
-      await ctx.configService.setNetworkProxy(parsed.data.networkProxy);
-    }
-    if (parsed.data.autoSwitch) {
-      await ctx.configService.setAutoSwitch(parsed.data.autoSwitch);
-    }
-    if (parsed.data.server) {
-      await ctx.configService.setServerConfig({ port: parsed.data.server.port });
-    }
+    await ctx.configService.updateSettings(parsed.data);
     return buildAdminConfig(request);
   });
 

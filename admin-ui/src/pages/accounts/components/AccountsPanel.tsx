@@ -3,6 +3,7 @@ import type { AdminConfig, ProfileSummary } from "@/shared/types";
 import { profileHealth, profileInitial, profileLabel, getPlanKey, isAuthInvalid, primaryUsage, quotaBarTone, resetLabel, resetTime, secondaryUsage, usageCorner, authStatusText, imageCapability, getPlanType } from "@/shared/lib/profiles";
 import type { BusyAction, ProfileFilter } from "@/shared/lib/app-types";
 import { InfoRow } from "@/shared/components/InfoRow";
+import { formatFullTime } from "@/shared/lib/format";
 
 export function AccountsPanel(props: {
   config: AdminConfig | null;
@@ -19,6 +20,7 @@ export function AccountsPanel(props: {
   onAction: (action: "activate" | "apply-codex" | "sync-quota" | "remove" | "export", profile: ProfileSummary) => void;
   onLocate: () => void;
   onExportSelected: () => void;
+  onRemoveSelected: () => void;
   onAddAccount: () => void;
   onRefreshStatus: () => void;
   onClearAccounts: () => void;
@@ -40,6 +42,9 @@ export function AccountsPanel(props: {
           </button>
           <button className="btn-secondary" type="button" onClick={props.onExportSelected}>
             导出所选
+          </button>
+          <button className="btn-danger" type="button" onClick={props.onRemoveSelected} disabled={props.selectedCount === 0 || props.busy === "bulk-remove"}>
+            删除所选
           </button>
           <button className="btn-primary" type="button" onClick={props.onAddAccount}>
             新增账号
@@ -92,6 +97,8 @@ export function AccountsPanel(props: {
             const corner = usageCorner(profile, codexActive);
             const authInvalid = isAuthInvalid(profile);
             const imageAbility = imageCapability(profile);
+            const exportAudit = profile.exportAudit;
+            const exportAuditLabel = exportAudit?.exported ? `已导出 ${exportAudit.count} 次` : "未导出";
             const busyPrefix = `profile:` as const;
             const isBusy = typeof props.busy === "string" && props.busy.startsWith(`${busyPrefix}`) && props.busy.endsWith(profile.profileId);
             const refreshBusy = props.busy === `profile:sync-quota:${profile.profileId}`;
@@ -115,6 +122,7 @@ export function AccountsPanel(props: {
                       <span className="badge brand">{getPlanType(profile)}</span>
                       <span className={`badge ${health.tone}`}>{health.label}</span>
                       <span className={`badge ${imageAbility.ok ? "green" : "orange"}`}>gpt-image-2</span>
+                      <span className={`badge ${exportAudit?.exported ? "orange" : "muted"}`}>{exportAuditLabel}</span>
                     </div>
                   </div>
                   <label className="account-select">
@@ -169,6 +177,7 @@ export function AccountsPanel(props: {
                     <InfoRow label="Profile ID" value={props.showEmails ? profile.profileId : profile.profileId} code />
                     <InfoRow label="认证状态" value={authStatusText(profile)} />
                     <InfoRow label="生图能力" value={imageAbility.ok ? "gpt-image-2 可用" : imageAbility.detail} />
+                    <InfoRow label="导出记录" value={formatExportAudit(exportAudit)} />
                     <InfoRow label="过期时间" value={profile.expiresAt ? new Date(profile.expiresAt).toLocaleString("zh-CN") : "-"} />
                     <InfoRow label="额度快照" value={profile.quota?.capturedAt ? new Date(profile.quota.capturedAt).toLocaleString("zh-CN") : "-"} />
                   </div>
@@ -195,6 +204,15 @@ export function AccountsPanel(props: {
       </div>
     </section>
   );
+}
+
+function formatExportAudit(audit: ProfileSummary["exportAudit"]): string {
+  if (!audit?.exported) {
+    return "未导出";
+  }
+
+  const kindLabel = audit.lastExportKind === "single" ? "单账号导出" : audit.lastExportKind === "batch" ? "批量导出" : "全部导出";
+  return `${audit.count} 次，最近 ${formatFullTime(audit.lastExportedAt)}，方式 ${kindLabel}`;
 }
 
 function ChevronIcon() {

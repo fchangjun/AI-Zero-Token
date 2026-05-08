@@ -31,6 +31,14 @@ export type ProfileAuthStatus = {
   httpStatus?: number;
 };
 
+export type ProfileExportAudit = {
+  exported: boolean;
+  count: number;
+  firstExportedAt?: number;
+  lastExportedAt?: number;
+  lastExportKind?: "single" | "batch" | "all";
+};
+
 export type OAuthProfile = {
   provider: ProviderId;
   profileId: string;
@@ -43,6 +51,7 @@ export type OAuthProfile = {
   email?: string;
   quota?: CodexQuotaSnapshot;
   authStatus?: ProfileAuthStatus;
+  exportAudit?: ProfileExportAudit;
 };
 
 export type ProfileSummary = {
@@ -56,6 +65,7 @@ export type ProfileSummary = {
   isActive: boolean;
   quota?: CodexQuotaSnapshot;
   authStatus?: ProfileAuthStatus;
+  exportAudit?: ProfileExportAudit;
 };
 
 export type ModelInfo = {
@@ -124,6 +134,9 @@ export type GatewaySettings = {
   };
   autoSwitch: {
     enabled: boolean;
+  };
+  runtime: {
+    quotaSyncConcurrency: number;
   };
   server: {
     host: string;

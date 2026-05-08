@@ -3,6 +3,7 @@ import {
   getActiveProfile,
   listProfiles,
   removeProfile,
+  removeProfiles as removeStoredProfiles,
   saveProfile,
   setActiveProfile,
   updateProfile,
@@ -12,6 +13,7 @@ import type {
   GatewayStatus,
   OAuthProfile,
   ProfileAuthStatus,
+  ProfileExportAudit,
   ProfileSummary,
   ProviderId,
 } from "../types.js";
@@ -37,7 +39,17 @@ import {
   type ExportedProfile,
 } from "../store/profile-transfer.js";
 
-const QUOTA_SYNC_CONCURRENCY = 8;
+const DEFAULT_QUOTA_SYNC_CONCURRENCY = 16;
+
+function getQuotaSyncConcurrency(configured?: number): number {
+  const raw = process.env.AZT_QUOTA_SYNC_CONCURRENCY;
+  const parsed = raw ? Number.parseInt(raw, 10) : configured ?? DEFAULT_QUOTA_SYNC_CONCURRENCY;
+  if (!Number.isFinite(parsed)) {
+    return configured ?? DEFAULT_QUOTA_SYNC_CONCURRENCY;
+  }
+
+  return Math.min(32, Math.max(1, parsed));
+}
 
 async function mapWithConcurrency<T, R>(
   items: T[],
@@ -89,6 +101,35 @@ export class AuthService {
       refreshTokenPreview: this.maskSecret(profile.refresh),
       isActive: profile.profileId === activeProfileId,
       authStatus: profile.authStatus,
+      exportAudit: profile.exportAudit,
+    };
+  }
+
+  private buildExportAudit(current: ProfileExportAudit | undefined, kind: ProfileExportAudit["lastExportKind"], exportedAt: number): ProfileExportAudit {
+    return {
+      exported: true,
+      count: Math.max(0, current?.count ?? 0) + 1,
+      firstExportedAt: current?.firstExportedAt ?? exportedAt,
+      lastExportedAt: exportedAt,
+      lastExportKind: kind,
+    };
+  }
+
+  private async recordProfileExport(profile: OAuthProfile, kind: ProfileExportAudit["lastExportKind"], exportedAt: number): Promise<OAuthProfile> {
+    const updated = await updateProfile(profile.profileId, (current) => {
+      if (current.provider !== profile.provider) {
+        return current;
+      }
+
+      return {
+        ...current,
+        exportAudit: this.buildExportAudit(current.exportAudit, kind, exportedAt),
+      };
+    });
+
+    return updated ?? {
+      ...profile,
+      exportAudit: this.buildExportAudit(profile.exportAudit, kind, exportedAt),
     };
   }
 
@@ -358,10 +399,12 @@ export class AuthService {
       throw new Error(targetProfileId ? `没有找到可导出的账号: ${targetProfileId}` : "没有可导出的当前账号。");
     }
 
-    return exportProfileToJson(profile);
+    const exportedAt = Date.now();
+    const exportedProfile = await this.recordProfileExport(profile, "single", exportedAt);
+    return exportProfileToJson(exportedProfile);
   }
 
-  async exportProfiles(profileIds?: string[], provider: ProviderId = "openai-codex"): Promise<ExportedProfileBundle> {
+  async exportProfiles(profileIds?: string[], provider: ProviderId = "openai-codex", exportKind?: "batch" | "all"): Promise<ExportedProfileBundle> {
     const profiles = await listProfiles();
     const idSet = profileIds && profileIds.length > 0 ? new Set(profileIds.map((item) => item.trim()).filter(Boolean)) : null;
     const selected = profiles
@@ -371,7 +414,10 @@ export class AuthService {
       throw new Error("没有找到可导出的账号。");
     }
 
-    return exportProfilesToJson(selected);
+    const exportedAt = Date.now();
+    const kind = exportKind ?? (idSet ? "batch" : "all");
+    const exportedProfiles = await Promise.all(selected.map((profile) => this.recordProfileExport(profile, kind, exportedAt)));
+    return exportProfilesToJson(exportedProfiles);
   }
 
   getProfileImportTemplate(): ExportedProfileBundle {
@@ -440,6 +486,21 @@ export class AuthService {
     }
 
     await removeProfile(profileId);
+  }
+
+  async removeProfiles(profileIds: string[], provider: ProviderId = "openai-codex"): Promise<number> {
+    const idSet = new Set(profileIds.map((id) => id.trim()).filter(Boolean));
+    if (idSet.size === 0) {
+      throw new Error("没有选择要删除的账号。");
+    }
+
+    const profiles = await listProfiles();
+    const matched = profiles.filter((profile) => profile.provider === provider && idSet.has(profile.profileId));
+    if (matched.length === 0) {
+      throw new Error("没有找到要删除的账号。");
+    }
+
+    return removeStoredProfiles(matched.map((profile) => profile.profileId));
   }
 
   async requireUsableProfile(
@@ -524,10 +585,11 @@ export class AuthService {
     provider: ProviderId = "openai-codex",
     options?: { suppressErrors?: boolean; skipAutoSwitch?: boolean; staleAfterMs?: number },
   ): Promise<{ total: number; synced: number; failed: number; skipped: number }> {
-    const [profiles, activeProfile, model] = await Promise.all([
+    const [profiles, activeProfile, model, settings] = await Promise.all([
       listProfiles(),
       this.getActiveProfile(provider),
       this.configService.getDefaultModel(provider),
+      this.configService.getSettings(),
     ]);
     const providerProfiles = profiles.filter((profile) => profile.provider === provider);
     const now = Date.now();
@@ -543,7 +605,7 @@ export class AuthService {
       })
       .sort((left, right) => Number(right.profileId === activeProfile?.profileId) - Number(left.profileId === activeProfile?.profileId));
     const skipped = providerProfiles.length - targets.length;
-    const results = await mapWithConcurrency(targets, QUOTA_SYNC_CONCURRENCY, (profile) => this.syncQuotaForProfile(profile, model, provider, options));
+    const results = await mapWithConcurrency(targets, getQuotaSyncConcurrency(settings.runtime.quotaSyncConcurrency), (profile) => this.syncQuotaForProfile(profile, model, provider, options));
 
     const failed = results.filter((item) => !item.ok).length;
     return {

@@ -74,16 +74,22 @@ export function AccountsPage(props: {
   }, [filter, props.codexAccountId, props.config?.profiles]);
 
   const selectedCount = Object.values(selectedProfiles).filter(Boolean).length;
+  const selectedProfileIds = Object.keys(selectedProfiles).filter((id) => selectedProfiles[id]);
 
   async function exportProfiles(profileId?: string, ids?: string[]) {
     const body = ids ? { profileIds: ids } : { profileId };
-    const result = await fetchJson<{ profile: unknown }>("/_gateway/admin/profiles/export", {
+    const result = await fetchJson<{ profile: unknown; config?: AdminConfig }>("/_gateway/admin/profiles/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: formatJson(body),
     });
     const suffix = ids ? `profiles-${ids.length}` : profileId || "active";
     downloadJsonFile(`ai-zero-token-${suffix}.json`, result.profile);
+    if (result.config) {
+      props.setConfig(result.config);
+    } else {
+      await props.refreshConfig({ silent: true });
+    }
     props.setStatus(ids ? `已导出 ${ids.length} 个账号。` : "账号配置已导出。");
   }
 
@@ -125,6 +131,41 @@ export function AccountsPage(props: {
     }
   }
 
+  async function removeSelectedProfiles() {
+    const ids = selectedProfileIds;
+    if (ids.length === 0) {
+      props.setStatus("请先勾选要删除的账号。");
+      return;
+    }
+
+    const selectedLabels = props.config?.profiles
+      .filter((profile) => ids.includes(profile.profileId))
+      .slice(0, 3)
+      .map((profile) => profileLabel(profile, props.showEmails));
+    const preview = selectedLabels?.length ? `\n\n${selectedLabels.join("\n")}${ids.length > selectedLabels.length ? `\n等 ${ids.length} 个账号` : ""}` : "";
+    if (!window.confirm(`确认删除所选 ${ids.length} 个账号？此操作不可撤销。${preview}`)) {
+      return;
+    }
+
+    props.setBusy("bulk-remove");
+    props.setStatus(`正在删除 ${ids.length} 个账号...`);
+    try {
+      const result = await fetchJson<AdminConfig & { removedProfileCount?: number }>("/_gateway/admin/profiles/remove-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: formatJson({ profileIds: ids }),
+      });
+
+      props.setConfig(result);
+      setSelectedProfiles({});
+      props.setStatus(`已删除 ${result.removedProfileCount ?? ids.length} 个账号。`);
+    } catch (error) {
+      props.setStatus(`删除所选失败: ${errorMessage(error)}`);
+    } finally {
+      props.setBusy(null);
+    }
+  }
+
   return (
     <AccountsPanel
       config={props.config}
@@ -141,13 +182,14 @@ export function AccountsPage(props: {
       onAction={runProfileAction}
       onLocate={() => props.activeProfile && document.querySelector(`[data-profile-card="${props.activeProfile.profileId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" })}
       onExportSelected={() => {
-        const ids = Object.keys(selectedProfiles).filter((id) => selectedProfiles[id]);
+        const ids = selectedProfileIds;
         if (ids.length === 0) {
           props.setStatus("请先勾选要导出的账号。");
           return;
         }
         exportProfiles(undefined, ids).catch((error) => props.setStatus(error instanceof Error ? error.message : String(error)));
       }}
+      onRemoveSelected={() => void removeSelectedProfiles()}
       onAddAccount={() => props.setAccountModalOpen(true)}
       onRefreshStatus={() => props.refreshConfig({ runtime: true })}
       onClearAccounts={() => props.logout()}

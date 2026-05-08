@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.3 - 2026-05-08
+
+- Added ZIP batch account import with preflight validation for bundled account JSON files.
+- Added account export audit metadata, including export count, latest export time, and export type.
+- Added account-card export status badges so exported accounts are visible in the account list.
+- Added selected-account batch deletion from the account management page.
+- Improved global quota refresh performance with configurable concurrency.
+- Added a runtime setting for quota refresh concurrency, configurable from 1 to 32.
+- Restored the prominent global update banner with separate desktop and npm update paths.
+- Fixed account export UI state so export status updates immediately after exporting.
+
 ## 2.0.2 - 2026-05-07
 
 - Added a GitHub image-bed workflow to the React desktop UI, including upload history, configuration storage, and gateway service support.

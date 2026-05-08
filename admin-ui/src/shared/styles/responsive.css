@@ -126,6 +126,24 @@
     display: grid;
   }
 
+  .update-panel {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .update-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: stretch;
+  }
+
+  .update-panel .btn-primary,
+  .update-panel .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+
   .section-actions,
   .button-row,
   .example-row {

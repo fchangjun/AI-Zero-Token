@@ -8,6 +8,7 @@ export type BusyAction =
   | "logout"
   | "import"
   | "template"
+  | "bulk-remove"
   | "settings"
   | "restart"
   | "proxy"
@@ -40,6 +41,7 @@ export type SettingDraft = {
   proxyUrl: string;
   proxyNoProxy: string;
   autoSwitchEnabled: boolean;
+  quotaSyncConcurrency: string;
   serverPort: string;
 };
 

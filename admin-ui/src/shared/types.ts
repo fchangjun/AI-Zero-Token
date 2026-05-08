@@ -25,6 +25,14 @@ export type AuthStatus = {
   httpStatus?: number;
 };
 
+export type ProfileExportAudit = {
+  exported: boolean;
+  count: number;
+  firstExportedAt?: number;
+  lastExportedAt?: number;
+  lastExportKind?: "single" | "batch" | "all";
+};
+
 export type ProfileSummary = {
   provider: string;
   profileId: string;
@@ -36,6 +44,7 @@ export type ProfileSummary = {
   accessTokenPreview: string;
   refreshTokenPreview: string;
   isActive: boolean;
+  exportAudit?: ProfileExportAudit;
 };
 
 export type GatewaySettings = {
@@ -49,6 +58,9 @@ export type GatewaySettings = {
   };
   autoSwitch: {
     enabled: boolean;
+  };
+  runtime: {
+    quotaSyncConcurrency: number;
   };
   server: {
     host: string;

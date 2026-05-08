@@ -19,6 +19,9 @@ export function createDefaultSettings(): GatewaySettings {
     autoSwitch: {
       enabled: false,
     },
+    runtime: {
+      quotaSyncConcurrency: 16,
+    },
     server: {
       host: "0.0.0.0",
       port: 8787,
@@ -44,6 +47,9 @@ export async function loadSettings(): Promise<GatewaySettings> {
       autoSwitch: {
         enabled: parsed.autoSwitch?.enabled ?? defaults.autoSwitch.enabled,
       },
+      runtime: {
+        quotaSyncConcurrency: normalizeQuotaSyncConcurrency(parsed.runtime?.quotaSyncConcurrency, defaults.runtime.quotaSyncConcurrency),
+      },
       server: {
         host: parsed.server?.host ?? defaults.server.host,
         port: parsed.server?.port ?? defaults.server.port,
@@ -52,6 +58,15 @@ export async function loadSettings(): Promise<GatewaySettings> {
   } catch {
     return createDefaultSettings();
   }
+}
+
+export function normalizeQuotaSyncConcurrency(value: unknown, fallback = 16): number {
+  const parsed = typeof value === "number" ? value : typeof value === "string" ? Number.parseInt(value, 10) : fallback;
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(32, Math.max(1, Math.trunc(parsed)));
 }
 
 export async function saveSettings(settings: GatewaySettings): Promise<void> {

@@ -84,7 +84,7 @@ export class VersionService {
     const registryUrl = `https://registry.npmjs.org/${encodeURIComponent(manifest.name)}/latest`;
 
     try {
-      const latestVersion = await this.fetchNpmLatestVersion(registryUrl);
+      const latestVersion = process.env.AZT_FORCE_LATEST_VERSION || await this.fetchNpmLatestVersion(registryUrl);
       const needsUpdate = compareSemver(manifest.version, latestVersion) < 0;
       return {
         packageName: manifest.name,

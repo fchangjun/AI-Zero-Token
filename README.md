@@ -18,10 +18,10 @@ AI Zero Token provides a local CLI, web console, and HTTP gateway that expose sa
   - `POST /v1/images/edits`
 - ChatGPT/Codex OAuth login with local token refresh.
 - Multi-account management in the web console.
-- Account JSON import/export, including selected batch export.
+- Account JSON import/export, including ZIP batch import, selected batch export, and export audit indicators.
 - Apply a saved account to local Codex by backing up and updating `~/.codex/auth.json`.
 - `gpt-image-2` image generation and JSON image editing through the ChatGPT internal Responses path.
-- Optional quota-exhaustion auto switch to the next saved API account with available quota.
+- Optional quota-exhaustion auto switch to the next saved API account with available quota, plus configurable quota refresh concurrency.
 - Optional upstream proxy configuration for OAuth, model refresh, and gateway forwarding.
 - Local model discovery from the Codex model cache with manual refresh support.
 
@@ -84,13 +84,16 @@ http://127.0.0.1:8787/v1
 The web console is the recommended entry point:
 
 - Log in with OpenAI Codex OAuth.
-- Import one or more account JSON files.
+- Import one or more account JSON files, or validate and import a ZIP archive that contains multiple account JSON files.
 - Switch the active account.
-- Export one account or selected accounts.
+- Export one account or selected accounts, with export status shown on account cards.
+- Delete selected accounts in batches.
 - Apply a saved account to local Codex.
 - Configure the default text model and upstream proxy.
 - Enable automatic account switching when the active API account has exhausted its recorded quota.
+- Tune global quota refresh concurrency for larger account pools.
 - Test `models`, `responses`, `chat.completions`, `images.generations`, and `images.edits`.
+- See a global update banner when a newer version is available, with separate GitHub desktop release and npm update paths.
 
 ![AI Zero Token admin dashboard](docs/images/admin-dashboard.jpg)
 
@@ -179,9 +182,12 @@ The web console supports:
 
 - OAuth login.
 - JSON import from a single profile, an array, or a `profiles` bundle.
+- ZIP batch import for archives containing multiple account JSON files, with validation before import.
 - Single-account export.
 - Selected batch export using checkboxes.
-- Account deletion and active-account switching.
+- Export audit status, including export count, latest export time, and export type.
+- Single-account and selected batch deletion.
+- Active-account switching.
 
 Exported account JSON includes authentication tokens and should be treated as a secret.
 
@@ -228,6 +234,8 @@ AI_ZERO_TOKEN_HOME=/path/to/home azt start
 ```
 
 The web console settings are persisted in the same local state directory. The quota auto-switch option is stored as `autoSwitch.enabled`; when enabled, the gateway uses the latest saved quota snapshot and moves API traffic away from the active account once that snapshot shows a quota window is exhausted.
+
+The global quota refresh concurrency can be configured in the web console settings. The default is `16`; lower it if upstream rate limits increase, or raise it for larger local account pools.
 
 The default request body limit is `32 MiB`, which is intended to make JSON base64 image references practical for local image editing. You can override it with:
 

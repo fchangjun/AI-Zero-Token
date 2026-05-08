@@ -31,12 +31,21 @@ export type WorkspaceState = {
 
 const RUNTIME_AUTO_REFRESH_MS = 5 * 60 * 1000;
 const ACTIVE_PROFILE_REFRESH_MS = 15 * 1000;
+const SHOW_EMAILS_STORAGE_KEY = "azt:settings:show-emails";
+
+function readStoredShowEmails(): boolean {
+  try {
+    return window.localStorage.getItem(SHOW_EMAILS_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 export function useAdminWorkspaceState(): WorkspaceState {
   const [config, setConfig] = useState<AdminConfig | null>(null);
   const [busy, setBusy] = useState<BusyAction>("initial");
   const [status, setStatus] = useState("正在读取本地网关状态...");
-  const [showEmails, setShowEmails] = useState(false);
+  const [showEmails, setShowEmails] = useState(readStoredShowEmails);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<ModalImage | null>(null);
@@ -85,6 +94,14 @@ export function useAdminWorkspaceState(): WorkspaceState {
     }, 60_000);
     return () => window.clearInterval(timer);
   }, [refreshConfig]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SHOW_EMAILS_STORAGE_KEY, String(showEmails));
+    } catch {
+      // Ignore storage failures; the runtime state still updates.
+    }
+  }, [showEmails]);
 
   useEffect(() => {
     const handleHashChange = () => {

@@ -13,6 +13,7 @@ function createSettingsDraft(config: AdminConfig): SettingDraft {
     proxyUrl: config.settings.networkProxy.url,
     proxyNoProxy: config.settings.networkProxy.noProxy || "localhost,127.0.0.1,::1",
     autoSwitchEnabled: config.settings.autoSwitch.enabled,
+    quotaSyncConcurrency: String(config.settings.runtime?.quotaSyncConcurrency || 16),
     serverPort: String(config.settings.server.port || 8787),
   };
 }
@@ -34,6 +35,7 @@ export function SettingsPage(props: {
     proxyUrl: "",
     proxyNoProxy: "localhost,127.0.0.1,::1",
     autoSwitchEnabled: false,
+    quotaSyncConcurrency: "16",
     serverPort: "8787",
   });
   const [settingsDirty, setSettingsDirty] = useState(false);
@@ -56,6 +58,11 @@ export function SettingsPage(props: {
       props.setStatus("端口必须是 1 到 65535 之间的整数。");
       return;
     }
+    const quotaSyncConcurrency = Number.parseInt(settingsDraft.quotaSyncConcurrency, 10);
+    if (!Number.isInteger(quotaSyncConcurrency) || quotaSyncConcurrency < 1 || quotaSyncConcurrency > 32) {
+      props.setStatus("全局额度刷新并发数必须是 1 到 32 之间的整数。");
+      return;
+    }
 
     const busyAction: BusyAction = options?.restart ? "restart" : "settings";
     props.setBusy(busyAction);
@@ -72,6 +79,9 @@ export function SettingsPage(props: {
           },
           autoSwitch: {
             enabled: settingsDraft.autoSwitchEnabled,
+          },
+          runtime: {
+            quotaSyncConcurrency,
           },
           server: {
             port: serverPort,
@@ -193,11 +203,24 @@ export function SettingsPage(props: {
         </section>
 
         <section className="settings-section">
-          <h4>账号自动切换</h4>
+          <h4>账号运行策略</h4>
           <label className="switch-line">
             <input type="checkbox" checked={settingsDraft.autoSwitchEnabled} onChange={(event) => markSettingsDirty({ autoSwitchEnabled: event.target.checked })} />
             <span>当前 API 账号额度耗尽后自动切换到下一个仍有额度的账号</span>
           </label>
+          <label className="field">
+            <span>全局额度刷新并发数</span>
+            <input
+              className="input"
+              inputMode="numeric"
+              max={32}
+              min={1}
+              type="number"
+              value={settingsDraft.quotaSyncConcurrency}
+              onChange={(event) => markSettingsDirty({ quotaSyncConcurrency: event.target.value })}
+            />
+          </label>
+          <p className="hint">手动刷新全部账号额度时使用，默认 16。账号很多可以调高，遇到限流或失败增多时调低。</p>
           <p className="hint">{props.status}</p>
         </section>
 
