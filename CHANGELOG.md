@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.5 - 2026-05-09
+
+- Added Codex custom provider setup from the Settings page, including local/remote gateway URL selection and managed writes to `~/.codex/config.toml`.
+- Added `POST /codex/v1/responses` as a dedicated Codex CLI/Desktop Responses SSE passthrough route.
+- Added admin APIs to configure or remove the AI Zero Token managed Codex provider and report provider status in the management console.
+- Added an auto-switch exclusion list so selected accounts can be kept out of automatic quota rotation while remaining available for manual use.
+- Improved quota-limit handling by capturing upstream `usage_limit_reached` details and retrying Codex passthrough requests after automatic account switching.
+- Hardened settings persistence with normalized settings loading, deduplicated profile ID lists, queued saves, and atomic file replacement.
+- Updated README and API docs with Codex custom provider setup and the dedicated passthrough route.
+
 ## 2.0.4 - 2026-05-08
 
 - Added the macOS menu-bar account panel for quick gateway/Codex account switching, quota refresh, Base URL copy, and gateway restart.

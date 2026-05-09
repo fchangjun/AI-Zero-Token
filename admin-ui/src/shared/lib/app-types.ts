@@ -13,6 +13,7 @@ export type BusyAction =
   | "restart"
   | "proxy"
   | "models"
+  | "codex-provider"
   | "test"
   | "image-bed-save"
   | "image-bed-test"
@@ -41,6 +42,7 @@ export type SettingDraft = {
   proxyUrl: string;
   proxyNoProxy: string;
   autoSwitchEnabled: boolean;
+  autoSwitchExcludedProfileIds: string[];
   quotaSyncConcurrency: string;
   serverPort: string;
 };

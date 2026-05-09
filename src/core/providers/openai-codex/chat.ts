@@ -1,6 +1,6 @@
 import type { ArtifactCandidate, ChatToolCall, CodexQuotaSnapshot, OAuthProfile } from "../../types.js";
 import { DEFAULT_CODEX_MODEL } from "../../models/openai-codex-models.js";
-import { requestText } from "../http-client.js";
+import { requestStream, requestText } from "../http-client.js";
 
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 
@@ -16,6 +16,19 @@ type UpstreamErrorBody = {
   type?: string;
   code?: string;
   param?: string | null;
+  planType?: string;
+  resetsAt?: number;
+  resetsInSeconds?: number;
+  promoCampaignId?: string;
+  promoMessage?: string;
+};
+
+export type CodexStreamResponse = {
+  body: ReadableStream<Uint8Array>;
+  headers: Record<string, string>;
+  quota?: CodexQuotaSnapshot;
+  requestId: string;
+  status: number;
 };
 
 const URL_KEY_RE = /(url|uri|href|download|preview|thumbnail|image|asset|file)/i;
@@ -64,21 +77,91 @@ function parseOptionalText(value: string | undefined): string | undefined {
 function parseUpstreamErrorBody(body: string): UpstreamErrorBody | undefined {
   try {
     const parsed = JSON.parse(body) as { error?: unknown };
-    const error = parsed.error;
-    if (!error || typeof error !== "object") {
+    const record = asRecord(parsed.error);
+    if (!record) {
       return undefined;
     }
 
-    const record = error as Record<string, unknown>;
+    const eligiblePromo = asRecord(record.eligible_promo);
     return {
       message: typeof record.message === "string" ? record.message : undefined,
       type: typeof record.type === "string" ? record.type : undefined,
       code: typeof record.code === "string" ? record.code : undefined,
       param: typeof record.param === "string" || record.param === null ? record.param : undefined,
+      planType: typeof record.plan_type === "string" ? record.plan_type : undefined,
+      resetsAt: typeof record.resets_at === "number" && Number.isFinite(record.resets_at) ? record.resets_at : undefined,
+      resetsInSeconds: typeof record.resets_in_seconds === "number" && Number.isFinite(record.resets_in_seconds) ? record.resets_in_seconds : undefined,
+      promoCampaignId: typeof eligiblePromo?.campaign_id === "string" ? eligiblePromo.campaign_id : undefined,
+      promoMessage: typeof eligiblePromo?.message === "string" ? eligiblePromo.message : undefined,
     };
   } catch {
     return undefined;
   }
+}
+
+function buildCodexRequestHeaders(profile: OAuthProfile): Record<string, string> {
+  return {
+    Accept: "text/event-stream",
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${profile.access}`,
+    "ChatGPT-Account-Id": profile.accountId,
+    "OpenAI-Beta": "responses=experimental",
+    Originator: "pi",
+    "User-Agent": "pi (bun demo)",
+  };
+}
+
+function createCodexUpstreamError(
+  status: number,
+  body: string,
+  transport: "fetch" | "curl" | "stream",
+  quota?: CodexQuotaSnapshot,
+  requestId?: string,
+): Error & {
+  quota?: CodexQuotaSnapshot;
+  upstreamStatus?: number;
+  upstreamErrorCode?: string;
+  upstreamErrorType?: string;
+  upstreamErrorMessage?: string;
+} {
+  const upstreamError = parseUpstreamErrorBody(body);
+  const error = new Error(`调用 Responses API 失败: HTTP ${status} via ${transport} ${body}`) as Error & {
+    quota?: CodexQuotaSnapshot;
+    upstreamStatus?: number;
+    upstreamErrorCode?: string;
+    upstreamErrorType?: string;
+    upstreamErrorMessage?: string;
+  };
+  error.quota = quota ?? createUsageLimitQuotaSnapshot(status, upstreamError, requestId);
+  error.upstreamStatus = status;
+  error.upstreamErrorCode = upstreamError?.code;
+  error.upstreamErrorType = upstreamError?.type;
+  error.upstreamErrorMessage = upstreamError?.message;
+  return error;
+}
+
+function createUsageLimitQuotaSnapshot(
+  status: number,
+  upstreamError: UpstreamErrorBody | undefined,
+  requestId: string | undefined,
+): CodexQuotaSnapshot | undefined {
+  const errorKind = `${upstreamError?.type ?? ""} ${upstreamError?.code ?? ""}`.toLowerCase();
+  if (status !== 429 && !errorKind.includes("usage_limit_reached")) {
+    return undefined;
+  }
+
+  return {
+    capturedAt: Date.now(),
+    sourceRequestId: requestId,
+    planType: upstreamError?.planType,
+    primaryUsedPercent: 100,
+    primaryResetAt: upstreamError?.resetsAt,
+    primaryResetAfterSeconds: upstreamError?.resetsInSeconds,
+    creditsHasCredits: false,
+    creditsBalance: "0",
+    promoCampaignId: upstreamError?.promoCampaignId,
+    promoMessage: upstreamError?.promoMessage,
+  };
 }
 
 export function extractCodexQuotaSnapshot(
@@ -490,38 +573,62 @@ export async function askOpenAICodex(params: {
   const response = await requestText({
     method: "POST",
     url: CODEX_RESPONSES_URL,
-    headers: {
-      Accept: "text/event-stream",
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${params.profile.access}`,
-      "ChatGPT-Account-Id": params.profile.accountId,
-      "OpenAI-Beta": "responses=experimental",
-      Originator: "pi",
-      "User-Agent": "pi (bun demo)",
-    },
+    headers: buildCodexRequestHeaders(params.profile),
     body: JSON.stringify(requestBody),
   });
   const quota = extractCodexQuotaSnapshot(response.headers, response.requestId);
 
   if (response.status < 200 || response.status >= 300) {
-    const upstreamError = parseUpstreamErrorBody(response.body);
-    const error = new Error(`调用 Responses API 失败: HTTP ${response.status} via ${response.transport} ${response.body}`) as Error & {
-      quota?: CodexQuotaSnapshot;
-      upstreamStatus?: number;
-      upstreamErrorCode?: string;
-      upstreamErrorType?: string;
-      upstreamErrorMessage?: string;
-    };
-    error.quota = quota;
-    error.upstreamStatus = response.status;
-    error.upstreamErrorCode = upstreamError?.code;
-    error.upstreamErrorType = upstreamError?.type;
-    error.upstreamErrorMessage = upstreamError?.message;
-    throw error;
+    throw createCodexUpstreamError(response.status, response.body, response.transport, quota, response.requestId);
   }
 
   return {
     ...extractCodexText(response.body, requestBody),
     quota,
+  };
+}
+
+export async function streamOpenAICodex(params: {
+  profile: OAuthProfile;
+  prompt?: string;
+  model?: string;
+  system?: string;
+  bodyOverride?: Record<string, unknown>;
+  passthroughBody?: boolean;
+  signal?: AbortSignal;
+}): Promise<CodexStreamResponse> {
+  const requestBody = params.passthroughBody
+    ? { ...(params.bodyOverride ?? {}) }
+    : {
+        ...buildDefaultRequestBody(params),
+        ...(params.bodyOverride ?? {}),
+      };
+
+  if (!params.passthroughBody && typeof requestBody.input === "undefined") {
+    throw new Error("Codex 请求缺少 input。请提供 prompt 或在实验请求体里显式传入 input。");
+  }
+
+  const response = await requestStream({
+    method: "POST",
+    url: CODEX_RESPONSES_URL,
+    headers: buildCodexRequestHeaders(params.profile),
+    body: JSON.stringify(requestBody),
+    signal: params.signal,
+  });
+  const headers = response.headers;
+  const requestId = headers["x-request-id"] ?? response.requestId;
+  const quota = extractCodexQuotaSnapshot(headers, requestId);
+
+  if (response.status < 200 || response.status >= 300) {
+    const body = await new Response(response.body).text();
+    throw createCodexUpstreamError(response.status, body, response.transport, quota, requestId);
+  }
+
+  return {
+    body: response.body,
+    headers,
+    quota,
+    requestId,
+    status: response.status,
   };
 }

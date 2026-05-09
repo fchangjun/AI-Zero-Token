@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
@@ -8,6 +9,7 @@ import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
 import type { ChatResult, OAuthProfile, ProfileSummary } from "../core/types.js";
 import { requestText } from "../core/providers/http-client.js";
+import { streamOpenAICodex } from "../core/providers/openai-codex/chat.js";
 
 const packageRoot = path.dirname(fileURLToPath(new URL("../../package.json", import.meta.url)));
 const adminUiDistDir = path.join(packageRoot, "admin-ui", "dist");
@@ -65,23 +67,9 @@ async function readAdminUiAsset(assetPath: string): Promise<{ body: Buffer; file
   }
 }
 
-const inputPartSchema = z
-  .object({
-    type: z.string().optional(),
-    text: z.string().optional(),
-  })
-  .passthrough();
-
-const inputMessageSchema = z
-  .object({
-    role: z.string().optional(),
-    content: z.array(inputPartSchema).optional(),
-  })
-  .passthrough();
-
 const responsesBodySchema = z.object({
   model: z.string().optional(),
-  input: z.union([z.string(), z.array(inputMessageSchema)]).optional(),
+  input: z.unknown().optional(),
   instructions: z.string().optional(),
   stream: z.boolean().optional(),
   tools: z.array(z.unknown()).optional(),
@@ -98,7 +86,7 @@ const responsesBodySchema = z.object({
     })
     .passthrough()
     .optional(),
-});
+}).passthrough();
 
 const chatCompletionContentPartSchema = z
   .object({
@@ -160,7 +148,8 @@ const settingsUpdateSchema = z.object({
     .optional(),
   autoSwitch: z
     .object({
-      enabled: z.boolean(),
+      enabled: z.boolean().optional(),
+      excludedProfileIds: z.array(z.string()).optional(),
     })
     .optional(),
   runtime: z
@@ -207,6 +196,11 @@ const profileExportSchema = z.object({
 
 const codexApplySchema = z.object({
   profileId: z.string().min(1),
+});
+
+const codexProviderConfigSchema = z.object({
+  baseUrl: z.string().min(1).optional(),
+  providerId: z.string().min(1).optional(),
 });
 
 const githubImageBedConfigSchema = z.object({
@@ -271,7 +265,26 @@ const imageEditsBodySchema = z
   })
   .passthrough();
 
-function extractTextInput(input: z.infer<typeof responsesBodySchema>["input"]): string {
+function extractTextFromInputContent(content: unknown): string[] {
+  if (typeof content === "string" && content.trim()) {
+    return [content.trim()];
+  }
+
+  if (!Array.isArray(content)) {
+    return [];
+  }
+
+  return content.flatMap((part) => {
+    if (!part || typeof part !== "object") {
+      return [];
+    }
+
+    const record = part as Record<string, unknown>;
+    return typeof record.text === "string" && record.text.trim() ? [record.text.trim()] : [];
+  });
+}
+
+function extractTextInput(input: unknown): string {
   if (typeof input === "undefined") {
     return "";
   }
@@ -281,18 +294,22 @@ function extractTextInput(input: z.infer<typeof responsesBodySchema>["input"]): 
   }
 
   const chunks: string[] = [];
+  if (!Array.isArray(input)) {
+    return "";
+  }
+
   for (const item of input) {
-    for (const part of item.content ?? []) {
-      if (typeof part.text === "string" && part.text.trim()) {
-        chunks.push(part.text.trim());
-      }
+    if (!item || typeof item !== "object") {
+      continue;
     }
+
+    chunks.push(...extractTextFromInputContent((item as Record<string, unknown>).content));
   }
 
   return chunks.join("\n").trim();
 }
 
-function normalizeResponseInput(input: z.infer<typeof responsesBodySchema>["input"]): unknown {
+function normalizeResponseInput(input: unknown): unknown {
   if (typeof input === "undefined") {
     return undefined;
   }
@@ -549,6 +566,51 @@ function summarizeToolNames(tools: unknown[] | undefined): string[] {
     .filter(Boolean);
 }
 
+function summarizeResponsesRequest(data: z.infer<typeof responsesBodySchema>): Record<string, unknown> {
+  const input = data.input;
+  const toolNames = summarizeToolNames(Array.isArray(data.tools) ? data.tools : undefined);
+  return {
+    endpoint: "/v1/responses",
+    model: data.model ?? "default",
+    stream: data.stream ?? false,
+    inputKind: typeof input === "string" ? "string" : Array.isArray(input) ? "array" : "override",
+    inputItems: Array.isArray(input) ? input.length : undefined,
+    inputTextPreview: typeof input === "string" ? truncateForLog(input) : "",
+    instructionsLength: typeof data.instructions === "string" ? data.instructions.length : undefined,
+    toolCount: Array.isArray(data.tools) ? data.tools.length : 0,
+    toolNames: toolNames.slice(0, 50),
+    toolNamesTruncated: toolNames.length > 50,
+    toolChoice: typeof data.tool_choice === "undefined" ? "default" : typeof data.tool_choice,
+    parallelToolCalls: data.parallel_tool_calls,
+    hasReasoning: Boolean((data as Record<string, unknown>).reasoning),
+  };
+}
+
+function createResponsesCodexBody(data: z.infer<typeof responsesBodySchema>): Record<string, unknown> {
+  const experimentalBody = data.experimental_codex?.body ?? {};
+  const body: Record<string, unknown> = {
+    ...experimentalBody,
+    ...(data as Record<string, unknown>),
+  };
+  delete body.experimental_codex;
+
+  const normalizedInput = normalizeResponseInput(data.input);
+  if (typeof normalizedInput !== "undefined") {
+    body.input = normalizedInput;
+  }
+
+  return body;
+}
+
+function createCodexPassthroughBody(data: z.infer<typeof responsesBodySchema>, model: string): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    ...(data as Record<string, unknown>),
+    model,
+  };
+  delete body.experimental_codex;
+  return body;
+}
+
 function summarizeChatCompletionsRequest(data: z.infer<typeof chatCompletionsBodySchema>): Record<string, unknown> {
   const lastUserMessage = [...data.messages].reverse().find((message) => (message.role ?? "user") === "user");
   const toolNames = summarizeToolNames(data.tools);
@@ -592,7 +654,18 @@ function profileLogLabel(profile: OAuthProfile | null): string {
 }
 
 function requestSourceFromUserAgent(userAgent: unknown): string {
-  return typeof userAgent === "string" && userAgent.toLowerCase().includes("openclaw") ? "OpenClaw" : "API";
+  if (typeof userAgent !== "string") {
+    return "API";
+  }
+
+  const normalized = userAgent.toLowerCase();
+  if (normalized.includes("codex")) {
+    return "Codex";
+  }
+  if (normalized.includes("openclaw")) {
+    return "OpenClaw";
+  }
+  return "API";
 }
 
 function createChatCompletionsCodexBody(
@@ -943,7 +1016,7 @@ function getErrorStatusCode(error: unknown): number {
   }
 
   const upstreamStatus = (normalized as Error & { upstreamStatus?: unknown }).upstreamStatus;
-  if (upstreamStatus === 401 || upstreamStatus === 403) {
+  if (typeof upstreamStatus === "number" && upstreamStatus >= 400 && upstreamStatus < 600) {
     return upstreamStatus;
   }
 
@@ -963,6 +1036,82 @@ function getErrorStatusCode(error: unknown): number {
   }
 
   return 500;
+}
+
+function isQuotaLimitError(error: unknown): boolean {
+  const normalized = normalizeError(error) as Error & {
+    upstreamStatus?: unknown;
+    upstreamErrorCode?: unknown;
+    upstreamErrorType?: unknown;
+  };
+  const marker = `${normalized.upstreamErrorCode ?? ""} ${normalized.upstreamErrorType ?? ""} ${normalized.message}`.toLowerCase();
+  return normalized.upstreamStatus === 429 || marker.includes("usage_limit_reached");
+}
+
+type SseStreamStats = {
+  buffer: string;
+  bytes: number;
+  terminalEvent?: string;
+  completed: boolean;
+};
+
+function createSseStreamStats(): SseStreamStats {
+  return {
+    buffer: "",
+    bytes: 0,
+    completed: false,
+  };
+}
+
+function trackSseChunk(stats: SseStreamStats, chunk: unknown): void {
+  const text = typeof chunk === "string"
+    ? chunk
+    : chunk instanceof Uint8Array
+      ? Buffer.from(chunk).toString("utf8")
+      : String(chunk);
+  stats.bytes += Buffer.byteLength(text);
+  stats.buffer += text.replace(/\r\n/g, "\n");
+
+  let separatorIndex = stats.buffer.indexOf("\n\n");
+  while (separatorIndex !== -1) {
+    const block = stats.buffer.slice(0, separatorIndex);
+    stats.buffer = stats.buffer.slice(separatorIndex + 2);
+    const eventName = block
+      .split("\n")
+      .find((line) => line.startsWith("event:"))
+      ?.slice("event:".length)
+      .trim();
+    const data = block
+      .split("\n")
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trim())
+      .join("\n");
+
+    let eventType = eventName;
+    if (data && data !== "[DONE]") {
+      try {
+        const parsed = JSON.parse(data) as { type?: unknown };
+        if (typeof parsed.type === "string") {
+          eventType = parsed.type;
+        }
+      } catch {
+        // The tracker is diagnostic only; malformed chunks still pass through.
+      }
+    }
+
+    if (eventType === "response.completed") {
+      stats.completed = true;
+      stats.terminalEvent = eventType;
+    } else if (eventType === "response.failed" || eventType === "response.incomplete") {
+      stats.terminalEvent = eventType;
+    }
+
+    separatorIndex = stats.buffer.indexOf("\n\n");
+  }
+
+  if (stats.buffer.length > 65536) {
+    stats.buffer = stats.buffer.slice(-65536);
+  }
 }
 
 export function createApp(params?: {
@@ -1048,6 +1197,7 @@ export function createApp(params?: {
       codex: codexStatus,
       adminUrl: `${origin}/`,
       baseUrl: `${origin}/v1`,
+      codexBaseUrl: `${origin}/codex/v1`,
       restartSupported: Boolean(params?.onRestart),
       codexRestartSupported: Boolean(params?.onRestartCodex),
       supportedEndpoints: [
@@ -1060,6 +1210,11 @@ export function createApp(params?: {
           method: "POST",
           path: "/v1/responses",
           description: "OpenAI responses 兼容接口。",
+        },
+        {
+          method: "POST",
+          path: "/codex/v1/responses",
+          description: "Codex custom provider 专用 Responses SSE 透传接口。",
         },
         {
           method: "POST",
@@ -1340,6 +1495,49 @@ export function createApp(params?: {
     };
   });
 
+  app.post("/_gateway/admin/codex/configure-provider", async (request, reply) => {
+    const parsed = codexProviderConfigSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    const origin = resolveOrigin(request);
+    const baseUrl = parsed.data.baseUrl ?? `${origin}/codex/v1`;
+    return {
+      codexProvider: await ctx.authService.applyGatewayToCodexProvider({
+        baseUrl,
+        providerId: parsed.data.providerId,
+      }),
+      config: await buildAdminConfig(request),
+    };
+  });
+
+  app.post("/_gateway/admin/codex/remove-provider", async (request, reply) => {
+    const parsed = codexProviderConfigSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    return {
+      codexProvider: await ctx.authService.removeGatewayFromCodexProvider({
+        providerId: parsed.data.providerId,
+      }),
+      config: await buildAdminConfig(request),
+    };
+  });
+
   app.put("/_gateway/admin/settings", async (request, reply) => {
     const parsed = settingsUpdateSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -1535,9 +1733,191 @@ export function createApp(params?: {
     })),
   }));
 
-  app.post("/v1/responses", async (request, reply) => {
+  async function handleCodexResponsesPassthrough(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    data: z.infer<typeof responsesBodySchema>,
+    startedAt: number,
+  ) {
+    const abortController = new AbortController();
+    let streamFinished = false;
+    let headersCommitted = false;
+    let profile: OAuthProfile | null = null;
+    let retryCount = 0;
+    let failureRecorded = false;
+    reply.raw.on("close", () => {
+      if (!streamFinished) {
+        abortController.abort();
+      }
+    });
+
+    try {
+      const model = await ctx.modelService.resolveModel("openai-codex", data.model, {
+        allowUnknown: data.experimental_codex?.allow_unknown_model,
+      });
+      const codexBody = createCodexPassthroughBody(data, model);
+      let upstream: Awaited<ReturnType<typeof streamOpenAICodex>> | null = null;
+      const maxProfileAttempts = 5;
+
+      for (let attempt = 0; attempt < maxProfileAttempts; attempt += 1) {
+        profile = await ctx.authService.requireUsableProfile("openai-codex");
+        try {
+          upstream = await streamOpenAICodex({
+            profile,
+            model,
+            bodyOverride: codexBody,
+            passthroughBody: true,
+            signal: abortController.signal,
+          });
+          break;
+        } catch (error) {
+          const quota = (error as { quota?: import("../core/types.js").CodexQuotaSnapshot }).quota;
+          const switchedProfile = await ctx.authService.recordProfileRequestFailure(profile.profileId, error, quota, "openai-codex");
+          failureRecorded = true;
+          if (
+            attempt < maxProfileAttempts - 1 &&
+            isQuotaLimitError(error) &&
+            switchedProfile &&
+            switchedProfile.profileId !== profile.profileId &&
+            !abortController.signal.aborted
+          ) {
+            retryCount += 1;
+            failureRecorded = false;
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      if (!upstream || !profile) {
+        throw new Error("Codex stream 未能建立。");
+      }
+
+      await ctx.authService.recordProfileRequestSuccess(profile.profileId, upstream.quota, "openai-codex");
+
+      const headers: Record<string, string> = {
+        "Content-Type": upstream.headers["content-type"] ?? "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      };
+      for (const [key, value] of Object.entries(upstream.headers)) {
+        if (key.startsWith("x-codex-") || key === "x-request-id") {
+          headers[key] = value;
+        }
+      }
+
+      reply.raw.writeHead(upstream.status, headers);
+      headersCommitted = true;
+      reply.raw.flushHeaders?.();
+
+      const streamStats = createSseStreamStats();
+      for await (const chunk of Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0])) {
+        trackSseChunk(streamStats, chunk);
+        if (!reply.raw.write(chunk)) {
+          await new Promise((resolve) => reply.raw.once("drain", resolve));
+        }
+      }
+      streamFinished = true;
+      reply.raw.end();
+      if (!streamStats.completed) {
+        console.warn("[gateway:codex:stream] upstream stream ended without response.completed", {
+          requestId: request.id,
+          upstreamRequestId: upstream.requestId,
+          account: profileLogLabel(profile),
+          model,
+          bytes: streamStats.bytes,
+          terminalEvent: streamStats.terminalEvent,
+        });
+      }
+
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: profileLogLabel(profile),
+        model,
+        statusCode: upstream.status,
+        durationMs: performance.now() - startedAt,
+        source: "Codex",
+        details: {
+          requestId: request.id,
+          upstreamRequestId: upstream.requestId,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeResponsesRequest(data),
+          response: {
+            stream: true,
+            passthrough: true,
+            retryCount,
+            completed: streamStats.completed,
+            terminalEvent: streamStats.terminalEvent,
+            bytes: streamStats.bytes,
+          },
+        },
+      });
+      return reply;
+    } catch (error) {
+      const quota = (error as { quota?: import("../core/types.js").CodexQuotaSnapshot }).quota;
+      if (profile && !failureRecorded) {
+        await ctx.authService.recordProfileRequestFailure(profile.profileId, error, quota, "openai-codex");
+      }
+      const normalized = normalizeError(error);
+      const statusCode = getErrorStatusCode(normalized);
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: profileLogLabel(profile),
+        model: data.model ?? "default",
+        statusCode,
+        durationMs: performance.now() - startedAt,
+        source: "Codex",
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeResponsesRequest(data),
+          response: {
+            retryCount,
+          },
+          error: {
+            message: normalized.message,
+            upstreamStatus: (normalized as Error & { upstreamStatus?: unknown }).upstreamStatus,
+            upstreamErrorCode: (normalized as Error & { upstreamErrorCode?: unknown }).upstreamErrorCode,
+            upstreamErrorMessage: (normalized as Error & { upstreamErrorMessage?: unknown }).upstreamErrorMessage,
+          },
+        },
+      });
+      if (headersCommitted) {
+        streamFinished = true;
+        reply.raw.end();
+        return reply;
+      }
+      throw error;
+    }
+  }
+
+  app.post("/codex/v1/responses", async (request, reply) => {
+    const startedAt = performance.now();
     const parsed = responsesBodySchema.safeParse(request.body);
     if (!parsed.success) {
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: "-",
+        statusCode: 400,
+        durationMs: performance.now() - startedAt,
+        source: "Codex",
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          error: {
+            type: "validation_error",
+            message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+          },
+        },
+      });
       reply.code(400);
       return {
         error: {
@@ -1547,21 +1927,66 @@ export function createApp(params?: {
       };
     }
 
-    if (parsed.data.stream) {
-      reply.code(501);
+    return handleCodexResponsesPassthrough(request, reply, parsed.data, startedAt);
+  });
+
+  app.post("/v1/responses", async (request, reply) => {
+    const startedAt = performance.now();
+    const parsed = responsesBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: "-",
+        statusCode: 400,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          error: {
+            type: "validation_error",
+            message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+          },
+        },
+      });
+      reply.code(400);
       return {
         error: {
-          type: "not_supported",
-          message: "当前网关暂不支持 stream=true",
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
         },
       };
     }
 
+    const wantsEventStream = typeof request.headers.accept === "string" && request.headers.accept.toLowerCase().includes("text/event-stream");
     const input = extractTextInput(parsed.data.input);
+
     const hasInput =
       typeof parsed.data.input !== "undefined" ||
       typeof parsed.data.experimental_codex?.body?.input !== "undefined";
     if (!hasInput) {
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: parsed.data.model ?? "default",
+        statusCode: 400,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeResponsesRequest(parsed.data),
+          error: {
+            type: "validation_error",
+            message: "没有提供 input，也没有在 experimental_codex.body 里透传 input",
+          },
+        },
+      });
       reply.code(400);
       return {
         error: {
@@ -1571,35 +1996,36 @@ export function createApp(params?: {
       };
     }
 
-    const codexBody: Record<string, unknown> = {
-      ...(parsed.data.experimental_codex?.body ?? {}),
-    };
-    const normalizedInput = normalizeResponseInput(parsed.data.input);
-    if (typeof normalizedInput !== "undefined") {
-      codexBody.input = normalizedInput;
-    }
-    if (typeof parsed.data.instructions === "string") {
-      codexBody.instructions = parsed.data.instructions;
-    }
-    if (parsed.data.tools) {
-      codexBody.tools = parsed.data.tools;
-    }
-    if (typeof parsed.data.tool_choice !== "undefined") {
-      codexBody.tool_choice = parsed.data.tool_choice;
-    }
-    if (parsed.data.include) {
-      codexBody.include = parsed.data.include;
-    }
-    if (parsed.data.text) {
-      codexBody.text = parsed.data.text;
-    }
-    if (typeof parsed.data.store === "boolean") {
-      codexBody.store = parsed.data.store;
-    }
-    if (typeof parsed.data.parallel_tool_calls === "boolean") {
-      codexBody.parallel_tool_calls = parsed.data.parallel_tool_calls;
+    if (parsed.data.stream || wantsEventStream) {
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: parsed.data.model ?? "default",
+        statusCode: 501,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeResponsesRequest(parsed.data),
+          error: {
+            type: "not_supported",
+            message: "普通 Responses stream 尚未实现；Codex custom provider 请求会走专用透传路径。",
+          },
+        },
+      });
+      reply.code(501);
+      return {
+        error: {
+          type: "not_supported",
+          message: "普通 Responses stream 尚未实现；Codex custom provider 请求会走专用透传路径。",
+        },
+      };
     }
 
+    const codexBody = createResponsesCodexBody(parsed.data);
     const result = await ctx.chatService.chat({
       model: parsed.data.model,
       input: input || undefined,

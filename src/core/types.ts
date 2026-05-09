@@ -144,6 +144,7 @@ export type GatewaySettings = {
   };
   autoSwitch: {
     enabled: boolean;
+    excludedProfileIds: string[];
   };
   runtime: {
     quotaSyncConcurrency: number;

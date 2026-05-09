@@ -59,6 +59,23 @@ The gateway accepts OpenClaw-style `chat.completions` requests with `tools`, `to
 
 OpenClaw requests are visible in the management console request log when the client sends an OpenClaw user agent. The log keeps safe summaries only; it does not store full access tokens.
 
+## Codex Custom Provider
+
+Codex CLI/Desktop can route model traffic through AI Zero Token by using a custom Responses provider in `~/.codex/config.toml`. The management console Settings page can write this automatically with "接管 Codex 请求" and remove it with "解除接管":
+
+```toml
+model = "gpt-5.4"
+model_provider = "ai-zero-token"
+
+[model_providers.ai-zero-token]
+name = "AI Zero Token"
+base_url = "http://127.0.0.1:8787/codex/v1"
+wire_api = "responses"
+supports_websockets = false
+```
+
+Codex sends `POST /codex/v1/responses` with `Accept: text/event-stream`; the gateway forwards that request to the active Codex OAuth account and streams upstream Responses SSE events back to Codex. The regular `/v1/*` routes remain OpenAI-compatible API routes for non-Codex clients.
+
 ## Models
 
 ```bash
@@ -196,7 +213,7 @@ console.log(response.choices[0]?.message?.content);
 
 - Login first through the management page or `azt login`.
 - A model appearing in `/v1/models` means the local Codex cache lists it. Final availability still depends on the active account.
-- `stream=true` is supported for `/v1/chat/completions` through OpenAI-style SSE chunks. `/v1/responses` streaming is still not implemented.
+- `stream=true` is supported for `/v1/chat/completions` through OpenAI-style SSE chunks. Codex passthrough streaming is isolated under `/codex/v1/responses`.
 - `n > 1` is not supported for `/v1/chat/completions`.
 - Tool/function calling is supported for common OpenAI-compatible clients, including OpenClaw, but exact upstream behavior still depends on the active Codex model and account.
 - The default listener is `0.0.0.0:8787`, so local-network clients can call the gateway by using the machine IP.

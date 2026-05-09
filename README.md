@@ -145,6 +145,21 @@ Tools / function calling: enabled
 
 `/v1/chat/completions` accepts `stream=true`, `tools`, `tool_choice`, `parallel_tool_calls`, assistant `tool_calls`, tool-role result messages, and `reasoning_effort`. OpenClaw requests also appear in the management console request log with safe summaries.
 
+Codex CLI/Desktop can also use the gateway as a custom Responses provider:
+
+Use the management console Settings page and click "接管 Codex 请求" to write this config automatically. Click "解除接管" to remove the AI Zero Token managed provider config, or add it manually to `~/.codex/config.toml`:
+
+```toml
+model = "gpt-5.4"
+model_provider = "ai-zero-token"
+
+[model_providers.ai-zero-token]
+name = "AI Zero Token"
+base_url = "http://127.0.0.1:8787/codex/v1"
+wire_api = "responses"
+supports_websockets = false
+```
+
 ### Image Generation
 
 ```bash
@@ -249,7 +264,7 @@ The persistent state directory can be overridden with:
 AI_ZERO_TOKEN_HOME=/path/to/home azt start
 ```
 
-The web console settings are persisted in the same local state directory. The quota auto-switch option is stored as `autoSwitch.enabled`; when enabled, the gateway uses the latest saved quota snapshot and moves API traffic away from the active account once that snapshot shows a quota window is exhausted.
+The web console settings are persisted in the same local state directory. The quota auto-switch option is stored as `autoSwitch.enabled`; when enabled, the gateway uses the latest saved quota snapshot and moves API traffic away from the active account once that snapshot shows a quota window is exhausted. Accounts listed in `autoSwitch.excludedProfileIds` are excluded from automatic rotation and remain available for manual selection.
 
 The global quota refresh concurrency can be configured in the web console settings. The default is `16`; lower it if upstream rate limits increase, or raise it for larger local account pools.
 
@@ -270,7 +285,7 @@ For JSON image editing, base64 payloads are about 33% larger than the original i
 ## Limitations
 
 - This project is intended for local single-user use.
-- `/v1/chat/completions` supports OpenAI-style SSE for `stream=true`; `/v1/responses` streaming is not implemented yet.
+- `/v1/chat/completions` supports OpenAI-style SSE for `stream=true`; Codex custom providers use the dedicated `/codex/v1/responses` route for upstream Responses SSE passthrough.
 - `/v1/chat/completions` supports common tool/function-calling fields, but `n > 1` is not supported.
 - `/v1/images/generations` currently returns `b64_json`; hosted image URLs are not supported.
 - `/v1/images/generations` does not support `n > 1`.

@@ -1,4 +1,8 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { PassThrough, Readable } from "node:stream";
 import { loadSettings } from "../store/settings-store.js";
 import type { GatewaySettings } from "../types.js";
 
@@ -16,6 +20,15 @@ type HttpTextResponse = {
   headers: Record<string, string>;
 };
 
+type HttpStreamResponse = {
+  body: ReadableStream<Uint8Array>;
+  status: number;
+  transport: "fetch" | "curl";
+  timing: HttpTiming;
+  requestId: string;
+  headers: Record<string, string>;
+};
+
 type TextRequestInit = {
   body?: string;
   headers?: Record<string, string>;
@@ -24,6 +37,10 @@ type TextRequestInit = {
   proxyOverride?: NetworkProxySettings;
   timeoutMs?: number;
   url: string;
+};
+
+type StreamRequestInit = TextRequestInit & {
+  signal?: AbortSignal;
 };
 
 type NetworkProxySettings = GatewaySettings["networkProxy"];
@@ -82,6 +99,10 @@ function logHttpTiming(params: {
   });
 }
 
+function isElectronRuntime(): boolean {
+  return typeof (process.versions as Record<string, string | undefined>).electron === "string";
+}
+
 function normalizeHeaders(headers: Headers): Record<string, string> {
   const normalized: Record<string, string> = {};
   headers.forEach((value, key) => {
@@ -111,6 +132,42 @@ function normalizeCurlHeaders(value: unknown): Record<string, string> {
       return [];
     }),
   );
+}
+
+function parseCurlHeaderDump(raw: string): { status: number; headers: Record<string, string> } | null {
+  const blocks = raw
+    .replace(/\r\n/g, "\n")
+    .split(/\n\n+/)
+    .map((block) => block.trim())
+    .filter((block) => /^HTTP\//i.test(block));
+  const block = blocks[blocks.length - 1];
+  if (!block) {
+    return null;
+  }
+
+  const lines = block.split("\n");
+  const statusMatch = /^HTTP(?:\/\S+)?\s+(\d{3})/i.exec(lines[0]?.trim() ?? "");
+  const status = statusMatch ? Number.parseInt(statusMatch[1], 10) : NaN;
+  if (!Number.isFinite(status)) {
+    return null;
+  }
+
+  const headers: Record<string, string> = {};
+  for (const line of lines.slice(1)) {
+    const separator = line.indexOf(":");
+    if (separator <= 0) {
+      continue;
+    }
+
+    const key = line.slice(0, separator).trim().toLowerCase();
+    const value = line.slice(separator + 1).trim();
+    if (!key || !value) {
+      continue;
+    }
+    headers[key] = headers[key] ? `${headers[key]}, ${value}` : value;
+  }
+
+  return { status, headers };
 }
 
 async function runCurlRequest(
@@ -150,14 +207,17 @@ async function runCurlRequest(
     args.push("--header", `${key}: ${value}`);
   }
 
-  if (typeof init.body === "string") {
-    args.push("--data-raw", init.body);
+  const hasBody = typeof init.body === "string";
+  if (hasBody) {
+    args.push("--data-binary", "@-");
   }
 
   const child = spawn("curl", args, {
     env: process.env,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
+  child.stdin.on("error", () => undefined);
+  child.stdin.end(hasBody ? init.body : undefined);
   const phases: Record<string, number> = {
     spawnCurlMs: performance.now() - startedAt,
   };
@@ -239,6 +299,162 @@ async function runCurlRequest(
   };
 }
 
+async function waitForCurlHeaders(params: {
+  headerPath: string;
+  isClosed: () => boolean;
+  stderr: () => string;
+  timeoutMs: number;
+}): Promise<{ status: number; headers: Record<string, string> }> {
+  const startedAt = performance.now();
+  while (performance.now() - startedAt < params.timeoutMs) {
+    try {
+      const raw = await fs.readFile(params.headerPath, "utf8");
+      const parsed = parseCurlHeaderDump(raw);
+      if (parsed) {
+        return parsed;
+      }
+    } catch {
+      // Header file is created by curl after the connection is established.
+    }
+
+    if (params.isClosed()) {
+      throw new Error(params.stderr().trim() || "curl stream 请求在返回响应头前结束。");
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  throw new Error("等待 curl stream 响应头超时。");
+}
+
+async function runCurlStream(
+  init: StreamRequestInit,
+  params?: { requestId?: string; fallbackFrom?: "fetch"; proxy?: NetworkProxySettings; timeoutMs?: number },
+): Promise<HttpStreamResponse> {
+  if (init.signal?.aborted) {
+    throw new Error("stream 请求已取消。");
+  }
+
+  const requestId = params?.requestId ?? nextRequestId();
+  const startedAt = performance.now();
+  const timeoutSeconds =
+    typeof params?.timeoutMs === "number" && Number.isFinite(params.timeoutMs) && params.timeoutMs > 0
+      ? Math.max(1, Math.ceil(params.timeoutMs / 1000))
+      : undefined;
+  const headerPath = path.join(os.tmpdir(), `azt-curl-headers-${process.pid}-${requestId}.txt`);
+  const args = [
+    "--silent",
+    "--show-error",
+    "--location",
+    "--no-buffer",
+    "--request",
+    init.method,
+    init.url,
+    "--dump-header",
+    headerPath,
+  ];
+
+  if (typeof timeoutSeconds === "number") {
+    args.push("--connect-timeout", String(Math.min(timeoutSeconds, 10)));
+    args.push("--max-time", String(timeoutSeconds));
+  } else {
+    args.push("--connect-timeout", "10");
+  }
+
+  if (params?.proxy?.enabled && params.proxy.url.trim()) {
+    args.push("--proxy", params.proxy.url.trim());
+    if (params.proxy.noProxy.trim()) {
+      args.push("--noproxy", params.proxy.noProxy.trim());
+    }
+  }
+
+  for (const [key, value] of Object.entries(init.headers ?? {})) {
+    args.push("--header", `${key}: ${value}`);
+  }
+
+  const hasBody = typeof init.body === "string";
+  if (hasBody) {
+    args.push("--data-binary", "@-");
+  }
+
+  const child = spawn("curl", args, {
+    env: process.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  child.stdin.on("error", () => undefined);
+  child.stdin.end(hasBody ? init.body : undefined);
+  const body = new PassThrough();
+  const phases: Record<string, number> = {
+    spawnCurlMs: performance.now() - startedAt,
+  };
+
+  let stderr = "";
+  let closed = false;
+  let exitCode = 0;
+
+  const abort = () => {
+    child.kill("SIGTERM");
+  };
+  init.signal?.addEventListener("abort", abort, { once: true });
+
+  child.stdout.pipe(body);
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk;
+  });
+
+  child.on("error", (error) => {
+    closed = true;
+    stderr = stderr || error.message;
+    body.destroy(error);
+  });
+  child.on("close", (code) => {
+    closed = true;
+    exitCode = code ?? 1;
+    init.signal?.removeEventListener("abort", abort);
+    void fs.unlink(headerPath).catch(() => undefined);
+    if (exitCode !== 0 && !init.signal?.aborted) {
+      body.destroy(new Error(stderr.trim() || `curl stream 请求失败，退出码 ${exitCode}`));
+    }
+  });
+
+  let parsed: { status: number; headers: Record<string, string> };
+  try {
+    parsed = await waitForCurlHeaders({
+      headerPath,
+      isClosed: () => closed,
+      stderr: () => stderr,
+      timeoutMs: typeof params?.timeoutMs === "number" ? Math.min(params.timeoutMs, 30_000) : 30_000,
+    });
+  } catch (error) {
+    child.kill("SIGTERM");
+    init.signal?.removeEventListener("abort", abort);
+    void fs.unlink(headerPath).catch(() => undefined);
+    body.destroy(error instanceof Error ? error : new Error(String(error)));
+    throw error;
+  }
+  phases.waitForHeadersMs = performance.now() - startedAt - phases.spawnCurlMs;
+  const timing = finalizeTiming(startedAt, phases);
+  logHttpTiming({
+    requestId,
+    method: init.method,
+    url: init.url,
+    status: parsed.status,
+    transport: "curl",
+    timing,
+    fallbackFrom: params?.fallbackFrom,
+  });
+
+  return {
+    body: Readable.toWeb(body) as ReadableStream<Uint8Array>,
+    status: parsed.status,
+    transport: "curl",
+    timing,
+    requestId,
+    headers: parsed.headers,
+  };
+}
+
 async function loadNetworkProxySettings(): Promise<NetworkProxySettings | undefined> {
   try {
     const settings = await loadSettings();
@@ -314,6 +530,76 @@ export async function requestText(init: TextRequestInit): Promise<HttpTextRespon
       : undefined;
 
   return runCurlRequest(init, {
+    requestId,
+    fallbackFrom: useCurlOnly || useConfiguredProxy ? undefined : "fetch",
+    proxy,
+    timeoutMs: remainingTimeoutMs,
+  });
+}
+
+export async function requestStream(init: StreamRequestInit): Promise<HttpStreamResponse> {
+  const requestId = nextRequestId();
+  const requestStartedAt = performance.now();
+  const proxy = init.ignoreProxy ? undefined : init.proxyOverride ?? await loadNetworkProxySettings();
+  const useCurlOnly = process.env.OAUTH_DEMO_USE_CURL === "1" || isElectronRuntime();
+  const useConfiguredProxy = !!proxy?.enabled && !!proxy.url.trim();
+  const timeoutMs = init.timeoutMs;
+
+  if (!useCurlOnly && !useConfiguredProxy) {
+    const phases: Record<string, number> = {};
+    try {
+      const fetchStartedAt = performance.now();
+      const response = await fetch(init.url, {
+        method: init.method,
+        headers: init.headers,
+        body: init.body,
+        signal: init.signal,
+      });
+      phases.waitForHeadersMs = performance.now() - fetchStartedAt;
+      const timing = finalizeTiming(requestStartedAt, phases);
+      logHttpTiming({
+        requestId,
+        method: init.method,
+        url: init.url,
+        status: response.status,
+        transport: "fetch",
+        timing,
+      });
+
+      if (!response.body) {
+        throw new Error("fetch stream 响应缺少 body。");
+      }
+
+      return {
+        body: response.body,
+        status: response.status,
+        transport: "fetch",
+        timing,
+        requestId,
+        headers: normalizeHeaders(response.headers),
+      };
+    } catch (error) {
+      if (init.signal?.aborted) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      safeConsole("warn", "[http] fetch stream attempt failed", {
+        requestId,
+        method: init.method,
+        url: init.url,
+        elapsedMs: roundMs(performance.now() - requestStartedAt),
+        error: message,
+      });
+    }
+  }
+
+  const remainingTimeoutMs =
+    typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? Math.max(1000, timeoutMs - (performance.now() - requestStartedAt))
+      : undefined;
+
+  return runCurlStream(init, {
     requestId,
     fallbackFrom: useCurlOnly || useConfiguredProxy ? undefined : "fetch",
     proxy,

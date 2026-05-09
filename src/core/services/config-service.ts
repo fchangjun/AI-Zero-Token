@@ -43,15 +43,27 @@ function normalizeNetworkProxy(settings: GatewaySettings, params: NetworkProxyPa
   };
 }
 
+function normalizeProfileIdList(value: string[] | undefined, fallback: string[] = []): string[] {
+  if (!value) {
+    return fallback;
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
 export class ConfigService {
   async getSettings(): Promise<GatewaySettings> {
     return this.ensureSettings();
   }
 
   async ensureSettings(): Promise<GatewaySettings> {
-    const settings = await loadSettings();
-    await saveSettings(settings);
-    return settings;
+    return loadSettings();
   }
 
   async getDefaultProvider(): Promise<ProviderId> {
@@ -95,12 +107,13 @@ export class ConfigService {
     return next;
   }
 
-  async setAutoSwitch(params: { enabled: boolean }): Promise<GatewaySettings> {
+  async setAutoSwitch(params: { enabled?: boolean; excludedProfileIds?: string[] }): Promise<GatewaySettings> {
     const settings = await this.getSettings();
     const next = {
       ...settings,
       autoSwitch: {
-        enabled: params.enabled,
+        enabled: params.enabled ?? settings.autoSwitch.enabled,
+        excludedProfileIds: normalizeProfileIdList(params.excludedProfileIds, settings.autoSwitch.excludedProfileIds),
       },
     };
     await saveSettings(next);
@@ -141,7 +154,7 @@ export class ConfigService {
   async updateSettings(params: {
     defaultModel?: string;
     networkProxy?: NetworkProxyParams;
-    autoSwitch?: { enabled: boolean };
+    autoSwitch?: { enabled?: boolean; excludedProfileIds?: string[] };
     runtime?: { quotaSyncConcurrency?: number };
     server?: { port: number };
   }): Promise<GatewaySettings> {
@@ -170,7 +183,8 @@ export class ConfigService {
       next = {
         ...next,
         autoSwitch: {
-          enabled: params.autoSwitch.enabled,
+          enabled: params.autoSwitch.enabled ?? next.autoSwitch.enabled,
+          excludedProfileIds: normalizeProfileIdList(params.autoSwitch.excludedProfileIds, next.autoSwitch.excludedProfileIds),
         },
       };
     }

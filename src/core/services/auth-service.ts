@@ -24,10 +24,14 @@ import {
 import { askOpenAICodex } from "../providers/openai-codex/chat.js";
 import { ConfigService } from "./config-service.js";
 import {
+  applyGatewayToCodexProviderConfig,
   applyProfileToCodexAuth,
   getCodexAuthStatus,
+  removeGatewayFromCodexProviderConfig,
+  type ApplyCodexGatewayProviderResult,
   type ApplyCodexAuthResult,
   type CodexAuthStatus,
+  type RemoveCodexGatewayProviderResult,
 } from "../store/codex-auth-store.js";
 import {
   exportProfilesToJson,
@@ -283,7 +287,8 @@ export class AuthService {
 
   private async maybeAutoSwitchProfile(profile: OAuthProfile, provider: ProviderId): Promise<OAuthProfile> {
     const settings = await this.configService.getSettings();
-    if (!settings.autoSwitch.enabled || !this.isQuotaExhausted(profile)) {
+    const excludedProfileIds = new Set(settings.autoSwitch.excludedProfileIds);
+    if (!settings.autoSwitch.enabled || excludedProfileIds.has(profile.profileId) || !this.isQuotaExhausted(profile)) {
       return profile;
     }
 
@@ -302,6 +307,7 @@ export class AuthService {
           : index + 1,
       }))
       .filter((item) => item.profile.provider === provider && item.profile.profileId !== profile.profileId)
+      .filter((item) => !excludedProfileIds.has(item.profile.profileId))
       .filter((item) => this.hasKnownAvailableQuota(item.profile))
       .sort((left, right) => {
         const leftCodexConflict = codexAccountId && left.profile.accountId === codexAccountId ? 1 : 0;
@@ -431,6 +437,19 @@ export class AuthService {
   async applyProfileToCodex(profileId: string, provider: ProviderId = "openai-codex"): Promise<ApplyCodexAuthResult> {
     const profile = await this.requireFreshProfileWithIdToken(profileId, provider);
     return applyProfileToCodexAuth(profile);
+  }
+
+  async applyGatewayToCodexProvider(params: {
+    baseUrl: string;
+    providerId?: string;
+  }): Promise<ApplyCodexGatewayProviderResult> {
+    return applyGatewayToCodexProviderConfig(params);
+  }
+
+  async removeGatewayFromCodexProvider(params?: {
+    providerId?: string;
+  }): Promise<RemoveCodexGatewayProviderResult> {
+    return removeGatewayFromCodexProviderConfig(params);
   }
 
   async getActiveProfile(provider: ProviderId = "openai-codex"): Promise<OAuthProfile | null> {
@@ -692,13 +711,13 @@ export class AuthService {
     quota: CodexQuotaSnapshot | undefined,
     provider: ProviderId = "openai-codex",
     options?: { skipAutoSwitch?: boolean },
-  ): Promise<void> {
+  ): Promise<OAuthProfile | null> {
     const authStatus = this.createAuthStatusFromError(error);
     if (!quota && !authStatus) {
-      return;
+      return null;
     }
 
-    await this.applyProfileRuntimeUpdate(
+    return this.applyProfileRuntimeUpdate(
       profileId,
       provider,
       (profile) => ({

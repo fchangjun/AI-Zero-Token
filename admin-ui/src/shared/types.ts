@@ -58,6 +58,7 @@ export type GatewaySettings = {
   };
   autoSwitch: {
     enabled: boolean;
+    excludedProfileIds: string[];
   };
   runtime: {
     quotaSyncConcurrency: number;
@@ -126,9 +127,18 @@ export type AdminConfig = {
     path: string;
     accountId?: string;
     email?: string;
+    gatewayProvider: {
+      path: string;
+      providerId: string;
+      exists: boolean;
+      active: boolean;
+      baseUrl?: string;
+      modelProvider?: string;
+    };
   };
   adminUrl: string;
   baseUrl: string;
+  codexBaseUrl?: string;
   supportedEndpoints: SupportedEndpoint[];
   restartSupported?: boolean;
   codexRestartSupported?: boolean;

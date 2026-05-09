@@ -2,6 +2,17 @@
 
 This project ships the desktop app with Electron. The desktop main process starts the existing local Fastify gateway and loads the React management UI served by that gateway.
 
+## 2.0.5 Release Notes
+
+Version `2.0.5` adds Codex custom provider routing and finer account rotation controls:
+
+- Settings-page Codex provider setup for writing or removing the AI Zero Token managed `~/.codex/config.toml` provider.
+- Local and remote Codex gateway URL modes, including automatic normalization to `/codex/v1`.
+- Dedicated `POST /codex/v1/responses` passthrough route for Codex CLI/Desktop Responses SSE traffic.
+- Provider status reporting in the management console, including active provider, base URL, and config path.
+- Auto-switch exclusion list for accounts that should not participate in automatic quota rotation.
+- Safer settings persistence through normalized loads, deduplicated profile IDs, queued saves, and atomic writes.
+
 ## 2.0.4 Release Notes
 
 Version `2.0.4` adds the macOS menu-bar account panel and OpenClaw compatibility work:
@@ -103,7 +114,7 @@ AI Zero Token Setup {version}.exe
 AI Zero Token-{version}-win.zip
 ```
 
-For `2.0.4`, replace `{version}` with `2.0.4`.
+For `2.0.5`, replace `{version}` with `2.0.5`.
 
 Artifact purpose:
 
