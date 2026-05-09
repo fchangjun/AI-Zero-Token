@@ -61,7 +61,19 @@ OpenClaw requests are visible in the management console request log when the cli
 
 ## Codex Custom Provider
 
-Codex CLI/Desktop can route model traffic through AI Zero Token by using a custom Responses provider in `~/.codex/config.toml`. The management console Settings page can write this automatically with "接管 Codex 请求" and remove it with "解除接管":
+Codex CLI/Desktop can route model traffic through AI Zero Token by using a custom Responses provider in `~/.codex/config.toml`. The management console Settings page can write this automatically with "接管 Codex 请求" after you choose the history mode first. The default `openai` mode keeps the native Codex history view; the `AI Zero Token` mode creates a separate provider/history bucket.
+
+Default history-preserving mode:
+
+```toml
+model = "gpt-5.4"
+model_provider = "openai"
+openai_base_url = "http://127.0.0.1:8787/codex/v1"
+```
+
+Codex sends `POST /codex/v1/responses` with `Accept: text/event-stream`; the gateway forwards that request to the active Codex OAuth account and streams upstream Responses SSE events back to Codex. The regular `/v1/*` routes remain OpenAI-compatible API routes for non-Codex clients.
+
+Separate AI Zero Token provider mode:
 
 ```toml
 model = "gpt-5.4"
@@ -73,8 +85,6 @@ base_url = "http://127.0.0.1:8787/codex/v1"
 wire_api = "responses"
 supports_websockets = false
 ```
-
-Codex sends `POST /codex/v1/responses` with `Accept: text/event-stream`; the gateway forwards that request to the active Codex OAuth account and streams upstream Responses SSE events back to Codex. The regular `/v1/*` routes remain OpenAI-compatible API routes for non-Codex clients.
 
 ## Models
 

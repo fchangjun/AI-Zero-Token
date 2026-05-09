@@ -147,18 +147,17 @@ Tools / function calling: enabled
 
 Codex CLI/Desktop can also use the gateway as a custom Responses provider:
 
-Use the management console Settings page and click "接管 Codex 请求" to write this config automatically. Click "解除接管" to remove the AI Zero Token managed provider config, or add it manually to `~/.codex/config.toml`:
+Use the management console Settings page and choose the history mode before clicking "接管 Codex 请求". The default `openai` mode keeps Codex history in the native provider view; the `AI Zero Token` mode creates a separate provider/history bucket. Click "解除接管" to remove the managed provider config, or add it manually to `~/.codex/config.toml`:
 
 ```toml
 model = "gpt-5.4"
-model_provider = "ai-zero-token"
-
-[model_providers.ai-zero-token]
-name = "AI Zero Token"
-base_url = "http://127.0.0.1:8787/codex/v1"
-wire_api = "responses"
-supports_websockets = false
+model_provider = "openai"
+openai_base_url = "http://127.0.0.1:8787/codex/v1"
 ```
+
+This keeps Codex on its native `openai` provider id and only replaces `openai_base_url`, so local conversation history remains in the same Codex history view.
+
+If you want Codex to show a separate `AI Zero Token` provider, choose that mode in Settings. It writes a `[model_providers.ai-zero-token]` block instead of `openai_base_url`.
 
 ### Image Generation
 

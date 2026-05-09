@@ -2,9 +2,13 @@
 
 ## 2.0.5 - 2026-05-09
 
+- Added a Codex takeover history-mode selector in Settings so the default path keeps `openai` history while optionally writing a separate `AI Zero Token` provider.
 - Added Codex custom provider setup from the Settings page, including local/remote gateway URL selection and managed writes to `~/.codex/config.toml`.
 - Added `POST /codex/v1/responses` as a dedicated Codex CLI/Desktop Responses SSE passthrough route.
 - Added admin APIs to configure or remove the AI Zero Token managed Codex provider and report provider status in the management console.
+- Changed Codex request takeover to preserve the native `openai` provider id via `openai_base_url`, keeping existing Codex history visible when routing through a third-party gateway.
+- Added a best-effort local Codex history migration that rewrites legacy `ai-zero-token` thread records back to `openai` with a SQLite backup.
+- Added `/codex/v1/models` and compressed JSON request parsing for Codex's native provider gateway mode.
 - Added an auto-switch exclusion list so selected accounts can be kept out of automatic quota rotation while remaining available for manual use.
 - Improved quota-limit handling by capturing upstream `usage_limit_reached` details and retrying Codex passthrough requests after automatic account switching.
 - Hardened settings persistence with normalized settings loading, deduplicated profile ID lists, queued saves, and atomic file replacement.

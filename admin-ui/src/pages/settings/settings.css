@@ -127,6 +127,32 @@
   max-width: 720px;
 }
 
+.codex-provider-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.codex-provider-mode-copy {
+  min-width: 0;
+  flex: 1 1 420px;
+  display: grid;
+  gap: 8px;
+}
+
+.codex-provider-mode-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.codex-provider-mode-copy .hint {
+  margin: 0;
+  max-width: 720px;
+}
+
 .codex-provider-controls {
   display: grid;
   grid-template-columns: 284px minmax(320px, 1fr) auto;
@@ -134,18 +160,22 @@
   align-items: end;
 }
 
-.codex-mode-toggle {
+.codex-mode-toggle,
+.codex-provider-mode-toggle {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
   min-height: 42px;
+  flex: 0 1 320px;
+  min-width: 320px;
   padding: 5px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #f1f5f9;
 }
 
-.codex-mode-option {
+.codex-mode-option,
+.codex-provider-mode-option {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -161,7 +191,8 @@
   cursor: pointer;
 }
 
-.codex-mode-option.is-active {
+.codex-mode-option.is-active,
+.codex-provider-mode-option.is-active {
   color: #1d4ed8;
   border-color: #bfdbfe;
   background: #fff;
@@ -191,7 +222,7 @@
 
 .codex-provider-meta-strip {
   display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(280px, 1.1fr) minmax(260px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
@@ -370,19 +401,30 @@
 
 @media (max-width: 860px) {
   .codex-provider-head,
+  .codex-provider-mode-row,
   .auto-switch-exclusion-head,
   .auto-switch-profile-row {
     grid-template-columns: 1fr;
   }
 
   .codex-provider-head,
+  .codex-provider-mode-row,
   .auto-switch-exclusion-head {
     display: grid;
+  }
+
+  .codex-provider-mode-row {
+    gap: 10px;
   }
 
   .codex-provider-controls,
   .codex-provider-meta-strip {
     grid-template-columns: 1fr;
+  }
+
+  .codex-provider-mode-toggle {
+    width: 100%;
+    min-width: 0;
   }
 
   .codex-provider-actions {

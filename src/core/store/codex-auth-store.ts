@@ -1,7 +1,11 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import type { OAuthProfile } from "../types.js";
+
+const execFileAsync = promisify(execFile);
 
 type CodexAuthFile = {
   auth_mode: "chatgpt";
@@ -44,6 +48,15 @@ export type ApplyCodexGatewayProviderResult = {
   backupPath?: string;
   providerId: string;
   baseUrl: string;
+  historyMigration?: CodexHistoryMigrationResult;
+};
+
+export type CodexHistoryMigrationResult = {
+  path: string;
+  backupPath?: string;
+  migratedCount: number;
+  skipped?: boolean;
+  error?: string;
 };
 
 export type RemoveCodexGatewayProviderResult = {
@@ -57,7 +70,9 @@ function getCodexHomeDir(): string {
   return process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
 }
 
-const DEFAULT_CODEX_PROVIDER_ID = "ai-zero-token";
+const OPENAI_CODEX_PROVIDER_ID = "openai";
+const LEGACY_CODEX_PROVIDER_ID = "ai-zero-token";
+const DEFAULT_CODEX_PROVIDER_ID = OPENAI_CODEX_PROVIDER_ID;
 
 export function getCodexAuthPath(): string {
   return path.join(getCodexHomeDir(), "auth.json");
@@ -65,6 +80,10 @@ export function getCodexAuthPath(): string {
 
 export function getCodexConfigPath(): string {
   return path.join(getCodexHomeDir(), "config.toml");
+}
+
+function getCodexStateDbPath(): string {
+  return path.join(getCodexHomeDir(), "state_5.sqlite");
 }
 
 function createBackupSuffix(): string {
@@ -82,6 +101,71 @@ function formatTomlString(value: string): string {
 function validateProviderId(providerId: string): void {
   if (!/^[A-Za-z0-9_-]+$/.test(providerId)) {
     throw new Error("Codex providerId 只能包含字母、数字、下划线和短横线。");
+  }
+}
+
+async function fileExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sqliteQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+async function runSqlite(dbPath: string, sql: string): Promise<string> {
+  const { stdout } = await execFileAsync("sqlite3", [dbPath, sql], {
+    timeout: 15_000,
+    maxBuffer: 1024 * 1024,
+  });
+  return stdout.trim();
+}
+
+async function migrateLegacyCodexHistoryProvider(): Promise<CodexHistoryMigrationResult> {
+  const dbPath = getCodexStateDbPath();
+  if (!(await fileExists(dbPath))) {
+    return {
+      path: dbPath,
+      migratedCount: 0,
+      skipped: true,
+    };
+  }
+
+  try {
+    const countRaw = await runSqlite(
+      dbPath,
+      `select count(*) from threads where model_provider=${sqliteQuote(LEGACY_CODEX_PROVIDER_ID)};`,
+    );
+    const migratedCount = Number.parseInt(countRaw, 10);
+    if (!Number.isFinite(migratedCount) || migratedCount <= 0) {
+      return {
+        path: dbPath,
+        migratedCount: 0,
+        skipped: true,
+      };
+    }
+
+    const backupPath = `${dbPath}.azt-backup-${createBackupSuffix()}`;
+    await runSqlite(dbPath, `.backup ${sqliteQuote(backupPath)}`);
+    await runSqlite(
+      dbPath,
+      `update threads set model_provider=${sqliteQuote(OPENAI_CODEX_PROVIDER_ID)} where model_provider=${sqliteQuote(LEGACY_CODEX_PROVIDER_ID)};`,
+    );
+    return {
+      path: dbPath,
+      backupPath,
+      migratedCount,
+    };
+  } catch (error) {
+    return {
+      path: dbPath,
+      migratedCount: 0,
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -149,18 +233,23 @@ function findFirstTableLine(lines: string[]): number {
   return index === -1 ? lines.length : index;
 }
 
-function parseRootModelProvider(raw: string): string | undefined {
+function parseRootString(raw: string, key: string): string | undefined {
   const lines = raw.split(/\r?\n/);
   const firstTableLine = findFirstTableLine(lines);
+  const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*(.+)$`);
 
   for (let index = 0; index < firstTableLine; index += 1) {
-    const match = /^\s*model_provider\s*=\s*(.+)$/.exec(lines[index] ?? "");
+    const match = keyPattern.exec(lines[index] ?? "");
     if (match) {
       return parseTomlStringValue(match[1] ?? "");
     }
   }
 
   return undefined;
+}
+
+function parseRootModelProvider(raw: string): string | undefined {
+  return parseRootString(raw, "model_provider");
 }
 
 function parseGatewayProviderTable(raw: string, providerId: string): { exists: boolean; baseUrl?: string } {
@@ -182,17 +271,18 @@ function parseGatewayProviderTable(raw: string, providerId: string): { exists: b
   return { exists: true, baseUrl };
 }
 
-function upsertRootModelProvider(raw: string, providerId: string): string {
+function upsertRootString(raw: string, key: string, value: string): string {
   if (!raw.trim()) {
-    return `model_provider = ${formatTomlString(providerId)}\n`;
+    return `${key} = ${formatTomlString(value)}\n`;
   }
 
   const lines = raw.split(/\r?\n/);
   const firstTableLine = findFirstTableLine(lines);
-  const nextLine = `model_provider = ${formatTomlString(providerId)}`;
+  const nextLine = `${key} = ${formatTomlString(value)}`;
+  const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`);
 
   for (let index = 0; index < firstTableLine; index += 1) {
-    if (/^\s*model_provider\s*=/.test(lines[index])) {
+    if (keyPattern.test(lines[index])) {
       lines[index] = nextLine;
       return lines.join("\n");
     }
@@ -200,6 +290,10 @@ function upsertRootModelProvider(raw: string, providerId: string): string {
 
   lines.splice(firstTableLine, 0, nextLine, "");
   return lines.join("\n");
+}
+
+function upsertRootModelProvider(raw: string, providerId: string): string {
+  return upsertRootString(raw, "model_provider", providerId);
 }
 
 function buildGatewayProviderBlock(providerId: string, baseUrl: string): string[] {
@@ -237,16 +331,31 @@ function upsertGatewayProviderTable(raw: string, providerId: string, baseUrl: st
 }
 
 function applyGatewayProviderConfig(raw: string, providerId: string, baseUrl: string): string {
-  return upsertGatewayProviderTable(upsertRootModelProvider(raw, providerId), providerId, baseUrl);
+  const sanitizedRaw = removeOpenAIGatewayConfig(raw).raw;
+  return upsertGatewayProviderTable(upsertRootModelProvider(sanitizedRaw, providerId), providerId, baseUrl);
 }
 
-function removeRootModelProvider(raw: string, providerId: string): { raw: string; removed: boolean } {
+function applyOpenAIGatewayConfig(raw: string, baseUrl: string): string {
+  const withoutLegacyProvider = removeGatewayProviderConfig(raw, LEGACY_CODEX_PROVIDER_ID).raw;
+  return upsertRootString(
+    upsertRootModelProvider(withoutLegacyProvider, OPENAI_CODEX_PROVIDER_ID),
+    "openai_base_url",
+    baseUrl,
+  );
+}
+
+function removeRootString(raw: string, key: string, expectedValue?: string): { raw: string; removed: boolean } {
   const lines = raw.split(/\r?\n/);
   const firstTableLine = findFirstTableLine(lines);
+  const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*(.+)$`);
 
   for (let index = 0; index < firstTableLine; index += 1) {
-    const match = /^\s*model_provider\s*=\s*(.+)$/.exec(lines[index] ?? "");
-    if (!match || parseTomlStringValue(match[1] ?? "") !== providerId) {
+    const match = keyPattern.exec(lines[index] ?? "");
+    if (!match) {
+      continue;
+    }
+
+    if (typeof expectedValue === "string" && parseTomlStringValue(match[1] ?? "") !== expectedValue) {
       continue;
     }
 
@@ -258,6 +367,10 @@ function removeRootModelProvider(raw: string, providerId: string): { raw: string
   }
 
   return { raw, removed: false };
+}
+
+function removeRootModelProvider(raw: string, providerId: string): { raw: string; removed: boolean } {
+  return removeRootString(raw, "model_provider", providerId);
 }
 
 function removeGatewayProviderTable(raw: string, providerId: string): { raw: string; removed: boolean } {
@@ -292,6 +405,16 @@ function removeGatewayProviderConfig(raw: string, providerId: string): { raw: st
   };
 }
 
+function removeOpenAIGatewayConfig(raw: string): { raw: string; removed: boolean } {
+  const openAIBaseRemoved = removeRootString(raw, "openai_base_url");
+  const openAIProviderRemoved = removeRootModelProvider(openAIBaseRemoved.raw, OPENAI_CODEX_PROVIDER_ID);
+  const legacyRemoved = removeGatewayProviderConfig(openAIProviderRemoved.raw, LEGACY_CODEX_PROVIDER_ID);
+  return {
+    raw: legacyRemoved.raw,
+    removed: openAIBaseRemoved.removed || openAIProviderRemoved.removed || legacyRemoved.removed,
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -309,7 +432,8 @@ async function readCodexAuth(): Promise<Record<string, unknown> | null> {
 export async function getCodexGatewayProviderStatus(params?: {
   providerId?: string;
 }): Promise<CodexGatewayProviderStatus> {
-  const providerId = params?.providerId?.trim() || DEFAULT_CODEX_PROVIDER_ID;
+  const requestedProviderId = params?.providerId?.trim();
+  const providerId = requestedProviderId || DEFAULT_CODEX_PROVIDER_ID;
   validateProviderId(providerId);
 
   const configPath = getCodexConfigPath();
@@ -326,6 +450,32 @@ export async function getCodexGatewayProviderStatus(params?: {
   }
 
   const modelProvider = parseRootModelProvider(raw);
+  if (providerId === OPENAI_CODEX_PROVIDER_ID) {
+    const openAIBaseUrl = parseRootString(raw, "openai_base_url");
+    if (openAIBaseUrl && (!modelProvider || modelProvider === OPENAI_CODEX_PROVIDER_ID)) {
+      return {
+        path: configPath,
+        providerId: OPENAI_CODEX_PROVIDER_ID,
+        exists: true,
+        active: !modelProvider || modelProvider === OPENAI_CODEX_PROVIDER_ID,
+        baseUrl: openAIBaseUrl,
+        modelProvider,
+      };
+    }
+
+    const legacyTable = parseGatewayProviderTable(raw, LEGACY_CODEX_PROVIDER_ID);
+    if (!requestedProviderId && legacyTable.exists) {
+      return {
+        path: configPath,
+        providerId: LEGACY_CODEX_PROVIDER_ID,
+        exists: true,
+        active: modelProvider === LEGACY_CODEX_PROVIDER_ID,
+        baseUrl: legacyTable.baseUrl,
+        modelProvider,
+      };
+    }
+  }
+
   const table = parseGatewayProviderTable(raw, providerId);
   return {
     path: configPath,
@@ -436,7 +586,10 @@ export async function applyGatewayToCodexProviderConfig(params: {
     backupPath = undefined;
   }
 
-  const next = applyGatewayProviderConfig(raw, providerId, baseUrl);
+  const useOpenAIProvider = providerId === OPENAI_CODEX_PROVIDER_ID;
+  const next = useOpenAIProvider
+    ? applyOpenAIGatewayConfig(raw, baseUrl)
+    : applyGatewayProviderConfig(raw, providerId, baseUrl);
   const tmpPath = `${configPath}.tmp-${process.pid}`;
   await fs.writeFile(tmpPath, next, {
     encoding: "utf8",
@@ -450,6 +603,7 @@ export async function applyGatewayToCodexProviderConfig(params: {
     backupPath,
     providerId,
     baseUrl,
+    historyMigration: useOpenAIProvider ? await migrateLegacyCodexHistoryProvider() : undefined,
   };
 }
 
@@ -471,7 +625,16 @@ export async function removeGatewayFromCodexProviderConfig(params?: {
     };
   }
 
-  const next = removeGatewayProviderConfig(raw, providerId);
+  const sanitized = removeOpenAIGatewayConfig(raw);
+  const next = providerId === OPENAI_CODEX_PROVIDER_ID || providerId === LEGACY_CODEX_PROVIDER_ID
+    ? sanitized
+    : (() => {
+        const providerRemoved = removeGatewayProviderConfig(sanitized.raw, providerId);
+        return {
+          raw: providerRemoved.raw,
+          removed: sanitized.removed || providerRemoved.removed,
+        };
+      })();
   if (!next.removed) {
     return {
       path: configPath,

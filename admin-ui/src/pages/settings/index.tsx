@@ -8,6 +8,23 @@ import { formatJson } from "@/shared/lib/format";
 import { getPlanType, isAuthInvalid, isQuotaExhausted, profileHealth, profileLabel } from "@/shared/lib/profiles";
 
 type CodexGatewayMode = "local" | "remote";
+type CodexProviderMode = "openai" | "ai-zero-token";
+
+function normalizeCodexProviderMode(value?: string | null): CodexProviderMode {
+  return value === "ai-zero-token" ? "ai-zero-token" : "openai";
+}
+
+function codexProviderModeLabel(mode: CodexProviderMode): string {
+  return mode === "openai" ? "openai" : "AI Zero Token";
+}
+
+function codexProviderModeDescription(mode: CodexProviderMode): string {
+  return mode === "openai" ? "保留 Codex 原生历史" : "新的 provider 历史";
+}
+
+function codexProviderWriteTarget(mode: CodexProviderMode): string {
+  return mode === "openai" ? "openai_base_url" : "[model_providers.ai-zero-token]";
+}
 
 function normalizeCodexGatewayUrl(value: string): string {
   let normalized = value.trim();
@@ -100,6 +117,8 @@ export function SettingsPage(props: {
   const [codexGatewayTouched, setCodexGatewayTouched] = useState(false);
   const [settingsDirtyFields, setSettingsDirtyFields] = useState<Set<keyof SettingDraft>>(() => new Set());
   const [autoSwitchSearch, setAutoSwitchSearch] = useState("");
+  const [codexProviderMode, setCodexProviderMode] = useState<CodexProviderMode>("openai");
+  const [codexProviderModeTouched, setCodexProviderModeTouched] = useState(false);
   const settingsDirty = settingsDirtyFields.size > 0;
 
   useEffect(() => {
@@ -120,6 +139,14 @@ export function SettingsPage(props: {
     setCodexGatewayUrl(nextUrl);
     setCodexGatewayMode(activeUrl && normalizeCodexGatewayUrlSafe(activeUrl) !== normalizeCodexGatewayUrlSafe(localUrl) ? "remote" : "local");
   }, [props.config, codexGatewayTouched]);
+
+  useEffect(() => {
+    if (!props.config || codexProviderModeTouched) {
+      return;
+    }
+
+    setCodexProviderMode(normalizeCodexProviderMode(props.config.codex.gatewayProvider?.providerId));
+  }, [props.config, codexProviderModeTouched]);
 
   function markSettingsDirty(next: Partial<SettingDraft>) {
     setSettingsDraft((draft) => ({ ...draft, ...next }));
@@ -155,6 +182,11 @@ export function SettingsPage(props: {
 
   function getSelectedCodexGatewayUrl(): string {
     return codexGatewayMode === "local" ? getLocalCodexGatewayUrl(props.config) : codexGatewayUrl;
+  }
+
+  function selectCodexProviderMode(mode: CodexProviderMode) {
+    setCodexProviderModeTouched(true);
+    setCodexProviderMode(mode);
   }
 
   const excludedProfileIds = useMemo(() => new Set(settingsDraft.autoSwitchExcludedProfileIds), [settingsDraft.autoSwitchExcludedProfileIds]);
@@ -301,15 +333,22 @@ export function SettingsPage(props: {
   async function toggleCodexProvider() {
     props.setBusy("codex-provider");
     try {
+      const selectedProviderMode = codexProviderMode;
+      const selectedProviderLabel = codexProviderModeLabel(selectedProviderMode);
       const selectedBaseUrl = normalizeCodexGatewayUrl(getSelectedCodexGatewayUrl());
       const activeBaseUrl = props.config?.codex.gatewayProvider?.baseUrl;
+      const currentProviderMode = normalizeCodexProviderMode(props.config?.codex.gatewayProvider?.providerId);
+      const providerChanged = Boolean(
+        props.config?.codex.gatewayProvider?.active &&
+        currentProviderMode !== selectedProviderMode,
+      );
       const activeBaseUrlChanged = Boolean(
         props.config?.codex.gatewayProvider?.active &&
         activeBaseUrl &&
         normalizeCodexGatewayUrlSafe(activeBaseUrl) !== selectedBaseUrl,
       );
 
-      if (props.config?.codex.gatewayProvider?.active && !activeBaseUrlChanged) {
+      if (props.config?.codex.gatewayProvider?.active && !activeBaseUrlChanged && !providerChanged) {
         const result = await fetchJson<{
           codexProvider: {
             path: string;
@@ -318,21 +357,25 @@ export function SettingsPage(props: {
             removed: boolean;
           };
           config?: AdminConfig;
-        }>("/_gateway/admin/codex/remove-provider", { method: "POST" });
+        }>("/_gateway/admin/codex/remove-provider", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: formatJson({ providerId: selectedProviderMode }),
+        });
         if (result.config) {
           props.setConfig(result.config);
         }
         if (result.codexProvider.removed) {
           await promptCodexRestart({
             config: result.config ?? props.config,
-            confirmMessage: "Codex 请求接管已解除，是否现在重启 Codex 客户端？\n\nCodex 通常在启动时读取本机 config.toml，重启后会回到原本的 Codex 配置。",
-            deferStatus: "已解除 Codex 请求接管。重启 Codex 后会回到原本的 Codex 配置。",
+            confirmMessage: `Codex ${selectedProviderLabel} 接管已解除，是否现在重启 Codex 客户端？\n\nCodex 通常在启动时读取本机 config.toml，重启后会回到原本的 Codex 配置。`,
+            deferStatus: `已解除 ${selectedProviderLabel} 接管。重启 Codex 后会回到原本的 Codex 配置。`,
             restartingStatus: "正在重启 Codex 客户端...",
-            restartedStatus: "已解除 Codex 请求接管，并已重启 Codex 客户端。",
-            failedStatusPrefix: "已解除 Codex 请求接管，但重启 Codex 失败",
+            restartedStatus: `已解除 ${selectedProviderLabel} 接管，并已重启 Codex 客户端。`,
+            failedStatusPrefix: `已解除 ${selectedProviderLabel} 接管，但重启 Codex 失败`,
           });
         } else {
-          props.setStatus("未发现 AI Zero Token 管理的 Codex provider 配置。");
+          props.setStatus("未发现当前受管的 Codex provider 配置。");
         }
         return;
       }
@@ -344,25 +387,34 @@ export function SettingsPage(props: {
           backupPath?: string;
           providerId: string;
           baseUrl: string;
+          historyMigration?: {
+            path: string;
+            backupPath?: string;
+            migratedCount: number;
+            skipped?: boolean;
+            error?: string;
+          };
         };
         config?: AdminConfig;
       }>("/_gateway/admin/codex/configure-provider", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: formatJson({ baseUrl: selectedBaseUrl }),
+        body: formatJson({ baseUrl: selectedBaseUrl, providerId: selectedProviderMode }),
       });
       if (result.config) {
         props.setConfig(result.config);
       }
+      const migratedCount = result.codexProvider.historyMigration?.migratedCount || 0;
+      const migrationSuffix = migratedCount > 0 ? `，已迁移 ${migratedCount} 条历史记录` : "";
       await promptCodexRestart({
         config: result.config ?? props.config,
-        confirmMessage: wasUpdating
-          ? "Codex 接管地址已更新，是否现在重启 Codex 客户端？\n\nCodex 通常在启动时读取本机 config.toml，重启后会立即走新的 AI Zero Token 网关。"
-          : "Codex 请求已接管，是否现在重启 Codex 客户端？\n\nCodex 通常在启动时读取本机 config.toml，重启后会立即走 AI Zero Token 网关。",
-        deferStatus: `${wasUpdating ? "已更新" : "已写入"} Codex 专用 provider 配置：${result.codexProvider.baseUrl}。重启 Codex 后生效。`,
+        confirmMessage: selectedProviderMode === "openai"
+          ? "Codex 接管将使用 openai 历史记录模式，是否现在重启 Codex 客户端？\n\n重启后请求仍会走 AI Zero Token 网关，历史记录会继续归在 Codex 原生 openai provider 下。"
+          : "Codex 接管将切换到 AI Zero Token 新 provider，是否现在重启 Codex 客户端？\n\n重启后请求仍会走 AI Zero Token 网关，历史记录会归在新的 AI Zero Token provider 下。",
+        deferStatus: `${wasUpdating ? "已更新" : "已写入"} ${selectedProviderLabel} 接管配置：${result.codexProvider.baseUrl}${migrationSuffix}。重启 Codex 后生效。`,
         restartingStatus: "正在重启 Codex 客户端...",
-        restartedStatus: `${wasUpdating ? "已更新" : "已接管"} Codex 请求，并已重启 Codex 客户端。`,
-        failedStatusPrefix: `${wasUpdating ? "已更新" : "已接管"} Codex 请求，但重启 Codex 失败`,
+        restartedStatus: `${wasUpdating ? "已更新" : "已接管"} ${selectedProviderLabel} 请求，并已重启 Codex 客户端。`,
+        failedStatusPrefix: `${wasUpdating ? "已更新" : "已接管"} ${selectedProviderLabel} 请求，但重启 Codex 失败`,
       });
     } catch (error) {
       props.setStatus(errorMessage(error));
@@ -371,6 +423,9 @@ export function SettingsPage(props: {
     }
   }
 
+  const currentProviderMode = normalizeCodexProviderMode(props.config?.codex.gatewayProvider?.providerId);
+  const currentProviderLabel = codexProviderModeLabel(currentProviderMode);
+  const selectedProviderWriteTarget = codexProviderWriteTarget(codexProviderMode);
   const codexProviderActive = Boolean(props.config?.codex.gatewayProvider?.active);
   const codexProviderBusy = props.busy === "codex-provider";
   const localCodexGatewayUrl = getLocalCodexGatewayUrl(props.config);
@@ -382,19 +437,27 @@ export function SettingsPage(props: {
     currentCodexProviderUrl &&
     normalizeCodexGatewayUrlSafe(currentCodexProviderUrl) !== normalizedSelectedCodexGatewayUrl,
   );
+  const codexProviderModeChanged = Boolean(
+    codexProviderActive &&
+    currentProviderMode !== codexProviderMode,
+  );
   const codexProviderButtonClass = [
     "btn-secondary",
     "codex-provider-button",
-    codexProviderBusy ? "is-busy" : codexProviderActive && !codexProviderUrlChanged ? "is-active" : "is-inactive",
+    codexProviderBusy
+      ? "is-busy"
+      : codexProviderActive && !codexProviderUrlChanged && !codexProviderModeChanged
+        ? "is-active"
+        : "is-inactive",
   ].join(" ");
   const codexProviderButtonLabel = codexProviderBusy
     ? "处理中"
-    : codexProviderActive && !codexProviderUrlChanged
+    : codexProviderActive && !codexProviderUrlChanged && !codexProviderModeChanged
       ? "解除 Codex 接管"
       : codexProviderActive
-        ? "更新接管地址"
+        ? "更新接管配置"
         : "写入并接管";
-  const codexProviderStatusLabel = codexProviderActive ? "已接管" : "未接管";
+  const codexProviderStatusLabel = codexProviderActive ? currentProviderLabel : "未接管";
   const codexProviderStatusClass = codexProviderActive ? "is-included" : "is-excluded";
 
   return (
@@ -421,9 +484,24 @@ export function SettingsPage(props: {
           <div className="codex-provider-head">
             <div>
               <h4>Codex 请求接管</h4>
-              <p className="hint">写入本机 Codex provider 配置。默认使用自己的本地网关，也可以填远程网关 URL。</p>
+              <p className="hint">默认使用 openai 保留 Codex 原生历史；也可以切到 AI Zero Token，写入新的 provider 历史分组。接管地址既可以是本机网关，也可以是远程网关 URL。</p>
             </div>
             <span className={`count-pill ${codexProviderStatusClass}`}>{codexProviderStatusLabel}</span>
+          </div>
+
+          <div className="codex-provider-mode-row">
+            <div className="codex-provider-mode-copy">
+              <div className="codex-provider-mode-title">历史记录模式</div>
+              <p className="hint">{codexProviderModeLabel(codexProviderMode)} · {codexProviderModeDescription(codexProviderMode)}</p>
+            </div>
+            <div className="codex-provider-mode-toggle" role="group" aria-label="历史记录模式">
+              <button className={`codex-provider-mode-option ${codexProviderMode === "openai" ? "is-active" : ""}`} type="button" onClick={() => selectCodexProviderMode("openai")}>
+                openai
+              </button>
+              <button className={`codex-provider-mode-option ${codexProviderMode === "ai-zero-token" ? "is-active" : ""}`} type="button" onClick={() => selectCodexProviderMode("ai-zero-token")}>
+                AI Zero Token
+              </button>
+            </div>
           </div>
 
           <div className="codex-provider-controls">
@@ -472,7 +550,7 @@ export function SettingsPage(props: {
           </div>
 
           <p className="hint">
-            可直接输入 IP:端口，系统会自动补全为 http://IP:端口/codex/v1。当前将写入：<code>{normalizedSelectedCodexGatewayUrl || "-"}</code>
+            可直接输入 IP:端口，系统会自动补全为 http://IP:端口/codex/v1。当前将写入 <code>{selectedProviderWriteTarget}</code>：<code>{normalizedSelectedCodexGatewayUrl || "-"}</code>
           </p>
 
           <div className="codex-provider-meta-strip">
@@ -481,8 +559,16 @@ export function SettingsPage(props: {
               <code>{props.config?.codex.gatewayProvider.path || "~/.codex/config.toml"}</code>
             </div>
             <div>
-              <span>当前 provider</span>
-              <code>{currentCodexProviderUrl || "未写入 AI Zero Token provider"}</code>
+              <span>当前状态</span>
+              <code>{codexProviderActive ? `${currentProviderLabel} · ${codexProviderModeDescription(currentProviderMode)}` : "未接管"}</code>
+            </div>
+            <div>
+              <span>写入目标</span>
+              <code>{selectedProviderWriteTarget}</code>
+            </div>
+            <div>
+              <span>接管地址</span>
+              <code>{currentCodexProviderUrl || "未写入受管配置"}</code>
             </div>
             <div className="is-warning">
               <span>远程网关提示</span>

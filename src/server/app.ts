@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import {
+  brotliDecompress,
+  gunzip,
+  inflate,
+  zstdDecompress,
+} from "node:zlib";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
@@ -15,6 +22,10 @@ const packageRoot = path.dirname(fileURLToPath(new URL("../../package.json", imp
 const adminUiDistDir = path.join(packageRoot, "admin-ui", "dist");
 const adminUiIndexPath = path.join(adminUiDistDir, "index.html");
 const MAX_GATEWAY_REQUEST_LOGS = 100;
+const gunzipAsync = promisify(gunzip);
+const inflateAsync = promisify(inflate);
+const brotliDecompressAsync = promisify(brotliDecompress);
+const zstdDecompressAsync = typeof zstdDecompress === "function" ? promisify(zstdDecompress) : null;
 
 const assetContentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -46,6 +57,43 @@ type GatewayRequestLog = {
 
 function getContentType(filePath: string): string {
   return assetContentTypes[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
+
+async function decodeJsonRequestBody(body: Buffer, contentEncoding: string | string[] | undefined): Promise<Buffer> {
+  const encodings = (Array.isArray(contentEncoding) ? contentEncoding.join(",") : contentEncoding ?? "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item && item !== "identity");
+
+  let decoded = body;
+  for (const encoding of encodings.reverse()) {
+    if (encoding === "gzip" || encoding === "x-gzip") {
+      decoded = await gunzipAsync(decoded);
+    } else if (encoding === "deflate") {
+      decoded = await inflateAsync(decoded);
+    } else if (encoding === "br") {
+      decoded = await brotliDecompressAsync(decoded);
+    } else if (encoding === "zstd") {
+      if (!zstdDecompressAsync) {
+        throw new Error("当前 Node.js 运行时不支持 zstd 请求体解压，请升级运行时后重试。");
+      }
+      decoded = await zstdDecompressAsync(decoded);
+    } else {
+      throw new Error(`不支持的请求体压缩格式: ${encoding}`);
+    }
+  }
+
+  return decoded;
+}
+
+async function parseJsonRequestBody(request: FastifyRequest, body: string | Buffer): Promise<unknown> {
+  const rawBody = typeof body === "string" ? Buffer.from(body) : body;
+  if (rawBody.length === 0) {
+    return {};
+  }
+
+  const decoded = await decodeJsonRequestBody(rawBody, request.headers["content-encoding"]);
+  return JSON.parse(decoded.toString("utf8")) as unknown;
 }
 
 async function readAdminUiAsset(assetPath: string): Promise<{ body: Buffer; filePath: string } | null> {
@@ -649,6 +697,44 @@ function summarizeCodexChatBody(body: Record<string, unknown>): Record<string, u
   };
 }
 
+async function buildOpenAIModelsResponse(ctx: ReturnType<typeof createGatewayContext>) {
+  return {
+    object: "list",
+    data: (await ctx.modelService.listModels()).map((model) => ({
+      id: model.id,
+      object: "model",
+      owned_by: model.provider,
+    })),
+  };
+}
+
+async function buildCodexModelsResponse(ctx: ReturnType<typeof createGatewayContext>) {
+  const [models, catalog] = await Promise.all([
+    ctx.modelService.listModels(),
+    ctx.modelService.getCatalog(),
+  ]);
+  return {
+    fetched_at: catalog.fetchedAt ?? new Date().toISOString(),
+    models: models.map((model, index) => ({
+      slug: model.id,
+      display_name: model.name,
+      description: model.name,
+      default_reasoning_level: "medium",
+      supported_reasoning_levels: [
+        { effort: "low", description: "Fast responses with lighter reasoning" },
+        { effort: "medium", description: "Balanced speed and reasoning" },
+        { effort: "high", description: "Deeper reasoning" },
+        { effort: "xhigh", description: "Extra deep reasoning" },
+      ],
+      shell_type: "shell_command",
+      visibility: "list",
+      supported_in_api: true,
+      priority: index,
+      input_modalities: model.input,
+    })),
+  };
+}
+
 function profileLogLabel(profile: OAuthProfile | null): string {
   return profile?.email || profile?.accountId || profile?.profileId || "-";
 }
@@ -1124,6 +1210,16 @@ export function createApp(params?: {
     logger: false,
     bodyLimit: params?.bodyLimit,
   });
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser(
+    /^application\/(?:[\w!#$&^.+-]+\+)?json(?:\s*;.*)?$/i,
+    { parseAs: "buffer" },
+    (request, body, done) => {
+      parseJsonRequestBody(request, Buffer.isBuffer(body) ? body : Buffer.from(body))
+        .then((parsed) => done(null, parsed))
+        .catch((error) => done(error as Error));
+    },
+  );
   const ctx = createGatewayContext();
   const gatewayRequestLogs: GatewayRequestLog[] = [];
 
@@ -1724,14 +1820,19 @@ export function createApp(params?: {
 
   app.delete("/_gateway/image-bed/history", async () => ctx.githubImageBedService.clearHistory());
 
-  app.get("/v1/models", async () => ({
-    object: "list",
-    data: (await ctx.modelService.listModels()).map((model) => ({
-      id: model.id,
-      object: "model",
-      owned_by: model.provider,
-    })),
-  }));
+  app.get("/v1/models", async () => buildOpenAIModelsResponse(ctx));
+
+  app.get("/codex/v1/models", async () => buildCodexModelsResponse(ctx));
+
+  app.get("/codex/v1/responses", async (_request, reply) => {
+    reply.code(426);
+    return {
+      error: {
+        type: "websocket_unsupported",
+        message: "AI Zero Token 当前通过 HTTP SSE 转发 Codex Responses 请求。",
+      },
+    };
+  });
 
   async function handleCodexResponsesPassthrough(
     request: FastifyRequest,

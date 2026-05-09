@@ -147,18 +147,17 @@ Tools / function calling: enabled
 
 Codex CLI/Desktop 也可以把本工具配置成自定义 Responses provider：
 
-管理页“系统设置”里可以直接点击“接管 Codex 请求”写入该配置；点击“解除接管”会移除 AI Zero Token 管理的 provider 配置。也可以手动写入 `~/.codex/config.toml`：
+管理页“系统设置”里可以先选择历史记录模式，再点击“接管 Codex 请求”。默认的 `openai` 模式会把历史继续留在 Codex 原生视图里；`AI Zero Token` 模式会创建单独的 provider 历史分组。点击“解除接管”会移除 AI Zero Token 管理的 provider 配置。也可以手动写入 `~/.codex/config.toml`：
 
 ```toml
 model = "gpt-5.4"
-model_provider = "ai-zero-token"
-
-[model_providers.ai-zero-token]
-name = "AI Zero Token"
-base_url = "http://127.0.0.1:8787/codex/v1"
-wire_api = "responses"
-supports_websockets = false
+model_provider = "openai"
+openai_base_url = "http://127.0.0.1:8787/codex/v1"
 ```
+
+这里继续使用 Codex 原生 `openai` provider 标识，只替换 `openai_base_url`，因此本地历史记录仍会留在同一个 Codex 历史视图里。
+
+如果想让 Codex 显示独立的 `AI Zero Token` provider，就在设置里切换到对应模式。那会写入 `[model_providers.ai-zero-token]`，而不是 `openai_base_url`。
 
 ### 文生图
 

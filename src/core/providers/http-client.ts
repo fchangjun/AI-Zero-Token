@@ -47,6 +47,9 @@ type NetworkProxySettings = GatewaySettings["networkProxy"];
 
 const CURL_STATUS_MARKER = "\n__CURL_STATUS__:";
 const CURL_HEADERS_MARKER = "\n__CURL_HEADERS__:";
+const DEFAULT_CURL_STREAM_HEADER_TIMEOUT_MS = 180_000;
+const MIN_CURL_STREAM_HEADER_TIMEOUT_MS = 30_000;
+const MAX_CURL_STREAM_HEADER_TIMEOUT_MS = 600_000;
 let requestSequence = 0;
 
 function nextRequestId(): string {
@@ -74,6 +77,20 @@ function safeConsole(method: "info" | "warn", message: string, meta: Record<stri
     // Desktop apps may outlive their inherited stdout/stderr pipe. Logging must
     // never crash an active gateway request.
   }
+}
+
+function getCurlStreamHeaderTimeoutMs(timeoutMs?: number): number {
+  if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+    return Math.max(1000, timeoutMs);
+  }
+
+  const configured = process.env.AZT_CURL_STREAM_HEADER_TIMEOUT_MS?.trim();
+  const parsed = configured ? Number.parseInt(configured, 10) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return Math.min(MAX_CURL_STREAM_HEADER_TIMEOUT_MS, Math.max(MIN_CURL_STREAM_HEADER_TIMEOUT_MS, parsed));
+  }
+
+  return DEFAULT_CURL_STREAM_HEADER_TIMEOUT_MS;
 }
 
 function logHttpTiming(params: {
@@ -303,6 +320,7 @@ async function waitForCurlHeaders(params: {
   headerPath: string;
   isClosed: () => boolean;
   stderr: () => string;
+  requestId: string;
   timeoutMs: number;
 }): Promise<{ status: number; headers: Record<string, string> }> {
   const startedAt = performance.now();
@@ -324,7 +342,10 @@ async function waitForCurlHeaders(params: {
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 
-  throw new Error("等待 curl stream 响应头超时。");
+  const stderr = params.stderr().trim();
+  throw new Error(
+    `等待 curl stream 响应头超时（${Math.round(params.timeoutMs / 1000)} 秒，requestId=${params.requestId}）。${stderr ? ` ${stderr}` : ""}`,
+  );
 }
 
 async function runCurlStream(
@@ -384,6 +405,7 @@ async function runCurlStream(
   child.stdin.on("error", () => undefined);
   child.stdin.end(hasBody ? init.body : undefined);
   const body = new PassThrough();
+  body.on("error", () => undefined);
   const phases: Record<string, number> = {
     spawnCurlMs: performance.now() - startedAt,
   };
@@ -424,7 +446,8 @@ async function runCurlStream(
       headerPath,
       isClosed: () => closed,
       stderr: () => stderr,
-      timeoutMs: typeof params?.timeoutMs === "number" ? Math.min(params.timeoutMs, 30_000) : 30_000,
+      requestId,
+      timeoutMs: getCurlStreamHeaderTimeoutMs(params?.timeoutMs),
     });
   } catch (error) {
     child.kill("SIGTERM");
