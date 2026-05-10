@@ -22,7 +22,10 @@ export function createDefaultSettings(): GatewaySettings {
       excludedProfileIds: [],
     },
     runtime: {
-      quotaSyncConcurrency: 16,
+      quotaSyncConcurrency: 3,
+    },
+    image: {
+      freeAccountWebGenerationEnabled: false,
     },
     server: {
       host: "0.0.0.0",
@@ -49,6 +52,9 @@ function normalizeSettings(parsed: Partial<GatewaySettings>): GatewaySettings {
     runtime: {
       quotaSyncConcurrency: normalizeQuotaSyncConcurrency(parsed.runtime?.quotaSyncConcurrency, defaults.runtime.quotaSyncConcurrency),
     },
+    image: {
+      freeAccountWebGenerationEnabled: parsed.image?.freeAccountWebGenerationEnabled ?? defaults.image.freeAccountWebGenerationEnabled,
+    },
     server: {
       host: parsed.server?.host ?? defaults.server.host,
       port: parsed.server?.port ?? defaults.server.port,
@@ -67,7 +73,7 @@ export async function loadSettings(): Promise<GatewaySettings> {
   }
 }
 
-export function normalizeQuotaSyncConcurrency(value: unknown, fallback = 16): number {
+export function normalizeQuotaSyncConcurrency(value: unknown, fallback = 3): number {
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number.parseInt(value, 10) : fallback;
   if (!Number.isFinite(parsed)) {
     return fallback;

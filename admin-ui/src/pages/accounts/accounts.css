@@ -6,6 +6,74 @@
   width: 100%;
 }
 
+.account-stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -2px 0 2px;
+}
+
+.account-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: #fff;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.account-stat-pill strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.account-stat-pill:hover,
+.account-stat-pill.is-active {
+  border-color: rgba(99, 91, 255, 0.34);
+  background: #f5f3ff;
+}
+
+.account-stat-pill.tone-green {
+  color: #15803d;
+  background: #f0fdf4;
+  border-color: rgba(22, 163, 74, 0.18);
+}
+
+.account-stat-pill.tone-red {
+  color: #b91c1c;
+  background: #fef2f2;
+  border-color: rgba(239, 68, 68, 0.22);
+}
+
+.account-stat-pill.tone-orange {
+  color: #b45309;
+  background: #fff7ed;
+  border-color: rgba(245, 158, 11, 0.24);
+}
+
+.account-stat-pill.tone-blue {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: rgba(37, 99, 235, 0.18);
+}
+
+.account-stat-pill.tone-brand {
+  color: #4f46e5;
+  background: #f5f3ff;
+  border-color: rgba(99, 91, 255, 0.2);
+}
+
+.account-stat-pill.tone-muted {
+  color: var(--text-muted);
+  background: #f8fafc;
+}
+
 .account-grid.profile-count-1 {
   grid-template-columns: minmax(320px, 520px);
 }
@@ -600,4 +668,3 @@
   background: #3b82f6;
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
-

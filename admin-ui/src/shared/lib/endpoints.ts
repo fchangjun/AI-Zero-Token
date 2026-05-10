@@ -18,7 +18,9 @@ export const tabLabels: Record<string, string> = {
 };
 
 export function endpointSort(a: SupportedEndpoint, b: SupportedEndpoint): number {
-  return endpointOrder.indexOf(a.path) - endpointOrder.indexOf(b.path);
+  const left = endpointOrder.indexOf(a.path);
+  const right = endpointOrder.indexOf(b.path);
+  return (left === -1 ? Number.MAX_SAFE_INTEGER : left) - (right === -1 ? Number.MAX_SAFE_INTEGER : right);
 }
 
 export function buildExample(endpoint: string, model: string): string {

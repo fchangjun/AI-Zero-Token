@@ -1,6 +1,6 @@
-import { BookOpenText, Home, ImageUp, LayoutDashboard, ListChecks, Settings, ShieldCheck, Users, Wifi, type LucideIcon } from "lucide-react";
+import { BarChart3, BookOpenText, Home, ImageUp, LayoutDashboard, ListChecks, Settings, ShieldCheck, Users, Wifi, type LucideIcon } from "lucide-react";
 
-export type AppRoute = "launch" | "overview" | "accounts" | "tester" | "image-bed" | "docs" | "network" | "logs" | "settings";
+export type AppRoute = "launch" | "overview" | "accounts" | "usage" | "tester" | "image-bed" | "docs" | "network" | "logs" | "settings";
 
 export type NavRoute = {
   id: AppRoute;
@@ -12,6 +12,7 @@ export const routes: NavRoute[] = [
   { id: "launch", label: "启动页", icon: Home },
   { id: "overview", label: "概览", icon: LayoutDashboard },
   { id: "accounts", label: "账号管理", icon: Users },
+  { id: "usage", label: "用量统计", icon: BarChart3 },
   { id: "tester", label: "接口测试", icon: ShieldCheck },
   { id: "image-bed", label: "图床上传", icon: ImageUp },
   { id: "docs", label: "使用文档", icon: BookOpenText },

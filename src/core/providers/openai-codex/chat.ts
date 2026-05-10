@@ -3,6 +3,9 @@ import { DEFAULT_CODEX_MODEL } from "../../models/openai-codex-models.js";
 import { requestStream, requestText } from "../http-client.js";
 
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
+const CODEX_RESPONSES_COMPACT_URL = `${CODEX_RESPONSES_URL}/compact`;
+
+type CodexResponsesEndpoint = "responses" | "responses/compact";
 
 type CodexSseEvent = {
   type?: string;
@@ -594,6 +597,7 @@ export async function streamOpenAICodex(params: {
   model?: string;
   system?: string;
   bodyOverride?: Record<string, unknown>;
+  endpoint?: CodexResponsesEndpoint;
   passthroughBody?: boolean;
   signal?: AbortSignal;
 }): Promise<CodexStreamResponse> {
@@ -610,7 +614,7 @@ export async function streamOpenAICodex(params: {
 
   const response = await requestStream({
     method: "POST",
-    url: CODEX_RESPONSES_URL,
+    url: params.endpoint === "responses/compact" ? CODEX_RESPONSES_COMPACT_URL : CODEX_RESPONSES_URL,
     headers: buildCodexRequestHeaders(params.profile),
     body: JSON.stringify(requestBody),
     signal: params.signal,

@@ -29,7 +29,6 @@ export type WorkspaceState = {
   refreshConfig: (options?: { runtime?: boolean; silent?: boolean }) => Promise<AdminConfig>;
 };
 
-const RUNTIME_AUTO_REFRESH_MS = 5 * 60 * 1000;
 const ACTIVE_PROFILE_REFRESH_MS = 15 * 1000;
 const REQUEST_LOGS_REFRESH_MS = 5 * 1000;
 const SHOW_EMAILS_STORAGE_KEY = "azt:settings:show-emails";
@@ -133,15 +132,6 @@ export function useAdminWorkspaceState(): WorkspaceState {
     window.addEventListener("hashchange", handleHashChange);
     return () => window.removeEventListener("hashchange", handleHashChange);
   }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (!document.hidden) {
-        refreshConfig({ runtime: true, silent: true }).catch(() => undefined);
-      }
-    }, RUNTIME_AUTO_REFRESH_MS);
-    return () => window.clearInterval(timer);
-  }, [refreshConfig]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {

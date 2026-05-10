@@ -43,6 +43,22 @@ export function getSettingsPath(): string {
   return path.join(stateDir, "settings.json");
 }
 
+export function getUsageDir(): string {
+  return path.join(stateDir, "usage");
+}
+
+export function getUsageEventsDir(): string {
+  return path.join(getUsageDir(), "events");
+}
+
+export function getUsageDailyPath(): string {
+  return path.join(getUsageDir(), "daily.json");
+}
+
+export function getUsageLifetimePath(): string {
+  return path.join(getUsageDir(), "lifetime.json");
+}
+
 export async function ensureStateMigrated(): Promise<void> {
   if (!migrationPromise) {
     migrationPromise = (async () => {

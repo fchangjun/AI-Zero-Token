@@ -63,6 +63,9 @@ export type GatewaySettings = {
   runtime: {
     quotaSyncConcurrency: number;
   };
+  image: {
+    freeAccountWebGenerationEnabled: boolean;
+  };
   server: {
     host: string;
     port: number;
@@ -114,6 +117,44 @@ export type SupportedEndpoint = {
   description: string;
 };
 
+export type UsageAggregate = {
+  requestCount: number;
+  successCount: number;
+  failureCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  unknownTokenCount: number;
+  imageCount: number;
+  totalDurationMs: number;
+  averageDurationMs: number;
+  p95DurationMs: number;
+  durationBuckets: Record<string, number>;
+};
+
+export type UsageDimensionRow = {
+  key: string;
+  label: string;
+  aggregate: UsageAggregate;
+};
+
+export type UsageSummary = {
+  generatedAt: number;
+  startedAt: number;
+  todayDate: string;
+  storageDir: string;
+  startup: UsageAggregate;
+  today: UsageAggregate;
+  lifetime: UsageAggregate;
+  daily: Array<{ date: string; aggregate: UsageAggregate }>;
+  byAccount: UsageDimensionRow[];
+  byModel: UsageDimensionRow[];
+  byEndpoint: UsageDimensionRow[];
+  byError: UsageDimensionRow[];
+  byImageRoute: UsageDimensionRow[];
+  bySource: UsageDimensionRow[];
+};
+
 export type AdminConfig = {
   status: GatewayStatus;
   settings: GatewaySettings;
@@ -136,6 +177,7 @@ export type AdminConfig = {
       modelProvider?: string;
     };
   };
+  usage?: UsageSummary;
   adminUrl: string;
   baseUrl: string;
   codexBaseUrl?: string;

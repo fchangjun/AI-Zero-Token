@@ -9,6 +9,10 @@ import { TrendCard } from "@/shared/components/TrendCard";
 import { GatewayInfoCard } from "@/shared/components/GatewayInfoCard";
 import { formatDuration } from "@/shared/lib/format";
 
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("zh-CN").format(Math.round(value || 0));
+}
+
 export function OverviewPage(props: {
   config: AdminConfig | null;
   activeProfile: ProfileSummary | null;
@@ -20,6 +24,8 @@ export function OverviewPage(props: {
 }) {
   const [trendWindow, setTrendWindow] = useState<TrendWindow>(60);
   const averageDuration = props.requestLogs.length ? props.requestLogs.reduce((sum, item) => sum + item.durationMs, 0) / props.requestLogs.length : 0;
+  const todayUsage = props.config?.usage?.today;
+  const todayFailureCount = todayUsage?.failureCount ?? 0;
 
   return (
     <>
@@ -41,10 +47,10 @@ export function OverviewPage(props: {
           tone={props.config?.status.loggedIn || props.codexProfile ? "green" : "orange"}
           compact
         />
-        <StatCard icon={Zap} label="今日请求数" value={String(props.requestLogs.length)} detail="基于本页最近测试记录" tone="blue" />
-        <StatCard icon={Clock3} label="平均耗时" value={props.requestLogs.length ? formatDuration(averageDuration) : "-"} detail={`统计最近 ${props.requestLogs.length} 次`} tone="orange" />
+        <StatCard icon={Zap} label="今日请求数" value={formatNumber(todayUsage?.requestCount ?? props.requestLogs.length)} detail={todayUsage ? `${formatNumber(todayUsage.successCount)} 成功 / ${formatNumber(todayUsage.failureCount)} 失败` : "基于本页最近测试记录"} tone="blue" />
+        <StatCard icon={Clock3} label="今日 token" value={formatNumber(todayUsage?.totalTokens ?? 0)} detail={todayUsage ? `未返回 token ${formatNumber(todayUsage.unknownTokenCount)} 次` : `统计最近 ${props.requestLogs.length} 次`} tone="orange" />
         <StatCard icon={ShieldCheck} label="服务状态" value={props.config?.status.loggedIn ? "运行中" : "等待登录"} detail="网关可转发请求" tone={props.config?.status.loggedIn ? "green" : "orange"} />
-        <StatCard icon={CheckCircle2} label="默认模型" value={props.config?.settings.defaultModel || "-"} detail="未显式指定 model 时生效" tone="green" />
+        <StatCard icon={CheckCircle2} label="今日异常" value={formatNumber(todayFailureCount)} detail={`平均耗时 ${todayUsage ? formatDuration(todayUsage.averageDurationMs) : formatDuration(averageDuration)}`} tone={todayFailureCount > 0 ? "orange" : "green"} />
       </section>
 
       <section className="overview-grid">

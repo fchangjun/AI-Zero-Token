@@ -1,10 +1,11 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { downloadJsonFile, fetchJson } from "@/shared/api";
 import type { AdminConfig, ProfileSummary } from "@/shared/types";
-import type { BusyAction, ProfileFilter } from "@/shared/lib/app-types";
+import type { AccountStatItem, BusyAction, ProfileFilter } from "@/shared/lib/app-types";
 import { formatJson } from "@/shared/lib/format";
 import { errorMessage } from "@/shared/lib/app-utils";
 import {
+  getPlanKey,
   getPlanRank,
   isAuthInvalid,
   isQuotaExhausted,
@@ -39,12 +40,14 @@ export function AccountsPage(props: {
 
   const filteredProfiles = useMemo(() => {
     const profiles = props.config?.profiles ? [...props.config.profiles] : [];
+    const excludedProfileIds = new Set(props.config?.settings.autoSwitch.excludedProfileIds || []);
     const search = filter.search.trim().toLowerCase();
     const filtered = profiles.filter((profile) => {
       const label = profileLabel(profile, true).toLowerCase();
       const haystack = [label, profile.accountId, profile.profileId, profile.email || ""].join(" ").toLowerCase();
       const health = profileHealth(profile);
       const codexActive = Boolean(props.codexAccountId && profile.accountId === props.codexAccountId);
+      const planKey = getPlanKey(profile);
       if (search && !haystack.includes(search)) return false;
       if (filter.status === "active") return profile.isActive || codexActive;
       if (filter.status === "healthy") return health.key === "healthy";
@@ -52,6 +55,17 @@ export function AccountsPage(props: {
       if (filter.status === "exhausted") return health.key === "exhausted";
       if (filter.status === "expired") return health.key === "expired";
       if (filter.status === "invalid") return health.key === "invalid";
+      if (filter.status === "login-invalid") return profile.authStatus?.state === "token_invalidated";
+      if (filter.status === "auth-error") return profile.authStatus?.state === "auth_error";
+      if (filter.status === "available") return health.key === "healthy" || health.key === "warning";
+      if (filter.status === "unavailable") return health.key === "invalid" || health.key === "expired" || health.key === "exhausted";
+      if (filter.status === "free") return planKey === "free";
+      if (filter.status === "plus") return planKey === "plus";
+      if (filter.status === "pro-team") return planKey === "pro" || planKey === "team" || planKey === "enterprise" || planKey === "premium";
+      if (filter.status === "api-active") return profile.isActive;
+      if (filter.status === "codex-active") return codexActive;
+      if (filter.status === "auto-included") return !excludedProfileIds.has(profile.profileId);
+      if (filter.status === "auto-excluded") return excludedProfileIds.has(profile.profileId);
       return true;
     });
 
@@ -71,10 +85,33 @@ export function AccountsPage(props: {
       return primaryUsage(b) - primaryUsage(a);
     });
     return filtered;
-  }, [filter, props.codexAccountId, props.config?.profiles]);
+  }, [filter, props.codexAccountId, props.config?.profiles, props.config?.settings.autoSwitch.excludedProfileIds]);
+
+  const accountStats = useMemo<AccountStatItem[]>(() => {
+    const profiles = props.config?.profiles || [];
+    const excludedProfileIds = new Set(props.config?.settings.autoSwitch.excludedProfileIds || []);
+    const count = (predicate: (profile: ProfileSummary) => boolean) => profiles.filter(predicate).length;
+    const codexActiveCount = count((profile) => Boolean(props.codexAccountId && profile.accountId === props.codexAccountId));
+    return [
+      { key: "all", label: "总账号", value: profiles.length, tone: "blue" },
+      { key: "available", label: "可用", value: count((profile) => ["healthy", "warning"].includes(profileHealth(profile).key)), tone: "green" },
+      { key: "unavailable", label: "不可用", value: count((profile) => ["invalid", "expired", "exhausted"].includes(profileHealth(profile).key)), tone: "red" },
+      { key: "login-invalid", label: "登录失效", value: count((profile) => profile.authStatus?.state === "token_invalidated"), tone: "red" },
+      { key: "auth-error", label: "认证异常", value: count((profile) => profile.authStatus?.state === "auth_error"), tone: "red" },
+      { key: "exhausted", label: "额度耗尽", value: count((profile) => profileHealth(profile).key === "exhausted"), tone: "orange" },
+      { key: "free", label: "Free", value: count((profile) => getPlanKey(profile) === "free"), tone: "muted" },
+      { key: "plus", label: "Plus", value: count((profile) => getPlanKey(profile) === "plus"), tone: "brand" },
+      { key: "pro-team", label: "Pro/Team", value: count((profile) => ["pro", "team", "enterprise", "premium"].includes(getPlanKey(profile))), tone: "blue" },
+      { key: "api-active", label: "API 使用中", value: count((profile) => profile.isActive), tone: "green" },
+      { key: "codex-active", label: "Codex 使用中", value: codexActiveCount, tone: "green" },
+      { key: "auto-included", label: "参与轮换", value: count((profile) => !excludedProfileIds.has(profile.profileId)), tone: "blue" },
+      { key: "auto-excluded", label: "排除轮换", value: count((profile) => excludedProfileIds.has(profile.profileId)), tone: "orange" },
+    ];
+  }, [props.codexAccountId, props.config?.profiles, props.config?.settings.autoSwitch.excludedProfileIds]);
 
   const selectedCount = Object.values(selectedProfiles).filter(Boolean).length;
   const selectedProfileIds = Object.keys(selectedProfiles).filter((id) => selectedProfiles[id]);
+  const visibleProfileIds = useMemo(() => filteredProfiles.map((profile) => profile.profileId), [filteredProfiles]);
 
   async function exportProfiles(profileId?: string, ids?: string[]) {
     const body = ids ? { profileIds: ids } : { profileId };
@@ -179,18 +216,41 @@ export function AccountsPage(props: {
     }
   }
 
+  function selectProfileIds(ids: string[], message: string) {
+    if (ids.length === 0) {
+      props.setStatus("没有可选择的账号。");
+      return;
+    }
+
+    setSelectedProfiles((items) => {
+      const next = { ...items };
+      for (const id of ids) {
+        next[id] = true;
+      }
+      return next;
+    });
+    props.setStatus(message);
+  }
+
   return (
     <AccountsPanel
       config={props.config}
       profiles={filteredProfiles}
+      accountStats={accountStats}
       showEmails={props.showEmails}
       filter={filter}
       selectedProfiles={selectedProfiles}
       expandedProfiles={expandedProfiles}
       selectedCount={selectedCount}
+      visibleCount={visibleProfileIds.length}
       busy={props.busy}
       onFilter={setFilter}
       onSelect={(profileId, checked) => setSelectedProfiles((items) => ({ ...items, [profileId]: checked }))}
+      onSelectVisible={() => selectProfileIds(visibleProfileIds, `已选择当前筛选结果 ${visibleProfileIds.length} 个账号。`)}
+      onClearSelected={() => {
+        setSelectedProfiles({});
+        props.setStatus("已取消选择。");
+      }}
       onToggle={(profileId) => setExpandedProfiles((items) => ({ ...items, [profileId]: !items[profileId] }))}
       onAction={runProfileAction}
       onLocate={() => props.activeProfile && document.querySelector(`[data-profile-card="${props.activeProfile.profileId}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" })}

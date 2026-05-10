@@ -71,7 +71,9 @@ model_provider = "openai"
 openai_base_url = "http://127.0.0.1:8787/codex/v1"
 ```
 
-Codex sends `POST /codex/v1/responses` with `Accept: text/event-stream`; the gateway forwards that request to the active Codex OAuth account and streams upstream Responses SSE events back to Codex. The regular `/v1/*` routes remain OpenAI-compatible API routes for non-Codex clients.
+Codex sends `POST /codex/v1/responses` with `Accept: text/event-stream`; the gateway forwards that request to the active Codex OAuth account and streams upstream Responses SSE events back to Codex. Newer Codex versions also call `POST /codex/v1/responses/compact` for remote context compaction, and the gateway forwards that compact stream through the same account pool. The regular `/v1/*` routes remain OpenAI-compatible API routes for non-Codex clients.
+
+For Codex `image_generation` tool requests, Plus, Team, Pro, and other paid plans use the Codex Responses image tool. If `Free account image generation` is enabled in Settings, Free plans use the ChatGPT web image path and receive a synthetic Codex-compatible Responses SSE stream, because Free accounts may have ChatGPT image quota while the Codex `image_generation` tool is unavailable upstream.
 
 Separate AI Zero Token provider mode:
 
@@ -91,6 +93,22 @@ supports_websockets = false
 ```bash
 curl http://127.0.0.1:8787/v1/models
 ```
+
+## Local Usage Statistics
+
+The management console reads persisted local usage statistics from:
+
+```text
+~/.ai-zero-token/.state/usage
+```
+
+Fetch the same summary through the admin endpoint:
+
+```bash
+curl http://127.0.0.1:8787/_gateway/admin/usage
+```
+
+The summary includes today, current-process, lifetime, daily trend, account, model, endpoint, error, image-route, and source breakdowns. Token totals are counted only when the upstream response returns `usage`; requests without upstream usage are counted separately as requests with missing usage. Usage files keep metadata only and do not store prompts, messages, access tokens, or base64 image payloads.
 
 Refresh the local Codex model list:
 
@@ -167,6 +185,8 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 ```
 
 ## Images API
+
+Image requests are also routed by account plan. Plus, Team, Pro, and other paid plans use the Codex Responses `image_generation` tool. Free accounts use the ChatGPT web image path only when `Free account image generation` is enabled in Settings; otherwise they keep the original Codex image-tool path.
 
 ```bash
 curl http://127.0.0.1:8787/v1/images/generations \

@@ -156,6 +156,7 @@ export class ConfigService {
     networkProxy?: NetworkProxyParams;
     autoSwitch?: { enabled?: boolean; excludedProfileIds?: string[] };
     runtime?: { quotaSyncConcurrency?: number };
+    image?: { freeAccountWebGenerationEnabled?: boolean };
     server?: { port: number };
   }): Promise<GatewaySettings> {
     const settings = await this.getSettings();
@@ -195,6 +196,16 @@ export class ConfigService {
         runtime: {
           ...next.runtime,
           quotaSyncConcurrency: normalizeQuotaSyncConcurrency(params.runtime.quotaSyncConcurrency, next.runtime.quotaSyncConcurrency),
+        },
+      };
+    }
+
+    if (params.image) {
+      next = {
+        ...next,
+        image: {
+          ...next.image,
+          freeAccountWebGenerationEnabled: params.image.freeAccountWebGenerationEnabled ?? next.image.freeAccountWebGenerationEnabled,
         },
       };
     }

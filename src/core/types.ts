@@ -149,6 +149,9 @@ export type GatewaySettings = {
   runtime: {
     quotaSyncConcurrency: number;
   };
+  image: {
+    freeAccountWebGenerationEnabled: boolean;
+  };
   server: {
     host: string;
     port: number;

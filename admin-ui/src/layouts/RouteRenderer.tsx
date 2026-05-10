@@ -5,6 +5,7 @@ const LaunchPage = lazy(() => import("@/pages/launch").then((module) => ({ defau
 const OverviewPage = lazy(() => import("@/pages/overview").then((module) => ({ default: module.OverviewPage })));
 const DocsPage = lazy(() => import("@/pages/docs").then((module) => ({ default: module.DocsPage })));
 const AccountsPage = lazy(() => import("@/pages/accounts").then((module) => ({ default: module.AccountsPage })));
+const UsagePage = lazy(() => import("@/pages/usage").then((module) => ({ default: module.UsagePage })));
 const TesterPage = lazy(() => import("@/pages/tester").then((module) => ({ default: module.TesterPage })));
 const ImageBedPage = lazy(() => import("@/pages/image-bed").then((module) => ({ default: module.ImageBedPage })));
 const NetworkDetectPage = lazy(() => import("@/pages/network-detect").then((module) => ({ default: module.NetworkDetectPage })));
@@ -62,6 +63,8 @@ export function RouteRenderer({ workspace }: { workspace: UseAdminWorkspaceResul
         refreshConfig={refreshConfig}
         logout={workspace.logout}
       />
+    ) : activeRoute === "usage" ? (
+      <UsagePage config={config} setStatus={workspace.setStatus} />
     ) : activeRoute === "tester" ? (
       <TesterPage
         config={config}

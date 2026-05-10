@@ -1,4 +1,4 @@
-import { Globe2, Loader2, MonitorCog, PlugZap, RefreshCw, Search, Settings2, Unplug } from "lucide-react";
+import { Globe2, Loader2, MonitorCog, PlugZap, RefreshCw, Search, Unplug } from "lucide-react";
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { fetchJson } from "@/shared/api";
 import type { AdminConfig, ProfileSummary } from "@/shared/types";
@@ -82,7 +82,8 @@ function createSettingsDraft(config: AdminConfig): SettingDraft {
     proxyNoProxy: config.settings.networkProxy.noProxy || "localhost,127.0.0.1,::1",
     autoSwitchEnabled: config.settings.autoSwitch.enabled,
     autoSwitchExcludedProfileIds: config.settings.autoSwitch.excludedProfileIds || [],
-    quotaSyncConcurrency: String(config.settings.runtime?.quotaSyncConcurrency || 16),
+    quotaSyncConcurrency: String(config.settings.runtime?.quotaSyncConcurrency || 3),
+    freeAccountWebGenerationEnabled: Boolean(config.settings.image?.freeAccountWebGenerationEnabled),
     serverPort: String(config.settings.server.port || 8787),
   };
 }
@@ -109,7 +110,8 @@ export function SettingsPage(props: {
     proxyNoProxy: "localhost,127.0.0.1,::1",
     autoSwitchEnabled: false,
     autoSwitchExcludedProfileIds: [],
-    quotaSyncConcurrency: "16",
+    quotaSyncConcurrency: "3",
+    freeAccountWebGenerationEnabled: false,
     serverPort: "8787",
   });
   const [codexGatewayMode, setCodexGatewayMode] = useState<CodexGatewayMode>("local");
@@ -216,6 +218,7 @@ export function SettingsPage(props: {
       networkProxy?: { enabled: boolean; url: string; noProxy: string };
       autoSwitch?: { enabled?: boolean; excludedProfileIds?: string[] };
       runtime?: { quotaSyncConcurrency: number };
+      image?: { freeAccountWebGenerationEnabled: boolean };
       server?: { port: number };
     } = {};
 
@@ -241,6 +244,11 @@ export function SettingsPage(props: {
     if (hasDirtyField("quotaSyncConcurrency")) {
       payload.runtime = {
         quotaSyncConcurrency,
+      };
+    }
+    if (hasDirtyField("freeAccountWebGenerationEnabled")) {
+      payload.image = {
+        freeAccountWebGenerationEnabled: settingsDraft.freeAccountWebGenerationEnabled,
       };
     }
     if (hasDirtyField("serverPort")) {
@@ -462,15 +470,7 @@ export function SettingsPage(props: {
 
   return (
     <section className="settings-page">
-      <div className="settings-page-head">
-        <div>
-          <div className="settings-page-kicker">
-            <Settings2 size={14} />
-            系统设置
-          </div>
-          <h2>本地网关和运行策略</h2>
-          <p>设置会保存到本地状态目录，CLI、桌面端和本地服务共享。</p>
-        </div>
+      <div className="settings-page-head settings-page-head-actions-only">
         <div className="settings-page-actions">
           <button className="btn-secondary" type="button" onClick={refreshModels} disabled={props.busy === "models"}>
             {props.busy === "models" ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
@@ -592,6 +592,22 @@ export function SettingsPage(props: {
           <p className="hint">模型列表来源：{props.config?.modelCatalog.source || "-"}，共 {props.config?.modelCatalog.modelCount || 0} 个。</p>
         </section>
 
+        <section className="settings-section free-image-section">
+          <h4>Free 账号生图</h4>
+          <label className="switch-line">
+            <input
+              type="checkbox"
+              checked={settingsDraft.freeAccountWebGenerationEnabled}
+              onChange={(event) => markSettingsDirty({ freeAccountWebGenerationEnabled: event.target.checked })}
+            />
+            <span>允许 Free 账号使用 ChatGPT 网页链路生图</span>
+          </label>
+          <p className="hint">关闭时，Free 账号生图会继续走原先 Codex Responses 图片工具链路，由上游决定是否可用。</p>
+          <p className="free-image-warning">
+            <strong>封号风险：</strong>该能力不是官方 API 标准流程，使用 Free 账号生图存在账号风控或封号风险。<strong>额度较少：</strong>Free 额度通常较少，当前经验值大约 8 张，实际以上游账号为准。
+          </p>
+        </section>
+
         <section className="settings-section">
           <h4>上游代理</h4>
           <label className="switch-line">
@@ -638,7 +654,7 @@ export function SettingsPage(props: {
               onChange={(event) => markSettingsDirty({ quotaSyncConcurrency: event.target.value })}
             />
           </label>
-          <p className="hint">手动刷新全部账号额度时使用，默认 16。账号很多可以调高，遇到限流或失败增多时调低。</p>
+          <p className="hint">手动刷新全部账号额度时使用，默认 3。账号很多可以调高，遇到限流或失败增多时调低。</p>
           <p className="hint">{props.status}</p>
         </section>
 

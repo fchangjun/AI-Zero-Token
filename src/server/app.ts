@@ -17,6 +17,8 @@ import { createGatewayContext } from "../core/context.js";
 import type { ChatResult, OAuthProfile, ProfileSummary } from "../core/types.js";
 import { requestText } from "../core/providers/http-client.js";
 import { streamOpenAICodex } from "../core/providers/openai-codex/chat.js";
+import { generateChatGPTWebImage, type ChatGPTWebImageResult } from "../core/providers/openai-codex/chatgpt-web-image.js";
+import type { UsageImageRoute, UsageRecordEvent, UsageTokenUsage } from "../core/services/usage-service.js";
 
 const packageRoot = path.dirname(fileURLToPath(new URL("../../package.json", import.meta.url)));
 const adminUiDistDir = path.join(packageRoot, "admin-ui", "dist");
@@ -53,6 +55,22 @@ type GatewayRequestLog = {
   durationMs: number;
   source: string;
   details?: Record<string, unknown>;
+};
+
+type GatewayRequestUsageMeta = {
+  profile?: OAuthProfile | null;
+  tokenUsage?: UsageTokenUsage | null;
+  imageCount?: number;
+  imageRoute?: UsageImageRoute;
+  errorType?: string;
+};
+
+type CodexImageGenerationRequest = {
+  prompt: string;
+  inputImages: Array<{ imageUrl: string }>;
+  imageModel: string;
+  size?: string;
+  outputFormat?: "png" | "webp" | "jpeg";
 };
 
 function getContentType(filePath: string): string {
@@ -205,6 +223,11 @@ const settingsUpdateSchema = z.object({
       quotaSyncConcurrency: z.number().int().min(1).max(32).optional(),
     })
     .optional(),
+  image: z
+    .object({
+      freeAccountWebGenerationEnabled: z.boolean().optional(),
+    })
+    .optional(),
   server: z
     .object({
       port: z.number().int().min(1).max(65535),
@@ -313,6 +336,92 @@ const imageEditsBodySchema = z
   })
   .passthrough();
 
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function tokenNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.trunc(value) : null;
+}
+
+function normalizeTokenUsage(value: unknown): UsageTokenUsage | null {
+  if (!isObjectRecord(value)) {
+    return null;
+  }
+  const inputTokens = tokenNumber(value.input_tokens ?? value.prompt_tokens);
+  const outputTokens = tokenNumber(value.output_tokens ?? value.completion_tokens);
+  const totalTokens = tokenNumber(value.total_tokens) ?? (inputTokens !== null || outputTokens !== null ? (inputTokens ?? 0) + (outputTokens ?? 0) : null);
+  if (inputTokens === null && outputTokens === null && totalTokens === null) {
+    return null;
+  }
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+  };
+}
+
+function extractTokenUsage(value: unknown, depth = 0): UsageTokenUsage | null {
+  if (depth > 5 || !value) {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const usage = extractTokenUsage(item, depth + 1);
+      if (usage) {
+        return usage;
+      }
+    }
+    return null;
+  }
+  if (!isObjectRecord(value)) {
+    return null;
+  }
+  const direct = normalizeTokenUsage(value);
+  if (direct) {
+    return direct;
+  }
+  for (const key of ["usage", "response", "events"]) {
+    const usage = extractTokenUsage(value[key], depth + 1);
+    if (usage) {
+      return usage;
+    }
+  }
+  return null;
+}
+
+function imageUsageToTokenUsage(usage: {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+} | undefined): UsageTokenUsage | null {
+  if (!usage) {
+    return null;
+  }
+  return {
+    inputTokens: usage.input_tokens,
+    outputTokens: usage.output_tokens,
+    totalTokens: usage.total_tokens,
+  };
+}
+
+function extractUsageErrorType(details: Record<string, unknown> | undefined, statusCode: number): string | undefined {
+  const error = isObjectRecord(details?.error) ? details.error : null;
+  const upstreamErrorCode = error?.upstreamErrorCode;
+  const upstreamStatus = error?.upstreamStatus;
+  const type = error?.type;
+  if (typeof upstreamErrorCode === "string" && upstreamErrorCode.trim()) {
+    return upstreamErrorCode.trim();
+  }
+  if (typeof type === "string" && type.trim()) {
+    return type.trim();
+  }
+  if (typeof upstreamStatus === "number") {
+    return `HTTP ${upstreamStatus}`;
+  }
+  return statusCode >= 400 ? `HTTP ${statusCode}` : undefined;
+}
+
 function extractTextFromInputContent(content: unknown): string[] {
   if (typeof content === "string" && content.trim()) {
     return [content.trim()];
@@ -355,6 +464,57 @@ function extractTextInput(input: unknown): string {
   }
 
   return chunks.join("\n").trim();
+}
+
+function extractImageUrlFromInputPart(part: unknown): string | null {
+  if (!isObjectRecord(part)) {
+    return null;
+  }
+
+  const imageUrl = part.image_url ?? part.imageUrl;
+  if (typeof imageUrl === "string" && imageUrl.trim()) {
+    return imageUrl.trim();
+  }
+  if (isObjectRecord(imageUrl) && typeof imageUrl.url === "string" && imageUrl.url.trim()) {
+    return imageUrl.url.trim();
+  }
+
+  return null;
+}
+
+function extractImageInputs(input: unknown): Array<{ imageUrl: string }> {
+  const images: Array<{ imageUrl: string }> = [];
+  const addImage = (imageUrl: string | null): void => {
+    if (imageUrl && !images.some((item) => item.imageUrl === imageUrl)) {
+      images.push({ imageUrl });
+    }
+  };
+
+  if (!Array.isArray(input)) {
+    addImage(extractImageUrlFromInputPart(input));
+    return images;
+  }
+
+  for (const item of input) {
+    addImage(extractImageUrlFromInputPart(item));
+    if (!isObjectRecord(item)) {
+      continue;
+    }
+    const content = item.content;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        addImage(extractImageUrlFromInputPart(part));
+      }
+    } else {
+      addImage(extractImageUrlFromInputPart(content));
+    }
+  }
+
+  return images;
+}
+
+function isFreePlan(profile: OAuthProfile): boolean {
+  return profile.quota?.planType?.toLowerCase() === "free";
 }
 
 function normalizeResponseInput(input: unknown): unknown {
@@ -609,16 +769,25 @@ function summarizeToolNames(tools: unknown[] | undefined): string[] {
       }
       const record = tool as Record<string, unknown>;
       const fn = record.function && typeof record.function === "object" ? (record.function as Record<string, unknown>) : null;
-      return typeof fn?.name === "string" ? fn.name : typeof record.name === "string" ? record.name : "";
+      return typeof fn?.name === "string"
+        ? fn.name
+        : typeof record.name === "string"
+          ? record.name
+          : typeof record.type === "string"
+            ? record.type
+            : "";
     })
     .filter(Boolean);
 }
 
-function summarizeResponsesRequest(data: z.infer<typeof responsesBodySchema>): Record<string, unknown> {
+function summarizeResponsesRequest(
+  data: z.infer<typeof responsesBodySchema>,
+  endpoint = "/v1/responses",
+): Record<string, unknown> {
   const input = data.input;
   const toolNames = summarizeToolNames(Array.isArray(data.tools) ? data.tools : undefined);
   return {
-    endpoint: "/v1/responses",
+    endpoint,
     model: data.model ?? "default",
     stream: data.stream ?? false,
     inputKind: typeof input === "string" ? "string" : Array.isArray(input) ? "array" : "override",
@@ -657,6 +826,136 @@ function createCodexPassthroughBody(data: z.infer<typeof responsesBodySchema>, m
   };
   delete body.experimental_codex;
   return body;
+}
+
+function getImageGenerationTool(body: Record<string, unknown>): Record<string, unknown> | null {
+  const tools = Array.isArray(body.tools) ? body.tools : [];
+  for (const tool of tools) {
+    if (isObjectRecord(tool) && tool.type === "image_generation") {
+      return tool;
+    }
+  }
+  return null;
+}
+
+function hasImageGenerationToolChoice(body: Record<string, unknown>): boolean {
+  const choice = body.tool_choice;
+  if (typeof choice === "string") {
+    return choice === "image_generation";
+  }
+  return isObjectRecord(choice) && choice.type === "image_generation";
+}
+
+function normalizeImageOutputFormat(value: unknown): CodexImageGenerationRequest["outputFormat"] | undefined {
+  return value === "png" || value === "webp" || value === "jpeg" ? value : undefined;
+}
+
+function extractCodexImageGenerationRequest(body: Record<string, unknown>): CodexImageGenerationRequest | null {
+  const imageTool = getImageGenerationTool(body);
+  if (!hasImageGenerationToolChoice(body)) {
+    return null;
+  }
+
+  return {
+    prompt: extractTextInput(body.input),
+    inputImages: extractImageInputs(body.input),
+    imageModel: typeof imageTool?.model === "string" && imageTool.model.trim() ? imageTool.model.trim() : "gpt-image-2",
+    size: typeof imageTool?.size === "string" && imageTool.size.trim() ? imageTool.size.trim() : undefined,
+    outputFormat: normalizeImageOutputFormat(imageTool?.output_format),
+  };
+}
+
+async function writeResponsesSseBlock(reply: FastifyReply, block: string): Promise<number> {
+  if (!reply.raw.write(block)) {
+    await new Promise((resolve) => reply.raw.once("drain", resolve));
+  }
+  return Buffer.byteLength(block);
+}
+
+async function writeResponsesSseEvent(reply: FastifyReply, eventName: string, payload: Record<string, unknown>): Promise<number> {
+  return writeResponsesSseBlock(reply, `event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`);
+}
+
+async function sendSyntheticCodexImageSse(params: {
+  reply: FastifyReply;
+  result: ChatGPTWebImageResult;
+  model: string;
+  prompt: string;
+  requestedSize?: string;
+  requestedOutputFormat?: "png" | "webp" | "jpeg";
+}): Promise<{ bytes: number; imageCount: number }> {
+  const responseId = `resp_${randomUUID().replace(/-/g, "")}`;
+  const created = Math.floor(Date.now() / 1000);
+  const outputFormat = params.result.output_format ?? params.requestedOutputFormat ?? "png";
+  const size = params.result.size ?? params.requestedSize;
+  const output = params.result.data.map((image, index) => ({
+    id: `ig_${randomUUID().replace(/-/g, "")}`,
+    type: "image_generation_call",
+    status: "completed",
+    result: image.b64_json,
+    revised_prompt: image.revised_prompt ?? params.prompt,
+    output_format: outputFormat,
+    ...(size ? { size } : {}),
+  }));
+  let bytes = 0;
+
+  params.reply.raw.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  params.reply.raw.flushHeaders?.();
+
+  bytes += await writeResponsesSseEvent(params.reply, "response.created", {
+    type: "response.created",
+    response: {
+      id: responseId,
+      object: "response",
+      created_at: created,
+      model: params.model,
+      status: "in_progress",
+      output: [],
+    },
+  });
+
+  for (let index = 0; index < output.length; index += 1) {
+    const item = output[index] as Record<string, unknown>;
+    bytes += await writeResponsesSseEvent(params.reply, "response.output_item.added", {
+      type: "response.output_item.added",
+      output_index: index,
+      item: {
+        id: item.id,
+        type: item.type,
+        status: "in_progress",
+      },
+    });
+    bytes += await writeResponsesSseEvent(params.reply, "response.output_item.done", {
+      type: "response.output_item.done",
+      output_index: index,
+      item,
+    });
+  }
+
+  bytes += await writeResponsesSseEvent(params.reply, "response.completed", {
+    type: "response.completed",
+    response: {
+      id: responseId,
+      object: "response",
+      created_at: created,
+      model: params.model,
+      status: "completed",
+      output,
+      usage: null,
+    },
+  });
+  bytes += await writeResponsesSseBlock(params.reply, "data: [DONE]\n\n");
+  params.reply.raw.end();
+
+  return {
+    bytes,
+    imageCount: output.length,
+  };
 }
 
 function summarizeChatCompletionsRequest(data: z.infer<typeof chatCompletionsBodySchema>): Record<string, unknown> {
@@ -1223,8 +1522,8 @@ export function createApp(params?: {
   const ctx = createGatewayContext();
   const gatewayRequestLogs: GatewayRequestLog[] = [];
 
-  function pushGatewayRequestLog(log: Omit<GatewayRequestLog, "id" | "time"> & { id?: string; time?: number }): void {
-    gatewayRequestLogs.unshift({
+  function pushGatewayRequestLog(log: Omit<GatewayRequestLog, "id" | "time"> & { id?: string; time?: number; usage?: GatewayRequestUsageMeta }): void {
+    const entry: GatewayRequestLog = {
       id: log.id ?? randomUUID(),
       time: log.time ?? Date.now(),
       method: log.method,
@@ -1235,10 +1534,34 @@ export function createApp(params?: {
       durationMs: log.durationMs,
       source: log.source,
       details: log.details,
-    });
+    };
+    gatewayRequestLogs.unshift(entry);
     if (gatewayRequestLogs.length > MAX_GATEWAY_REQUEST_LOGS) {
       gatewayRequestLogs.length = MAX_GATEWAY_REQUEST_LOGS;
     }
+    const profile = log.usage?.profile ?? undefined;
+    const usageEvent: UsageRecordEvent = {
+      id: entry.id,
+      timestamp: entry.time,
+      method: entry.method,
+      endpoint: entry.endpoint,
+      model: entry.model,
+      source: entry.source,
+      statusCode: entry.statusCode,
+      durationMs: entry.durationMs,
+      success: entry.statusCode >= 200 && entry.statusCode < 400,
+      profileId: profile?.profileId,
+      accountId: profile?.accountId,
+      accountLabel: entry.account,
+      planType: profile?.quota?.planType,
+      tokenUsage: log.usage?.tokenUsage,
+      imageCount: log.usage?.imageCount,
+      imageRoute: log.usage?.imageRoute ?? "none",
+      errorType: log.usage?.errorType ?? extractUsageErrorType(log.details, entry.statusCode),
+    };
+    ctx.usageService.record(usageEvent).catch((error) => {
+      console.warn("[gateway:usage] 统计写入失败", error);
+    });
   }
 
   void app.register(cors, {
@@ -1269,8 +1592,10 @@ export function createApp(params?: {
     data: gatewayRequestLogs,
   }));
 
+  app.get("/_gateway/admin/usage", async () => ctx.usageService.getSummary());
+
   async function buildAdminConfig(request: FastifyRequest) {
-    const [status, models, modelCatalog, versionStatus, settings, profile, profiles, codexStatus] = await Promise.all([
+    const [status, models, modelCatalog, versionStatus, settings, profile, profiles, codexStatus, usage] = await Promise.all([
       ctx.authService.getStatus(),
       ctx.modelService.listModels(),
       ctx.modelService.getCatalog(),
@@ -1279,6 +1604,7 @@ export function createApp(params?: {
       ctx.authService.getActiveProfile(),
       ctx.authService.listProfiles(),
       ctx.authService.getCodexStatus(),
+      ctx.usageService.getSummary(),
     ]);
     const origin = resolveOrigin(request);
 
@@ -1291,6 +1617,7 @@ export function createApp(params?: {
       profile: serializeProfile(profile),
       profiles: profiles.map((item) => serializeManagedProfile(item)),
       codex: codexStatus,
+      usage,
       adminUrl: `${origin}/`,
       baseUrl: `${origin}/v1`,
       codexBaseUrl: `${origin}/codex/v1`,
@@ -1311,6 +1638,11 @@ export function createApp(params?: {
           method: "POST",
           path: "/codex/v1/responses",
           description: "Codex custom provider 专用 Responses SSE 透传接口。",
+        },
+        {
+          method: "POST",
+          path: "/codex/v1/responses/compact",
+          description: "Codex custom provider 专用 Responses compact SSE 透传接口。",
         },
         {
           method: "POST",
@@ -1839,6 +2171,7 @@ export function createApp(params?: {
     reply: FastifyReply,
     data: z.infer<typeof responsesBodySchema>,
     startedAt: number,
+    upstreamEndpoint: "responses" | "responses/compact" = "responses",
   ) {
     const abortController = new AbortController();
     let streamFinished = false;
@@ -1846,6 +2179,7 @@ export function createApp(params?: {
     let profile: OAuthProfile | null = null;
     let retryCount = 0;
     let failureRecorded = false;
+    let codexImageRoute: UsageImageRoute = "none";
     reply.raw.on("close", () => {
       if (!streamFinished) {
         abortController.abort();
@@ -1857,6 +2191,81 @@ export function createApp(params?: {
         allowUnknown: data.experimental_codex?.allow_unknown_model,
       });
       const codexBody = createCodexPassthroughBody(data, model);
+      const imageRequest = upstreamEndpoint === "responses" ? extractCodexImageGenerationRequest(codexBody) : null;
+      if (imageRequest) {
+        codexImageRoute = "codex-tool";
+        const settings = await ctx.configService.getSettings();
+        if (settings.image.freeAccountWebGenerationEnabled) {
+          profile = await ctx.authService.requireUsableProfile("openai-codex", {
+            skipAutoSwitch: true,
+          });
+        }
+        if (profile && isFreePlan(profile)) {
+          if (!imageRequest.prompt) {
+            throw new Error("Codex 生图请求缺少文本 prompt。");
+          }
+          console.info("[gateway:codex:image] using ChatGPT web image route for Free profile", {
+            requestId: request.id,
+            account: profileLogLabel(profile),
+            model,
+            imageModel: imageRequest.imageModel,
+            promptLength: imageRequest.prompt.length,
+            inputImageCount: imageRequest.inputImages.length,
+            size: imageRequest.size ?? "default",
+          });
+          const imageResult = await generateChatGPTWebImage({
+            profile,
+            prompt: imageRequest.prompt,
+            model: imageRequest.imageModel,
+            inputImages: imageRequest.inputImages,
+            size: imageRequest.size,
+            responseFormat: "b64_json",
+          });
+          await ctx.authService.recordProfileRequestSuccess(profile.profileId, undefined, "openai-codex", {
+            skipAutoSwitch: true,
+          });
+          headersCommitted = true;
+          const syntheticStats = await sendSyntheticCodexImageSse({
+            reply,
+            result: imageResult,
+            model,
+            prompt: imageRequest.prompt,
+            requestedSize: imageRequest.size,
+            requestedOutputFormat: imageRequest.outputFormat,
+          });
+          streamFinished = true;
+          pushGatewayRequestLog({
+            method: request.method,
+            endpoint: request.url,
+            account: profileLogLabel(profile),
+            model,
+            statusCode: 200,
+            durationMs: performance.now() - startedAt,
+            source: "Codex",
+            details: {
+              requestId: request.id,
+              remoteAddress: request.ip,
+              userAgent: request.headers["user-agent"],
+              request: summarizeResponsesRequest(data, request.url),
+              response: {
+                stream: true,
+                passthrough: false,
+                upstreamEndpoint,
+                route: "chatgpt-web-image",
+                imageModel: imageRequest.imageModel,
+                imageCount: syntheticStats.imageCount,
+                bytes: syntheticStats.bytes,
+              },
+            },
+            usage: {
+              profile,
+              imageCount: syntheticStats.imageCount,
+              imageRoute: "chatgpt-web",
+            },
+          });
+          return reply;
+        }
+      }
       let upstream: Awaited<ReturnType<typeof streamOpenAICodex>> | null = null;
       const maxProfileAttempts = 5;
 
@@ -1867,6 +2276,7 @@ export function createApp(params?: {
             profile,
             model,
             bodyOverride: codexBody,
+            endpoint: upstreamEndpoint,
             passthroughBody: true,
             signal: abortController.signal,
           });
@@ -1945,15 +2355,20 @@ export function createApp(params?: {
           upstreamRequestId: upstream.requestId,
           remoteAddress: request.ip,
           userAgent: request.headers["user-agent"],
-          request: summarizeResponsesRequest(data),
+          request: summarizeResponsesRequest(data, request.url),
           response: {
             stream: true,
             passthrough: true,
+            upstreamEndpoint,
             retryCount,
             completed: streamStats.completed,
             terminalEvent: streamStats.terminalEvent,
             bytes: streamStats.bytes,
           },
+        },
+        usage: {
+          profile,
+          imageRoute: codexImageRoute,
         },
       });
       return reply;
@@ -1976,8 +2391,9 @@ export function createApp(params?: {
           requestId: request.id,
           remoteAddress: request.ip,
           userAgent: request.headers["user-agent"],
-          request: summarizeResponsesRequest(data),
+          request: summarizeResponsesRequest(data, request.url),
           response: {
+            upstreamEndpoint,
             retryCount,
           },
           error: {
@@ -1986,6 +2402,10 @@ export function createApp(params?: {
             upstreamErrorCode: (normalized as Error & { upstreamErrorCode?: unknown }).upstreamErrorCode,
             upstreamErrorMessage: (normalized as Error & { upstreamErrorMessage?: unknown }).upstreamErrorMessage,
           },
+        },
+        usage: {
+          profile,
+          imageRoute: codexImageRoute,
         },
       });
       if (headersCommitted) {
@@ -2029,6 +2449,40 @@ export function createApp(params?: {
     }
 
     return handleCodexResponsesPassthrough(request, reply, parsed.data, startedAt);
+  });
+
+  app.post("/codex/v1/responses/compact", async (request, reply) => {
+    const startedAt = performance.now();
+    const parsed = responsesBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: "-",
+        statusCode: 400,
+        durationMs: performance.now() - startedAt,
+        source: "Codex",
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          error: {
+            type: "validation_error",
+            message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+          },
+        },
+      });
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    return handleCodexResponsesPassthrough(request, reply, parsed.data, startedAt, "responses/compact");
   });
 
   app.post("/v1/responses", async (request, reply) => {
@@ -2127,13 +2581,73 @@ export function createApp(params?: {
     }
 
     const codexBody = createResponsesCodexBody(parsed.data);
-    const result = await ctx.chatService.chat({
-      model: parsed.data.model,
-      input: input || undefined,
-      system: parsed.data.instructions,
-      experimental: {
-        codexBody,
-        allowUnknownModel: parsed.data.experimental_codex?.allow_unknown_model,
+    let result: ChatResult;
+    try {
+      result = await ctx.chatService.chat({
+        model: parsed.data.model,
+        input: input || undefined,
+        system: parsed.data.instructions,
+        experimental: {
+          codexBody,
+          allowUnknownModel: parsed.data.experimental_codex?.allow_unknown_model,
+        },
+      });
+    } catch (error) {
+      const normalized = normalizeError(error);
+      const statusCode = getErrorStatusCode(normalized);
+      const activeProfile = await ctx.authService.getActiveProfile();
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: profileLogLabel(activeProfile),
+        model: parsed.data.model ?? "default",
+        statusCode,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeResponsesRequest(parsed.data),
+          codex: summarizeCodexChatBody(codexBody),
+          error: {
+            message: normalized.message,
+            upstreamStatus: (normalized as Error & { upstreamStatus?: unknown }).upstreamStatus,
+            upstreamErrorCode: (normalized as Error & { upstreamErrorCode?: unknown }).upstreamErrorCode,
+            upstreamErrorMessage: (normalized as Error & { upstreamErrorMessage?: unknown }).upstreamErrorMessage,
+          },
+        },
+        usage: {
+          profile: activeProfile,
+        },
+      });
+      throw error;
+    }
+
+    const activeProfile = await ctx.authService.getActiveProfile();
+    pushGatewayRequestLog({
+      method: request.method,
+      endpoint: request.url,
+      account: profileLogLabel(activeProfile),
+      model: result.model,
+      statusCode: 200,
+      durationMs: performance.now() - startedAt,
+      source: requestSourceFromUserAgent(request.headers["user-agent"]),
+      details: {
+        requestId: request.id,
+        remoteAddress: request.ip,
+        userAgent: request.headers["user-agent"],
+        request: summarizeResponsesRequest(parsed.data),
+        codex: summarizeCodexChatBody(codexBody),
+        response: {
+          textPreview: truncateForLog(result.text),
+          textLength: result.text.length,
+          artifactCount: result.artifacts.length,
+        },
+      },
+      usage: {
+        profile: activeProfile,
+        tokenUsage: extractTokenUsage(result.raw),
       },
     });
 
@@ -2231,10 +2745,11 @@ export function createApp(params?: {
     } catch (error) {
       const normalized = normalizeError(error);
       const statusCode = getErrorStatusCode(normalized);
+      const activeProfile = await ctx.authService.getActiveProfile();
       pushGatewayRequestLog({
         method: request.method,
         endpoint: request.url,
-        account: profileLogLabel(await ctx.authService.getActiveProfile()),
+        account: profileLogLabel(activeProfile),
         model: parsed.data.model ?? "default",
         statusCode,
         durationMs: performance.now() - startedAt,
@@ -2252,14 +2767,18 @@ export function createApp(params?: {
             upstreamErrorMessage: (normalized as Error & { upstreamErrorMessage?: unknown }).upstreamErrorMessage,
           },
         },
+        usage: {
+          profile: activeProfile,
+        },
       });
       throw error;
     }
 
+    const activeProfile = await ctx.authService.getActiveProfile();
     pushGatewayRequestLog({
       method: request.method,
       endpoint: request.url,
-      account: profileLogLabel(await ctx.authService.getActiveProfile()),
+      account: profileLogLabel(activeProfile),
       model: result.model,
       statusCode: 200,
       durationMs: performance.now() - startedAt,
@@ -2283,6 +2802,10 @@ export function createApp(params?: {
           stream: parsed.data.stream ?? false,
         },
       },
+      usage: {
+        profile: activeProfile,
+        tokenUsage: extractTokenUsage(result.raw),
+      },
     });
     console.info("[gateway:chat:response]", {
       requestId: request.id,
@@ -2303,12 +2826,31 @@ export function createApp(params?: {
   });
 
   app.post("/v1/images/generations", async (request, reply) => {
+    const startedAt = performance.now();
     const parsed = imageGenerationsBodySchema.safeParse(request.body);
     if (!parsed.success) {
       console.error("[gateway:image] validation failure", {
         method: request.method,
         url: request.url,
         issue: parsed.error.issues[0]?.message ?? "请求体格式错误",
+      });
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: "-",
+        statusCode: 400,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          error: {
+            type: "validation_error",
+            message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+          },
+        },
       });
       reply.code(400);
       return {
@@ -2327,6 +2869,25 @@ export function createApp(params?: {
         summary: summarizeImageRequestForLog(parsed.data),
         issue: validationError,
       });
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: parsed.data.model ?? "gpt-image-2",
+        statusCode: 400,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeImageRequestForLog(parsed.data),
+          error: {
+            type: "validation_error",
+            message: validationError,
+          },
+        },
+      });
       reply.code(400);
       return {
         error: {
@@ -2342,6 +2903,25 @@ export function createApp(params?: {
         url: request.url,
         summary: summarizeImageRequestForLog(parsed.data),
         issue: "当前网关暂不支持 images.generations 一次返回多张图（n > 1）",
+      });
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: parsed.data.model ?? "gpt-image-2",
+        statusCode: 501,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeImageRequestForLog(parsed.data),
+          error: {
+            type: "not_supported",
+            message: "当前网关暂不支持 images.generations 一次返回多张图（n > 1）",
+          },
+        },
       });
       reply.code(501);
       return {
@@ -2359,17 +2939,52 @@ export function createApp(params?: {
       summary: requestSummary,
     });
 
-    const response = await ctx.imageService.generate({
-      prompt: parsed.data.prompt,
-      model: parsed.data.model,
-      n: parsed.data.n,
-      size: parsed.data.size,
-      quality: parsed.data.quality,
-      background: parsed.data.background,
-      outputFormat: parsed.data.output_format,
-      outputCompression: parsed.data.output_compression,
-      moderation: parsed.data.moderation,
-    });
+    const activeProfile = await ctx.authService.getActiveProfile();
+    const settings = await ctx.configService.getSettings();
+    const imageRoute: UsageImageRoute = activeProfile && isFreePlan(activeProfile) && settings.image.freeAccountWebGenerationEnabled ? "chatgpt-web" : "codex-tool";
+    let response: Awaited<ReturnType<typeof ctx.imageService.generate>>;
+    try {
+      response = await ctx.imageService.generate({
+        prompt: parsed.data.prompt,
+        model: parsed.data.model,
+        n: parsed.data.n,
+        size: parsed.data.size,
+        quality: parsed.data.quality,
+        background: parsed.data.background,
+        outputFormat: parsed.data.output_format,
+        outputCompression: parsed.data.output_compression,
+        moderation: parsed.data.moderation,
+      });
+    } catch (error) {
+      const normalized = normalizeError(error);
+      const statusCode = getErrorStatusCode(normalized);
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: profileLogLabel(activeProfile),
+        model: parsed.data.model ?? "gpt-image-2",
+        statusCode,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: requestSummary,
+          error: {
+            message: normalized.message,
+            upstreamStatus: (normalized as Error & { upstreamStatus?: unknown }).upstreamStatus,
+            upstreamErrorCode: (normalized as Error & { upstreamErrorCode?: unknown }).upstreamErrorCode,
+            upstreamErrorMessage: (normalized as Error & { upstreamErrorMessage?: unknown }).upstreamErrorMessage,
+          },
+        },
+        usage: {
+          profile: activeProfile,
+          imageRoute,
+        },
+      });
+      throw error;
+    }
 
     console.info("[gateway:image] response ready", {
       method: request.method,
@@ -2381,13 +2996,59 @@ export function createApp(params?: {
       quality: response.quality,
       size: response.size,
     });
+    pushGatewayRequestLog({
+      method: request.method,
+      endpoint: request.url,
+      account: profileLogLabel(activeProfile),
+      model: parsed.data.model ?? "gpt-image-2",
+      statusCode: 200,
+      durationMs: performance.now() - startedAt,
+      source: requestSourceFromUserAgent(request.headers["user-agent"]),
+      details: {
+        requestId: request.id,
+        remoteAddress: request.ip,
+        userAgent: request.headers["user-agent"],
+        request: requestSummary,
+        response: {
+          imageCount: response.data.length,
+          outputFormat: response.output_format,
+          quality: response.quality,
+          size: response.size,
+        },
+      },
+      usage: {
+        profile: activeProfile,
+        tokenUsage: imageUsageToTokenUsage(response.usage),
+        imageCount: response.data.length,
+        imageRoute,
+      },
+    });
 
     return response;
   });
 
   app.post("/v1/images/edits", async (request, reply) => {
+    const startedAt = performance.now();
     const contentType = request.headers["content-type"] ?? "";
     if (!String(contentType).toLowerCase().includes("application/json")) {
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: "-",
+        statusCode: 415,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          error: {
+            type: "unsupported_media_type",
+            message: "当前网关仅支持 JSON 版 images.edits；请使用 application/json，并通过 images[].image_url 传 URL 或 base64 data URL。",
+          },
+        },
+      });
       reply.code(415);
       return {
         error: {
@@ -2403,6 +3064,24 @@ export function createApp(params?: {
         method: request.method,
         url: request.url,
         issue: parsed.error.issues[0]?.message ?? "请求体格式错误",
+      });
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: "-",
+        statusCode: 400,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          error: {
+            type: "validation_error",
+            message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+          },
+        },
       });
       reply.code(400);
       return {
@@ -2421,6 +3100,25 @@ export function createApp(params?: {
         summary: summarizeImageEditRequestForLog(parsed.data),
         issue: validationError,
       });
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: parsed.data.model ?? "gpt-image-2",
+        statusCode: 400,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeImageEditRequestForLog(parsed.data),
+          error: {
+            type: "validation_error",
+            message: validationError,
+          },
+        },
+      });
       reply.code(400);
       return {
         error: {
@@ -2436,6 +3134,25 @@ export function createApp(params?: {
         url: request.url,
         summary: summarizeImageEditRequestForLog(parsed.data),
         issue: "当前网关暂不支持 images.edits 一次返回多张图（n > 1）",
+      });
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: "-",
+        model: parsed.data.model ?? "gpt-image-2",
+        statusCode: 501,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: summarizeImageEditRequestForLog(parsed.data),
+          error: {
+            type: "not_supported",
+            message: "当前网关暂不支持 images.edits 一次返回多张图（n > 1）",
+          },
+        },
       });
       reply.code(501);
       return {
@@ -2458,18 +3175,53 @@ export function createApp(params?: {
       summary: requestSummary,
     });
 
-    const response = await ctx.imageService.generate({
-      prompt: parsed.data.prompt,
-      inputImages: imageReferences,
-      model: parsed.data.model,
-      n: parsed.data.n,
-      size: parsed.data.size,
-      quality: parsed.data.quality,
-      background: parsed.data.background,
-      outputFormat: parsed.data.output_format,
-      outputCompression: parsed.data.output_compression,
-      moderation: parsed.data.moderation,
-    });
+    const activeProfile = await ctx.authService.getActiveProfile();
+    const settings = await ctx.configService.getSettings();
+    const imageRoute: UsageImageRoute = activeProfile && isFreePlan(activeProfile) && settings.image.freeAccountWebGenerationEnabled ? "chatgpt-web" : "codex-tool";
+    let response: Awaited<ReturnType<typeof ctx.imageService.generate>>;
+    try {
+      response = await ctx.imageService.generate({
+        prompt: parsed.data.prompt,
+        inputImages: imageReferences,
+        model: parsed.data.model,
+        n: parsed.data.n,
+        size: parsed.data.size,
+        quality: parsed.data.quality,
+        background: parsed.data.background,
+        outputFormat: parsed.data.output_format,
+        outputCompression: parsed.data.output_compression,
+        moderation: parsed.data.moderation,
+      });
+    } catch (error) {
+      const normalized = normalizeError(error);
+      const statusCode = getErrorStatusCode(normalized);
+      pushGatewayRequestLog({
+        method: request.method,
+        endpoint: request.url,
+        account: profileLogLabel(activeProfile),
+        model: parsed.data.model ?? "gpt-image-2",
+        statusCode,
+        durationMs: performance.now() - startedAt,
+        source: requestSourceFromUserAgent(request.headers["user-agent"]),
+        details: {
+          requestId: request.id,
+          remoteAddress: request.ip,
+          userAgent: request.headers["user-agent"],
+          request: requestSummary,
+          error: {
+            message: normalized.message,
+            upstreamStatus: (normalized as Error & { upstreamStatus?: unknown }).upstreamStatus,
+            upstreamErrorCode: (normalized as Error & { upstreamErrorCode?: unknown }).upstreamErrorCode,
+            upstreamErrorMessage: (normalized as Error & { upstreamErrorMessage?: unknown }).upstreamErrorMessage,
+          },
+        },
+        usage: {
+          profile: activeProfile,
+          imageRoute,
+        },
+      });
+      throw error;
+    }
 
     console.info("[gateway:image:edit] response ready", {
       method: request.method,
@@ -2480,6 +3232,33 @@ export function createApp(params?: {
       output_format: response.output_format,
       quality: response.quality,
       size: response.size,
+    });
+    pushGatewayRequestLog({
+      method: request.method,
+      endpoint: request.url,
+      account: profileLogLabel(activeProfile),
+      model: parsed.data.model ?? "gpt-image-2",
+      statusCode: 200,
+      durationMs: performance.now() - startedAt,
+      source: requestSourceFromUserAgent(request.headers["user-agent"]),
+      details: {
+        requestId: request.id,
+        remoteAddress: request.ip,
+        userAgent: request.headers["user-agent"],
+        request: requestSummary,
+        response: {
+          imageCount: response.data.length,
+          outputFormat: response.output_format,
+          quality: response.quality,
+          size: response.size,
+        },
+      },
+      usage: {
+        profile: activeProfile,
+        tokenUsage: imageUsageToTokenUsage(response.usage),
+        imageCount: response.data.length,
+        imageRoute,
+      },
     });
 
     return response;

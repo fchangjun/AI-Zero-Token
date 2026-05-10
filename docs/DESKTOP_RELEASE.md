@@ -2,6 +2,17 @@
 
 This project ships the desktop app with Electron. The desktop main process starts the existing local Fastify gateway and loads the React management UI served by that gateway.
 
+## 2.0.6 Release Notes
+
+Version `2.0.6` adds Free-account image routing controls and local usage/account statistics:
+
+- Opt-in Free-account ChatGPT web image route for API image requests and Codex `image_generation` tool requests.
+- Red Settings warning for Free-account image risk and limited quota.
+- Persistent local usage statistics for today, current process, lifetime totals, daily trend, and account/model/endpoint/error/source breakdowns.
+- Account-management statistics strip with clickable filters for availability, plan, active status, login/auth state, quota exhaustion, and auto-switch inclusion.
+- Filtered-result bulk selection controls for batch account operations.
+- Clearer usage labels that separate known upstream-returned token totals from requests that did not return usage metadata.
+
 ## 2.0.5 Release Notes
 
 Version `2.0.5` adds Codex custom provider routing and finer account rotation controls:
@@ -114,7 +125,7 @@ AI Zero Token Setup {version}.exe
 AI Zero Token-{version}-win.zip
 ```
 
-For `2.0.5`, replace `{version}` with `2.0.5`.
+For `2.0.6`, replace `{version}` with `2.0.6`.
 
 Artifact purpose:
 

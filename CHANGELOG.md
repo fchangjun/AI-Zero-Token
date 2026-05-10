@@ -1,10 +1,22 @@
 # Changelog
 
+## 2.0.6 - 2026-05-11
+
+- Added persistent local usage statistics with today, current-process, lifetime, daily trend, account, model, endpoint, error, image-route, and source breakdowns.
+- Added safe usage event storage under the local state directory without persisting prompts, messages, access tokens, or base64 payloads.
+- Added an account-management statistics strip with clickable filters for total, available, unavailable, login-invalid, auth-error, exhausted, plan type, active status, and auto-switch inclusion.
+- Restored filtered-result bulk selection controls so filtered accounts can be selected or cleared for batch operations.
+- Clarified usage UI labels so token totals are shown as known upstream-returned usage, while requests without upstream usage are counted separately.
+- Improved the Settings Free-account image warning and removed duplicated Settings page heading copy.
+
 ## 2.0.5 - 2026-05-09
 
 - Added a Codex takeover history-mode selector in Settings so the default path keeps `openai` history while optionally writing a separate `AI Zero Token` provider.
 - Added Codex custom provider setup from the Settings page, including local/remote gateway URL selection and managed writes to `~/.codex/config.toml`.
 - Added `POST /codex/v1/responses` as a dedicated Codex CLI/Desktop Responses SSE passthrough route.
+- Added `POST /codex/v1/responses/compact` passthrough for Codex remote context compaction.
+- Added an opt-in Free-plan image route that uses ChatGPT web image generation for `/v1/images/*` and Codex `image_generation` tool requests, while paid plans continue to use the Codex Responses image tool.
+- Added a Settings toggle and warning for Free-account image generation risk and limited quota.
 - Added admin APIs to configure or remove the AI Zero Token managed Codex provider and report provider status in the management console.
 - Changed Codex request takeover to preserve the native `openai` provider id via `openai_base_url`, keeping existing Codex history visible when routing through a third-party gateway.
 - Added a best-effort local Codex history migration that rewrites legacy `ai-zero-token` thread records back to `openai` with a SQLite backup.

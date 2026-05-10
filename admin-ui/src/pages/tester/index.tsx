@@ -39,7 +39,10 @@ export function TesterPage(props: {
   const [previewImages, setPreviewImages] = useState<PreviewImage[]>([]);
   const [imageUploadMode, setImageUploadMode] = useState<EditImageUploadMode>("base64");
 
-  const endpoints = useMemo(() => [...(props.config?.supportedEndpoints || [])].sort(endpointSort), [props.config?.supportedEndpoints]);
+  const endpoints = useMemo(
+    () => [...(props.config?.supportedEndpoints || [])].filter((item) => endpointOrder.includes(item.path)).sort(endpointSort),
+    [props.config?.supportedEndpoints],
+  );
   const activeEndpoint = useMemo(
     () => endpoints.find((item) => item.path === endpoint) || endpoints[0] || { method: "GET", path: "/v1/models", description: "" },
     [endpoint, endpoints],

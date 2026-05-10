@@ -1,6 +1,8 @@
 import { AuthService } from "./auth-service.js";
 import { ConfigService } from "./config-service.js";
 import { askOpenAICodex } from "../providers/openai-codex/chat.js";
+import { generateChatGPTWebImage } from "../providers/openai-codex/chatgpt-web-image.js";
+import type { OAuthProfile } from "../types.js";
 type ImageRequest = {
   prompt: string;
   model?: string;
@@ -397,6 +399,10 @@ function extractImageUsage(raw: unknown): ImageResult["usage"] | undefined {
   };
 }
 
+function isFreePlan(profile: OAuthProfile): boolean {
+  return profile.quota?.planType?.toLowerCase() === "free";
+}
+
 export class ImageService {
   constructor(
     private readonly deps: {
@@ -418,9 +424,12 @@ export class ImageService {
   }
 
   async generate(request: ImageRequest): Promise<ImageResult> {
-    const profile = await this.deps.authService.requireUsableProfile("openai-codex");
+    const profile = await this.deps.authService.requireUsableProfile("openai-codex", {
+      skipAutoSwitch: true,
+    });
     const orchestratorModel = IMAGE_ORCHESTRATOR_MODEL;
     const requestedImageModel = this.resolveRequestedImageModel(request.model);
+    const settings = await this.deps.configService.getSettings();
     const requestSummary = {
       requestedImageModel,
       orchestratorModel,
@@ -436,6 +445,30 @@ export class ImageService {
     };
 
     console.info("[gateway:image] upstream request", requestSummary);
+
+    if (isFreePlan(profile) && settings.image.freeAccountWebGenerationEnabled) {
+      try {
+        console.info("[gateway:image] using ChatGPT web image route for Free profile", requestSummary);
+        const response = await generateChatGPTWebImage({
+          profile,
+          prompt: request.prompt,
+          model: requestedImageModel,
+          inputImages: request.inputImages,
+          size: request.size,
+          responseFormat: "b64_json",
+        });
+        await this.deps.authService.recordProfileRequestSuccess(profile.profileId, undefined, "openai-codex");
+        console.info("[gateway:image] ChatGPT web image response", {
+          ...requestSummary,
+          imageCount: response.data.length,
+          firstImageBase64Length: response.data[0]?.b64_json.length ?? 0,
+        });
+        return response;
+      } catch (error) {
+        await this.deps.authService.recordProfileRequestFailure(profile.profileId, error, undefined, "openai-codex");
+        throw error;
+      }
+    }
 
     const tool: Record<string, unknown> = {
       type: "image_generation",

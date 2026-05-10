@@ -43,7 +43,7 @@ import {
   type ExportedProfile,
 } from "../store/profile-transfer.js";
 
-const DEFAULT_QUOTA_SYNC_CONCURRENCY = 16;
+const DEFAULT_QUOTA_SYNC_CONCURRENCY = 3;
 
 function getQuotaSyncConcurrency(configured?: number): number {
   const raw = process.env.AZT_QUOTA_SYNC_CONCURRENCY;
@@ -205,13 +205,70 @@ export class AuthService {
     return percents.length > 0 && percents.some((value) => value >= 100);
   }
 
-  private hasKnownAvailableQuota(profile: OAuthProfile): boolean {
+  private timestampToMillis(value?: number): number | undefined {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+      return undefined;
+    }
+
+    return value < 1_000_000_000_000 ? value * 1000 : value;
+  }
+
+  private getQuotaResetAt(profile: OAuthProfile, slot: "primary" | "secondary"): number | undefined {
+    const quota = profile.quota;
+    if (!quota) {
+      return undefined;
+    }
+
+    const direct = slot === "primary" ? quota.primaryResetAt : quota.secondaryResetAt;
+    const directMillis = this.timestampToMillis(direct);
+    if (directMillis) {
+      return directMillis;
+    }
+
+    const after = slot === "primary" ? quota.primaryResetAfterSeconds : quota.secondaryResetAfterSeconds;
+    if (typeof after === "number" && Number.isFinite(after) && after > 0) {
+      const capturedAt = this.timestampToMillis(quota.capturedAt) ?? Date.now();
+      return capturedAt + after * 1000;
+    }
+
+    return undefined;
+  }
+
+  private hasResetElapsedForExhaustedQuota(profile: OAuthProfile): boolean {
+    const quota = profile.quota;
+    if (!quota) {
+      return false;
+    }
+
+    const exhaustedSlots: Array<"primary" | "secondary"> = [];
+    if (typeof quota.primaryUsedPercent === "number" && quota.primaryUsedPercent >= 100) {
+      exhaustedSlots.push("primary");
+    }
+    if (typeof quota.secondaryUsedPercent === "number" && quota.secondaryUsedPercent >= 100) {
+      exhaustedSlots.push("secondary");
+    }
+    if (exhaustedSlots.length === 0) {
+      return false;
+    }
+
+    const now = Date.now();
+    return exhaustedSlots.every((slot) => {
+      const resetAt = this.getQuotaResetAt(profile, slot);
+      return typeof resetAt === "number" && resetAt <= now;
+    });
+  }
+
+  private canEnterAutoSwitchPool(profile: OAuthProfile): boolean {
     if (profile.authStatus?.state === "token_invalidated" || profile.authStatus?.state === "auth_error") {
       return false;
     }
 
     const percents = this.getQuotaPercents(profile);
-    return percents.length > 0 && percents.every((value) => value < 100);
+    if (percents.length === 0) {
+      return false;
+    }
+
+    return percents.every((value) => value < 100) || this.hasResetElapsedForExhaustedQuota(profile);
   }
 
   private hasInvalidAuthStatus(profile: OAuthProfile): boolean {
@@ -308,7 +365,7 @@ export class AuthService {
       }))
       .filter((item) => item.profile.provider === provider && item.profile.profileId !== profile.profileId)
       .filter((item) => !excludedProfileIds.has(item.profile.profileId))
-      .filter((item) => this.hasKnownAvailableQuota(item.profile))
+      .filter((item) => this.canEnterAutoSwitchPool(item.profile))
       .sort((left, right) => {
         const leftCodexConflict = codexAccountId && left.profile.accountId === codexAccountId ? 1 : 0;
         const rightCodexConflict = codexAccountId && right.profile.accountId === codexAccountId ? 1 : 0;

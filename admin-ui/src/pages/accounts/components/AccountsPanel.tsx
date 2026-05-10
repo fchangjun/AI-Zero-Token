@@ -1,21 +1,25 @@
 import { Code2, Globe2, Loader2, RefreshCw, Search } from "lucide-react";
 import type { AdminConfig, ProfileSummary } from "@/shared/types";
 import { profileHealth, profileInitial, profileLabel, getPlanKey, isAuthInvalid, primaryUsage, quotaBarTone, resetLabel, resetTime, secondaryUsage, usageCorner, authStatusText, imageCapability, getPlanType } from "@/shared/lib/profiles";
-import type { BusyAction, ProfileFilter } from "@/shared/lib/app-types";
+import type { AccountStatItem, BusyAction, ProfileFilter } from "@/shared/lib/app-types";
 import { InfoRow } from "@/shared/components/InfoRow";
 import { formatFullTime } from "@/shared/lib/format";
 
 export function AccountsPanel(props: {
   config: AdminConfig | null;
   profiles: ProfileSummary[];
+  accountStats: AccountStatItem[];
   showEmails: boolean;
   filter: ProfileFilter;
   selectedProfiles: Record<string, boolean>;
   expandedProfiles: Record<string, boolean>;
   selectedCount: number;
+  visibleCount: number;
   busy: BusyAction;
   onFilter: (filter: ProfileFilter) => void;
   onSelect: (profileId: string, checked: boolean) => void;
+  onSelectVisible: () => void;
+  onClearSelected: () => void;
   onToggle: (profileId: string) => void;
   onAction: (action: "activate" | "apply-codex" | "sync-quota" | "remove" | "export", profile: ProfileSummary) => void;
   onLocate: () => void;
@@ -43,6 +47,12 @@ export function AccountsPanel(props: {
           <button className="btn-secondary" type="button" onClick={props.onExportSelected}>
             导出所选
           </button>
+          <button className="btn-secondary" type="button" onClick={props.onSelectVisible} disabled={props.visibleCount === 0}>
+            全选筛选结果
+          </button>
+          <button className="btn-secondary" type="button" onClick={props.onClearSelected} disabled={props.selectedCount === 0}>
+            取消选择
+          </button>
           <button className="btn-danger" type="button" onClick={props.onRemoveSelected} disabled={props.selectedCount === 0 || props.busy === "bulk-remove"}>
             删除所选
           </button>
@@ -58,6 +68,20 @@ export function AccountsPanel(props: {
         </div>
       </div>
 
+      <div className="account-stat-strip" aria-label="账号池统计">
+        {props.accountStats.map((item) => (
+          <button
+            className={`account-stat-pill tone-${item.tone} ${props.filter.status === item.key ? "is-active" : ""}`}
+            key={item.key}
+            type="button"
+            onClick={() => props.onFilter({ ...props.filter, status: item.key })}
+          >
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </button>
+        ))}
+      </div>
+
       <div className="filter-row">
         <label className="search-box">
           <Search size={16} />
@@ -65,12 +89,23 @@ export function AccountsPanel(props: {
         </label>
         <select className="control" value={props.filter.status} onChange={(event) => props.onFilter({ ...props.filter, status: event.target.value as ProfileFilter["status"] })}>
           <option value="all">全部状态</option>
+          <option value="available">可用</option>
+          <option value="unavailable">不可用</option>
           <option value="active">使用中</option>
+          <option value="api-active">API 使用中</option>
+          <option value="codex-active">Codex 使用中</option>
           <option value="healthy">健康</option>
           <option value="warning">即将耗尽</option>
           <option value="exhausted">额度耗尽</option>
-          <option value="invalid">登录失效</option>
+          <option value="invalid">登录/认证异常</option>
+          <option value="login-invalid">登录失效</option>
+          <option value="auth-error">认证异常</option>
           <option value="expired">已过期</option>
+          <option value="free">Free</option>
+          <option value="plus">Plus</option>
+          <option value="pro-team">Pro/Team</option>
+          <option value="auto-included">参与轮换</option>
+          <option value="auto-excluded">排除轮换</option>
         </select>
         <select className="control" value={props.filter.sort} onChange={(event) => props.onFilter({ ...props.filter, sort: event.target.value as ProfileFilter["sort"] })}>
           <option value="quota-desc">默认排序</option>

@@ -26,8 +26,33 @@ export type ResultTab = "response" | "timing" | "preview";
 
 export type ProfileFilter = {
   search: string;
-  status: "all" | "active" | "healthy" | "warning" | "exhausted" | "expired" | "invalid";
+  status:
+    | "all"
+    | "active"
+    | "healthy"
+    | "warning"
+    | "exhausted"
+    | "expired"
+    | "invalid"
+    | "login-invalid"
+    | "auth-error"
+    | "available"
+    | "unavailable"
+    | "free"
+    | "plus"
+    | "pro-team"
+    | "api-active"
+    | "codex-active"
+    | "auto-included"
+    | "auto-excluded";
   sort: "quota-desc" | "latency-asc" | "expiry-asc" | "name-asc" | "quota-asc" | "plan-desc" | "email-asc";
+};
+
+export type AccountStatItem = {
+  key: ProfileFilter["status"];
+  label: string;
+  value: number;
+  tone: "blue" | "green" | "orange" | "red" | "muted" | "brand";
 };
 
 export type TrendWindow = 60 | 180 | 720;
@@ -44,6 +69,7 @@ export type SettingDraft = {
   autoSwitchEnabled: boolean;
   autoSwitchExcludedProfileIds: string[];
   quotaSyncConcurrency: string;
+  freeAccountWebGenerationEnabled: boolean;
   serverPort: string;
 };
 

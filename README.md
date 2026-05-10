@@ -20,11 +20,12 @@ AI Zero Token provides a local CLI, web console, and HTTP gateway that expose sa
 - Multi-account management in the web console.
 - Account JSON import/export, including ZIP batch import, selected batch export, and export audit indicators.
 - Apply a saved account to local Codex by backing up and updating `~/.codex/auth.json`.
-- `gpt-image-2` image generation and JSON image editing through the ChatGPT internal Responses path.
+- `gpt-image-2` image generation and JSON image editing. Paid plans use the Codex Responses image tool; Free plans can optionally use the ChatGPT web image path from Settings.
 - Optional quota-exhaustion auto switch to the next saved API account with available quota, plus configurable quota refresh concurrency.
 - Optional upstream proxy configuration for OAuth, model refresh, and gateway forwarding.
 - Local model discovery from the Codex model cache with manual refresh support.
 - OpenClaw-oriented chat compatibility for streaming, tool calls, tool result messages, and request-log diagnostics.
+- Persistent local usage statistics for known token usage, images, success/failure counts, latency, and account/model/endpoint breakdowns.
 
 ## Architecture
 
@@ -96,6 +97,7 @@ The web console is the recommended entry point:
 - Enable automatic account switching when the active API account has exhausted its recorded quota.
 - Tune global quota refresh concurrency for larger account pools.
 - Test `models`, `responses`, `chat.completions`, `images.generations`, and `images.edits`.
+- Review local usage statistics for today, the current gateway process, and lifetime totals.
 - See a global update banner when a newer version is available, with separate GitHub desktop release and npm update paths.
 
 ![AI Zero Token admin dashboard](docs/images/admin-dashboard.jpg)
@@ -158,6 +160,8 @@ openai_base_url = "http://127.0.0.1:8787/codex/v1"
 This keeps Codex on its native `openai` provider id and only replaces `openai_base_url`, so local conversation history remains in the same Codex history view.
 
 If you want Codex to show a separate `AI Zero Token` provider, choose that mode in Settings. It writes a `[model_providers.ai-zero-token]` block instead of `openai_base_url`.
+
+When a Codex request includes the `image_generation` tool, Plus, Team, Pro, and other paid plans keep using the Codex Responses image tool. If `Free account image generation` is enabled in Settings, Free plans use the ChatGPT web image path and receive a synthetic Codex-compatible Responses SSE stream. This handles the upstream service split where a Free account may still have ChatGPT image quota but not the Codex `image_generation` tool.
 
 ### Image Generation
 
@@ -275,16 +279,16 @@ AZT_BODY_LIMIT_MB=64 azt start
 
 ## Image Limits
 
-ChatGPT Images availability and limits are controlled by the upstream account. Free accounts can attempt image generation, but rate limits and feature availability are stricter than paid plans and are not published as fixed public numbers. The gateway forwards image requests and surfaces the upstream response, for example `usage_limit_reached` with reset information.
+ChatGPT Images availability and limits are controlled by the upstream account. Plus, Team, Pro, and other paid plans use the Codex Responses `image_generation` tool. Free accounts only use the ChatGPT web image path when `Free account image generation` is enabled in Settings; otherwise they keep the original Codex image-tool path. Free limits are stricter than paid plans and are not published as fixed public numbers; if the web image path is also exhausted, the gateway surfaces the upstream response.
 
-Image requests use `gpt-5.4-mini` as the internal orchestration model and pass the requested image model, such as `gpt-image-2`, to the `image_generation` tool.
+Paid-plan image requests use `gpt-5.4-mini` as the internal orchestration model and pass the requested image model, such as `gpt-image-2`, to the `image_generation` tool. Free-plan web image requests convert the same input to a ChatGPT web image task.
 
 For JSON image editing, base64 payloads are about 33% larger than the original image. With the default `32 MiB` body limit, a raw image around `24 MiB` is the practical upper bound before JSON overhead. For larger images or batch workflows, prefer a reachable image URL.
 
 ## Limitations
 
 - This project is intended for local single-user use.
-- `/v1/chat/completions` supports OpenAI-style SSE for `stream=true`; Codex custom providers use the dedicated `/codex/v1/responses` route for upstream Responses SSE passthrough.
+- `/v1/chat/completions` supports OpenAI-style SSE for `stream=true`; Codex custom providers use the dedicated `/codex/v1/responses` and `/codex/v1/responses/compact` routes for upstream Responses SSE passthrough.
 - `/v1/chat/completions` supports common tool/function-calling fields, but `n > 1` is not supported.
 - `/v1/images/generations` currently returns `b64_json`; hosted image URLs are not supported.
 - `/v1/images/generations` does not support `n > 1`.
