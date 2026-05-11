@@ -157,7 +157,7 @@ ai-zero-token help
 先做 dry run：
 
 ```bash
-npm pack --dry-run
+npm run pack:dry
 ```
 
 这里主要看 3 件事：
@@ -179,6 +179,62 @@ ai-zero-token-1.0.0.tgz
 ```
 
 这个文件就是以后真正发布到 npm 的本地近似物。
+
+## 标准 npm 发布流程
+
+用户说“发布新版本”“提交发布”“发新版”时，默认执行完整 npm 发布流程，而不是只提交代码。
+
+### 1. 确认版本与变更
+
+确认并更新：
+
+- `package.json`
+- `package-lock.json`
+- `CHANGELOG.md`
+
+### 2. 发布前验证
+
+```bash
+npm run typecheck
+npm run build
+npm run pack:dry
+```
+
+`pack:dry` 需要确认：
+
+- `dist/` 在包内
+- `admin-ui/dist/` 在包内
+- `CHANGELOG.md` 和主要文档在包内
+- `.state/`、`src/`、`tmp/`、`release/`、`node_modules/` 不在包内
+
+### 3. Git 提交与标签
+
+```bash
+git status --short
+git add package.json package-lock.json CHANGELOG.md
+git commit -m "Release vX.Y.Z"
+git tag vX.Y.Z
+```
+
+不要把无关的未跟踪文件带进发布提交。
+
+### 4. npm 发布与校验
+
+```bash
+npm publish
+npm view ai-zero-token version
+```
+
+确认 npm 返回的新版本就是 `X.Y.Z`。
+
+### 5. 推送远端
+
+```bash
+git push origin master
+git push origin vX.Y.Z
+```
+
+如果本机安装了 GitHub CLI，再创建或更新对应 GitHub Release；如果没有安装，需要在结果里明确说明只完成了 npm 发布、git commit/tag/push，GitHub Release 页面未创建。
 
 ## 常见问题
 
