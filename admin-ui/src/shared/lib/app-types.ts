@@ -14,6 +14,7 @@ export type BusyAction =
   | "proxy"
   | "models"
   | "codex-provider"
+  | "codex-share"
   | "test"
   | "image-bed-save"
   | "image-bed-test"

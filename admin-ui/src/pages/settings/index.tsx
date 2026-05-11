@@ -1,14 +1,22 @@
-import { Globe2, Loader2, MonitorCog, PlugZap, RefreshCw, Search, Unplug } from "lucide-react";
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { Globe2, Loader2, MonitorCog, PlugZap, RefreshCw, Search, Share2, Unplug } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { fetchJson } from "@/shared/api";
-import type { AdminConfig, ProfileSummary } from "@/shared/types";
+import type { AdminConfig, GatewayShareInfo, ProfileSummary } from "@/shared/types";
 import type { BusyAction, SettingDraft } from "@/shared/lib/app-types";
-import { errorMessage } from "@/shared/lib/app-utils";
+import { copyText, errorMessage } from "@/shared/lib/app-utils";
 import { formatJson } from "@/shared/lib/format";
 import { getPlanType, isAuthInvalid, isQuotaExhausted, profileHealth, profileLabel } from "@/shared/lib/profiles";
 
 type CodexGatewayMode = "local" | "remote";
 type CodexProviderMode = "openai" | "ai-zero-token";
+type ShareGatewayFeedback = {
+  tone: "success" | "warning";
+  title: string;
+  detail: string;
+  codexUrl?: string;
+  baseUrl?: string;
+  apiKey?: string;
+};
 
 function normalizeCodexProviderMode(value?: string | null): CodexProviderMode {
   return value === "ai-zero-token" ? "ai-zero-token" : "openai";
@@ -121,7 +129,16 @@ export function SettingsPage(props: {
   const [autoSwitchSearch, setAutoSwitchSearch] = useState("");
   const [codexProviderMode, setCodexProviderMode] = useState<CodexProviderMode>("openai");
   const [codexProviderModeTouched, setCodexProviderModeTouched] = useState(false);
+  const [shareGatewayFeedback, setShareGatewayFeedback] = useState<ShareGatewayFeedback | null>(null);
+  const [shareGatewayCopied, setShareGatewayCopied] = useState(false);
+  const shareGatewayCopiedTimer = useRef<number | null>(null);
   const settingsDirty = settingsDirtyFields.size > 0;
+
+  useEffect(() => () => {
+    if (shareGatewayCopiedTimer.current) {
+      window.clearTimeout(shareGatewayCopiedTimer.current);
+    }
+  }, []);
 
   useEffect(() => {
     if (!props.config || settingsDirty) {
@@ -319,6 +336,83 @@ export function SettingsPage(props: {
     }
   }
 
+  async function shareGateway() {
+    props.setBusy("codex-share");
+    setShareGatewayCopied(false);
+    setShareGatewayFeedback(null);
+    if (shareGatewayCopiedTimer.current) {
+      window.clearTimeout(shareGatewayCopiedTimer.current);
+      shareGatewayCopiedTimer.current = null;
+    }
+    try {
+      const share = await fetchJson<GatewayShareInfo>("/_gateway/admin/share");
+      if (!share.primary) {
+        const message = share.lanReachable
+          ? "没有检测到可分享的局域网地址。请确认设备已连接 Wi-Fi 或局域网。"
+          : `当前网关只允许本机访问，不能分享给局域网设备。请把网关监听地址从 ${share.serverHost} 改为 0.0.0.0 后重启。`;
+        setShareGatewayFeedback({
+          tone: "warning",
+          title: "不能分享代理配置",
+          detail: message,
+        });
+        props.setStatus(message);
+        return;
+      }
+
+      const alternatives = share.addresses
+        .slice(1)
+        .map((item) => `备用 Codex 远程网关 URL:\n${item.codexBaseUrl}`)
+        .join("\n\n");
+      const shareText = [
+        "AI Zero Token 代理配置",
+        "",
+        "Codex 远程网关 URL:",
+        share.primary.codexBaseUrl,
+        "",
+        "OpenAI 兼容 Base URL:",
+        share.primary.baseUrl,
+        "",
+        "API Key:",
+        "任意值，例如 local",
+        "",
+        "说明:",
+        "远程请求会消耗这台网关机器上保存的账号额度。",
+        "请确认两台设备在同一局域网，且防火墙允许访问该端口。",
+        ...(alternatives ? ["", alternatives] : []),
+      ].join("\n");
+
+      const copied = await copyText(shareText);
+      if (copied) {
+        setShareGatewayCopied(true);
+        shareGatewayCopiedTimer.current = window.setTimeout(() => {
+          setShareGatewayCopied(false);
+          shareGatewayCopiedTimer.current = null;
+        }, 2000);
+      }
+      setShareGatewayFeedback({
+        tone: copied ? "success" : "warning",
+        title: copied ? "代理配置已复制" : "复制失败，请手动复制",
+        detail: copied
+          ? "把这段配置发给对方。对方在 AI Zero Token 的「远程网关」里填 Codex 地址，OpenAI 兼容客户端填 Base URL。"
+          : "浏览器未允许写入剪贴板，请手动复制下面的代理配置。",
+        codexUrl: share.primary.codexBaseUrl,
+        baseUrl: share.primary.baseUrl,
+        apiKey: "任意值，例如 local",
+      });
+      props.setStatus(copied ? `代理配置已复制：${share.primary.codexBaseUrl}` : shareText);
+    } catch (error) {
+      const message = errorMessage(error);
+      setShareGatewayFeedback({
+        tone: "warning",
+        title: "代理配置生成失败",
+        detail: message,
+      });
+      props.setStatus(message);
+    } finally {
+      props.setBusy(null);
+    }
+  }
+
   async function promptCodexRestart(options: {
     config?: AdminConfig | null;
     confirmMessage: string;
@@ -439,6 +533,7 @@ export function SettingsPage(props: {
   const selectedProviderWriteTarget = codexProviderWriteTarget(codexProviderMode);
   const codexProviderActive = Boolean(props.config?.codex.gatewayProvider?.active);
   const codexProviderBusy = props.busy === "codex-provider";
+  const codexShareBusy = props.busy === "codex-share";
   const localCodexGatewayUrl = getLocalCodexGatewayUrl(props.config);
   const selectedCodexGatewayUrl = codexGatewayMode === "local" ? localCodexGatewayUrl : codexGatewayUrl;
   const normalizedSelectedCodexGatewayUrl = normalizeCodexGatewayUrlSafe(selectedCodexGatewayUrl);
@@ -535,6 +630,10 @@ export function SettingsPage(props: {
             </label>
 
             <div className="codex-provider-actions">
+              <button className="btn-secondary share-gateway-button" type="button" onClick={shareGateway} disabled={codexShareBusy}>
+                {codexShareBusy ? <Loader2 className="spin" size={16} /> : <Share2 size={16} />}
+                {codexShareBusy ? "生成中" : shareGatewayCopied ? "已复制" : "复制代理配置"}
+              </button>
               <button className="btn-secondary" type="button" onClick={() => selectCodexGatewayMode("local")}>
                 <MonitorCog size={16} />
                 使用本机地址
@@ -551,6 +650,33 @@ export function SettingsPage(props: {
               </button>
             </div>
           </div>
+
+          {shareGatewayFeedback ? (
+            <div className={`share-gateway-feedback ${shareGatewayFeedback.tone === "success" ? "is-success" : "is-warning"}`} role="status" aria-live="polite">
+              <strong>{shareGatewayFeedback.title}</strong>
+              <span>{shareGatewayFeedback.detail}</span>
+              <div className="share-gateway-config-list">
+                {shareGatewayFeedback.codexUrl ? (
+                  <div>
+                    <span>Codex 远程网关 URL</span>
+                    <code>{shareGatewayFeedback.codexUrl}</code>
+                  </div>
+                ) : null}
+                {shareGatewayFeedback.baseUrl ? (
+                  <div>
+                    <span>OpenAI 兼容 Base URL</span>
+                    <code>{shareGatewayFeedback.baseUrl}</code>
+                  </div>
+                ) : null}
+                {shareGatewayFeedback.apiKey ? (
+                  <div>
+                    <span>API Key</span>
+                    <code>{shareGatewayFeedback.apiKey}</code>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <p className="hint">
             可直接输入 IP:端口，系统会自动补全为 http://IP:端口/codex/v1。当前将写入 <code>{selectedProviderWriteTarget}</code>：<code>{normalizedSelectedCodexGatewayUrl || "-"}</code>

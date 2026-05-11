@@ -202,6 +202,79 @@
   gap: 10px;
 }
 
+.share-gateway-button {
+  color: #047857;
+  border-color: rgba(5, 150, 105, 0.24);
+  background: #ecfdf5;
+}
+
+.share-gateway-button:hover {
+  border-color: rgba(5, 150, 105, 0.36);
+  background: #d1fae5;
+}
+
+.share-gateway-feedback {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.share-gateway-feedback strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.share-gateway-feedback span {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.share-gateway-feedback code {
+  color: var(--text);
+  overflow-wrap: anywhere;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.share-gateway-config-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.share-gateway-config-list div {
+  display: grid;
+  gap: 3px;
+}
+
+.share-gateway-config-list span {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.share-gateway-config-list code {
+  display: block;
+  padding: 0;
+  background: transparent;
+}
+
+.share-gateway-feedback.is-success {
+  border-color: rgba(5, 150, 105, 0.26);
+  background: #ecfdf5;
+}
+
+.share-gateway-feedback.is-warning {
+  border-color: rgba(245, 158, 11, 0.3);
+  background: #fff7ed;
+}
+
 .codex-provider-meta-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

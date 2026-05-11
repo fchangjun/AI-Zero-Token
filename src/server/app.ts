@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
+import { networkInterfaces } from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { promisify } from "node:util";
@@ -67,6 +68,14 @@ type GatewayRequestUsageMeta = {
   imageCount?: number;
   imageRoute?: UsageImageRoute;
   errorType?: string;
+};
+
+type GatewayShareAddress = {
+  host: string;
+  label: string;
+  adminUrl: string;
+  baseUrl: string;
+  codexBaseUrl: string;
 };
 
 type CodexImageGenerationRequest = {
@@ -1411,6 +1420,65 @@ function resolveOrigin(request: FastifyRequest): string {
   return "http://127.0.0.1:8787";
 }
 
+function isLoopbackHost(host: string): boolean {
+  return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+
+function isPrivateIpv4(address: string): boolean {
+  if (address.startsWith("10.")) {
+    return true;
+  }
+  if (address.startsWith("192.168.")) {
+    return true;
+  }
+  const match = address.match(/^172\.(\d+)\./);
+  if (!match) {
+    return false;
+  }
+  const second = Number.parseInt(match[1] ?? "", 10);
+  return second >= 16 && second <= 31;
+}
+
+function getLanIpv4Addresses(): Array<{ address: string; label: string }> {
+  const seen = new Set<string>();
+  const addresses: Array<{ address: string; label: string; private: boolean }> = [];
+  const interfaces = networkInterfaces();
+
+  for (const [name, details] of Object.entries(interfaces)) {
+    for (const detail of details ?? []) {
+      const family = String(detail.family);
+      const isIpv4 = family === "IPv4" || family === "4";
+      if (!isIpv4 || detail.internal || seen.has(detail.address)) {
+        continue;
+      }
+      if (detail.address === "0.0.0.0" || detail.address.startsWith("127.") || detail.address.startsWith("169.254.")) {
+        continue;
+      }
+      seen.add(detail.address);
+      addresses.push({
+        address: detail.address,
+        label: name,
+        private: isPrivateIpv4(detail.address),
+      });
+    }
+  }
+
+  return addresses
+    .sort((left, right) => Number(right.private) - Number(left.private) || left.address.localeCompare(right.address, "en"))
+    .map(({ address, label }) => ({ address, label }));
+}
+
+function createShareAddress(protocol: string, host: string, port: number, label: string): GatewayShareAddress {
+  const origin = `${protocol}://${host}:${port}`;
+  return {
+    host,
+    label,
+    adminUrl: `${origin}/`,
+    baseUrl: `${origin}/v1`,
+    codexBaseUrl: `${origin}/codex/v1`,
+  };
+}
+
 function normalizeError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
@@ -1824,6 +1892,29 @@ export function createApp(params?: {
   });
 
   app.get("/_gateway/admin/config", async (request) => buildAdminConfig(request));
+
+  app.get("/_gateway/admin/share", async (request) => {
+    const status = await ctx.authService.getStatus();
+    const protocol = request.protocol === "https" ? "https" : "http";
+    const port = request.raw.socket.localPort || status.serverPort;
+    const serverHost = status.serverHost || "0.0.0.0";
+    const lanReachable = serverHost === "0.0.0.0" || serverHost === "::" || !isLoopbackHost(serverHost);
+    const addresses = getLanIpv4Addresses().map((item) => createShareAddress(protocol, item.address, port, item.label));
+    const requestHost = request.headers.host?.replace(/:\d+$/u, "");
+
+    if (requestHost && !isLoopbackHost(requestHost) && !addresses.some((item) => item.host === requestHost)) {
+      addresses.unshift(createShareAddress(protocol, requestHost, port, "当前访问地址"));
+    }
+
+    return {
+      primary: lanReachable ? addresses[0] ?? null : null,
+      addresses,
+      local: createShareAddress(protocol, "127.0.0.1", port, "本机"),
+      serverHost,
+      serverPort: port,
+      lanReachable,
+    };
+  });
 
   app.post("/_gateway/admin/login", async (request) => {
     await ctx.authService.login("openai-codex");

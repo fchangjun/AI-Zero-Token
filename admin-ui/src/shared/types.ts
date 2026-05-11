@@ -117,6 +117,23 @@ export type SupportedEndpoint = {
   description: string;
 };
 
+export type GatewayShareAddress = {
+  host: string;
+  label: string;
+  adminUrl: string;
+  baseUrl: string;
+  codexBaseUrl: string;
+};
+
+export type GatewayShareInfo = {
+  primary: GatewayShareAddress | null;
+  addresses: GatewayShareAddress[];
+  local: GatewayShareAddress;
+  serverHost: string;
+  serverPort: number;
+  lanReachable: boolean;
+};
+
 export type UsageAggregate = {
   requestCount: number;
   successCount: number;
