@@ -52,12 +52,13 @@ export function AccountsPage(props: {
       if (filter.status === "active") return profile.isActive || codexActive;
       if (filter.status === "healthy") return health.key === "healthy";
       if (filter.status === "warning") return health.key === "warning";
+      if (filter.status === "unknown") return health.key === "unknown";
       if (filter.status === "exhausted") return health.key === "exhausted";
       if (filter.status === "expired") return health.key === "expired";
       if (filter.status === "invalid") return health.key === "invalid";
       if (filter.status === "login-invalid") return profile.authStatus?.state === "token_invalidated";
       if (filter.status === "auth-error") return profile.authStatus?.state === "auth_error";
-      if (filter.status === "available") return health.key === "healthy" || health.key === "warning";
+      if (filter.status === "available") return health.key === "healthy" || health.key === "warning" || health.key === "unknown";
       if (filter.status === "unavailable") return health.key === "invalid" || health.key === "expired" || health.key === "exhausted";
       if (filter.status === "free") return planKey === "free";
       if (filter.status === "plus") return planKey === "plus";
@@ -94,8 +95,9 @@ export function AccountsPage(props: {
     const codexActiveCount = count((profile) => Boolean(props.codexAccountId && profile.accountId === props.codexAccountId));
     return [
       { key: "all", label: "总账号", value: profiles.length, tone: "blue" },
-      { key: "available", label: "可用", value: count((profile) => ["healthy", "warning"].includes(profileHealth(profile).key)), tone: "green" },
+      { key: "available", label: "可用", value: count((profile) => ["healthy", "warning", "unknown"].includes(profileHealth(profile).key)), tone: "green" },
       { key: "unavailable", label: "不可用", value: count((profile) => ["invalid", "expired", "exhausted"].includes(profileHealth(profile).key)), tone: "red" },
+      { key: "unknown", label: "待请求验证", value: count((profile) => profileHealth(profile).key === "unknown"), tone: "blue" },
       { key: "login-invalid", label: "登录失效", value: count((profile) => profile.authStatus?.state === "token_invalidated"), tone: "red" },
       { key: "auth-error", label: "认证异常", value: count((profile) => profile.authStatus?.state === "auth_error"), tone: "red" },
       { key: "exhausted", label: "额度耗尽", value: count((profile) => profileHealth(profile).key === "exhausted"), tone: "orange" },

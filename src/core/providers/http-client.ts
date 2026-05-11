@@ -45,6 +45,18 @@ type StreamRequestInit = TextRequestInit & {
 
 type NetworkProxySettings = GatewaySettings["networkProxy"];
 
+type HttpTransportError = Error & {
+  code?: string;
+  elapsedMs?: number;
+  isTransient?: boolean;
+  method?: string;
+  requestId?: string;
+  statusCode?: number;
+  transport?: "curl" | "fetch";
+  upstreamConnectionError?: boolean;
+  url?: string;
+};
+
 const CURL_STATUS_MARKER = "\n__CURL_STATUS__:";
 const CURL_HEADERS_MARKER = "\n__CURL_HEADERS__:";
 const DEFAULT_CURL_STREAM_HEADER_TIMEOUT_MS = 180_000;
@@ -116,6 +128,99 @@ function logHttpTiming(params: {
   });
 }
 
+function createHttpTransportError(
+  message: string,
+  params: {
+    code: string;
+    elapsedMs: number;
+    method: TextRequestInit["method"];
+    requestId: string;
+    statusCode: number;
+    transport: "curl" | "fetch";
+    transient?: boolean;
+    upstreamConnectionError?: boolean;
+    url: string;
+  },
+): HttpTransportError {
+  const error = new Error(message) as HttpTransportError;
+  error.code = params.code;
+  error.elapsedMs = roundMs(params.elapsedMs);
+  error.isTransient = params.transient ?? true;
+  error.method = params.method;
+  error.requestId = params.requestId;
+  error.statusCode = params.statusCode;
+  error.transport = params.transport;
+  error.upstreamConnectionError = params.upstreamConnectionError ?? true;
+  error.url = params.url;
+  return error;
+}
+
+function classifyCurlRequestError(stderr: string, exitCode: number): { code: string; statusCode: number } {
+  const normalized = stderr.toLowerCase();
+  if (exitCode === 35 || normalized.includes("ssl_connect") || normalized.includes("ssl_error_syscall")) {
+    return {
+      code: "curl_request_tls_failed",
+      statusCode: 502,
+    };
+  }
+  if (
+    exitCode === 6 ||
+    normalized.includes("could not resolve host") ||
+    normalized.includes("name lookup timed out")
+  ) {
+    return {
+      code: "curl_request_dns_failed",
+      statusCode: 502,
+    };
+  }
+  if (
+    exitCode === 7 ||
+    normalized.includes("failed to connect") ||
+    normalized.includes("connection refused")
+  ) {
+    return {
+      code: "curl_request_connect_failed",
+      statusCode: 502,
+    };
+  }
+  if (exitCode === 28 || normalized.includes("operation timed out") || normalized.includes("timed out")) {
+    return {
+      code: "curl_request_timeout",
+      statusCode: 504,
+    };
+  }
+  return {
+    code: "curl_request_failed",
+    statusCode: 502,
+  };
+}
+
+export function isTransientHttpError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const details = error as {
+    code?: unknown;
+    isTransient?: unknown;
+    upstreamConnectionError?: unknown;
+  };
+  if (details.isTransient === true || details.upstreamConnectionError === true) {
+    return true;
+  }
+
+  return typeof details.code === "string" && (
+    details.code === "curl_stream_closed_before_headers" ||
+    details.code === "curl_stream_header_timeout" ||
+    details.code === "curl_stream_body_failed" ||
+    details.code === "curl_request_tls_failed" ||
+    details.code === "curl_request_dns_failed" ||
+    details.code === "curl_request_connect_failed" ||
+    details.code === "curl_request_timeout" ||
+    details.code === "curl_request_failed"
+  );
+}
+
 function isElectronRuntime(): boolean {
   return typeof (process.versions as Record<string, string | undefined>).electron === "string";
 }
@@ -151,17 +256,7 @@ function normalizeCurlHeaders(value: unknown): Record<string, string> {
   );
 }
 
-function parseCurlHeaderDump(raw: string): { status: number; headers: Record<string, string> } | null {
-  const blocks = raw
-    .replace(/\r\n/g, "\n")
-    .split(/\n\n+/)
-    .map((block) => block.trim())
-    .filter((block) => /^HTTP\//i.test(block));
-  const block = blocks[blocks.length - 1];
-  if (!block) {
-    return null;
-  }
-
+function parseCurlHeaderBlock(block: string): { status: number; headers: Record<string, string> } | null {
   const lines = block.split("\n");
   const statusMatch = /^HTTP(?:\/\S+)?\s+(\d{3})/i.exec(lines[0]?.trim() ?? "");
   const status = statusMatch ? Number.parseInt(statusMatch[1], 10) : NaN;
@@ -185,6 +280,39 @@ function parseCurlHeaderDump(raw: string): { status: number; headers: Record<str
   }
 
   return { status, headers };
+}
+
+function parseCurlHeaderDump(raw: string): { status: number; headers: Record<string, string> } | null {
+  const normalized = raw.replace(/\r\n/g, "\n");
+  const blocks: string[] = [];
+  let blockStart = 0;
+
+  while (blockStart < normalized.length) {
+    const separatorIndex = normalized.indexOf("\n\n", blockStart);
+    if (separatorIndex === -1) {
+      break;
+    }
+
+    const block = normalized.slice(blockStart, separatorIndex).trim();
+    if (/^HTTP\//i.test(block)) {
+      blocks.push(block);
+    }
+
+    blockStart = separatorIndex + 2;
+    while (normalized[blockStart] === "\n") {
+      blockStart += 1;
+    }
+  }
+
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const parsed = parseCurlHeaderBlock(blocks[index]);
+    if (!parsed || (parsed.status >= 100 && parsed.status < 200)) {
+      continue;
+    }
+    return parsed;
+  }
+
+  return null;
 }
 
 async function runCurlRequest(
@@ -259,7 +387,20 @@ async function runCurlRequest(
   phases.waitForCurlMs = performance.now() - startedAt - phases.spawnCurlMs;
 
   if (exitCode !== 0) {
-    throw new Error(stderr.trim() || `curl 请求失败，退出码 ${exitCode}`);
+    const stderrText = stderr.trim();
+    const classification = classifyCurlRequestError(stderrText, exitCode);
+    throw createHttpTransportError(
+      stderrText || `curl 请求失败，退出码 ${exitCode}（requestId=${requestId}）。`,
+      {
+        code: classification.code,
+        elapsedMs: performance.now() - startedAt,
+        method: init.method,
+        requestId,
+        statusCode: classification.statusCode,
+        transport: "curl",
+        url: init.url,
+      },
+    );
   }
 
   const parseStartedAt = performance.now();
@@ -318,10 +459,13 @@ async function runCurlRequest(
 
 async function waitForCurlHeaders(params: {
   headerPath: string;
+  method: TextRequestInit["method"];
   isClosed: () => boolean;
+  exitCode: () => number;
   stderr: () => string;
   requestId: string;
   timeoutMs: number;
+  url: string;
 }): Promise<{ status: number; headers: Record<string, string> }> {
   const startedAt = performance.now();
   while (performance.now() - startedAt < params.timeoutMs) {
@@ -329,6 +473,10 @@ async function waitForCurlHeaders(params: {
       const raw = await fs.readFile(params.headerPath, "utf8");
       const parsed = parseCurlHeaderDump(raw);
       if (parsed) {
+        if (parsed.status >= 300 && parsed.status < 400 && !params.isClosed()) {
+          await new Promise((resolve) => setTimeout(resolve, 25));
+          continue;
+        }
         return parsed;
       }
     } catch {
@@ -336,15 +484,37 @@ async function waitForCurlHeaders(params: {
     }
 
     if (params.isClosed()) {
-      throw new Error(params.stderr().trim() || "curl stream 请求在返回响应头前结束。");
+      const stderr = params.stderr().trim();
+      const exitCode = params.exitCode();
+      throw createHttpTransportError(
+        stderr || `curl stream 请求在返回响应头前结束（requestId=${params.requestId}${exitCode ? `, exitCode=${exitCode}` : ""}）。`,
+        {
+          code: "curl_stream_closed_before_headers",
+          elapsedMs: performance.now() - startedAt,
+          method: params.method,
+          requestId: params.requestId,
+          statusCode: 502,
+          transport: "curl",
+          url: params.url,
+        },
+      );
     }
 
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
 
   const stderr = params.stderr().trim();
-  throw new Error(
+  throw createHttpTransportError(
     `等待 curl stream 响应头超时（${Math.round(params.timeoutMs / 1000)} 秒，requestId=${params.requestId}）。${stderr ? ` ${stderr}` : ""}`,
+    {
+      code: "curl_stream_header_timeout",
+      elapsedMs: performance.now() - startedAt,
+      method: params.method,
+      requestId: params.requestId,
+      statusCode: 504,
+      transport: "curl",
+      url: params.url,
+    },
   );
 }
 
@@ -436,7 +606,18 @@ async function runCurlStream(
     init.signal?.removeEventListener("abort", abort);
     void fs.unlink(headerPath).catch(() => undefined);
     if (exitCode !== 0 && !init.signal?.aborted) {
-      body.destroy(new Error(stderr.trim() || `curl stream 请求失败，退出码 ${exitCode}`));
+      body.destroy(createHttpTransportError(
+        stderr.trim() || `curl stream 请求失败，退出码 ${exitCode}（requestId=${requestId}）。`,
+        {
+          code: "curl_stream_body_failed",
+          elapsedMs: performance.now() - startedAt,
+          method: init.method,
+          requestId,
+          statusCode: 502,
+          transport: "curl",
+          url: init.url,
+        },
+      ));
     }
   });
 
@@ -444,10 +625,13 @@ async function runCurlStream(
   try {
     parsed = await waitForCurlHeaders({
       headerPath,
+      method: init.method,
       isClosed: () => closed,
+      exitCode: () => exitCode,
       stderr: () => stderr,
       requestId,
       timeoutMs: getCurlStreamHeaderTimeoutMs(params?.timeoutMs),
+      url: init.url,
     });
   } catch (error) {
     child.kill("SIGTERM");

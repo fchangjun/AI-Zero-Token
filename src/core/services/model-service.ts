@@ -1,12 +1,17 @@
 import {
   getCodexModelCatalog,
   hasCodexModel,
+  refreshCodexModelCatalogFromNetwork,
 } from "../models/openai-codex-models.js";
 import type { ModelCatalogInfo, ModelInfo, ProviderId } from "../types.js";
+import type { AuthService } from "./auth-service.js";
 import { ConfigService } from "./config-service.js";
 
 export class ModelService {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly authService: AuthService,
+  ) {}
 
   async listModels(provider: ProviderId = "openai-codex"): Promise<ModelInfo[]> {
     if (provider !== "openai-codex") {
@@ -39,17 +44,31 @@ export class ModelService {
       throw new Error(`暂不支持 provider: ${provider}`);
     }
 
-    const [{ models, catalog }, defaultModel] = await Promise.all([
-      getCodexModelCatalog(),
-      this.configService.getDefaultModel(provider),
-    ]);
+    const profile = await this.authService.requireUsableProfile(provider, {
+      skipAutoSwitch: true,
+    });
+
+    let result: { models: ModelInfo[]; catalog: ModelCatalogInfo };
+    try {
+      result = await refreshCodexModelCatalogFromNetwork(profile);
+      await this.authService.recordProfileRequestSuccess(profile.profileId, undefined, provider, {
+        skipAutoSwitch: true,
+      });
+    } catch (error) {
+      await this.authService.recordProfileRequestFailure(profile.profileId, error, undefined, provider, {
+        skipAutoSwitch: true,
+      });
+      throw error;
+    }
+
+    const defaultModel = await this.configService.getDefaultModel(provider);
 
     return {
-      models: models.map((model) => ({
+      models: result.models.map((model) => ({
         ...model,
         isDefault: model.id === defaultModel,
       })),
-      catalog,
+      catalog: result.catalog,
     };
   }
 

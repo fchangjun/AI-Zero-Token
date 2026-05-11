@@ -19,7 +19,7 @@ export function printHelp(): void {
 说明:
 
   login   走真实 OpenAI Codex OAuth，新增并保存一个账号 profile
-  models  查看当前可用模型列表；优先读取 ~/.codex/models_cache.json，--refresh 可手动重读
+  models  查看当前可用模型列表；优先读取 ~/.codex/models_cache.json，--refresh 从 Codex 后端同步
   profiles 导入/导出账号 JSON；导出文件包含完整 refresh token，请只分享给可信对象
   status  查看当前 demo 当前激活账号、账号数量和过期时间
   ask     用保存的 token 调真实 Codex Responses API

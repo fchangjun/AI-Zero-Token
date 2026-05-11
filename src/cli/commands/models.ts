@@ -10,8 +10,13 @@ export async function runModelsCommand(args: string[] = []): Promise<void> {
         catalog: await ctx.modelService.getCatalog(),
       };
 
-  console.log(refresh ? "已重新读取 Codex 模型列表:" : "当前 demo 可用模型列表:");
-  console.log(`- 来源: ${result.catalog.source === "codex-cache" ? "Codex 本地缓存" : "项目内置回退列表"}`);
+  console.log(refresh ? "已从网络同步 Codex 模型列表:" : "当前 demo 可用模型列表:");
+  const sourceLabel = result.catalog.source === "codex-network"
+    ? "Codex 网络同步"
+    : result.catalog.source === "codex-cache"
+      ? "Codex 本地缓存"
+      : "项目内置回退列表";
+  console.log(`- 来源: ${sourceLabel}`);
   console.log(`- 路径: ${result.catalog.cachePath}`);
   if (result.catalog.fetchedAt) {
     console.log(`- Codex 更新时间: ${result.catalog.fetchedAt}`);

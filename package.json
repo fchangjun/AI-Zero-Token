@@ -1,6 +1,6 @@
 {
   "name": "ai-zero-token",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": "Local-first OpenAI-compatible AI CLI and gateway with Codex OAuth, multi-account management, and gpt-image-2 image generation/editing.",
   "license": "MIT",
   "author": "AI Zero Token Contributors",

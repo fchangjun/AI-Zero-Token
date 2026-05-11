@@ -306,9 +306,12 @@ export function SettingsPage(props: {
   async function refreshModels() {
     props.setBusy("models");
     try {
-      await fetchJson("/_gateway/models/refresh", { method: "POST" });
+      const result = await fetchJson<{
+        catalog?: { modelCount?: number; source?: string; fetchedAt?: string };
+      }>("/_gateway/models/refresh", { method: "POST" });
       await props.refreshConfig({ silent: true });
-      props.setStatus("Codex 模型列表已同步。");
+      const count = result.catalog?.modelCount ?? 0;
+      props.setStatus(count > 0 ? `Codex 模型列表已从网络同步，共 ${count} 个。` : "Codex 模型列表已从网络同步。");
     } catch (error) {
       props.setStatus(errorMessage(error));
     } finally {

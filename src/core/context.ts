@@ -11,7 +11,7 @@ import { UsageService } from "./services/usage-service.js";
 export function createGatewayContext() {
   const configService = new ConfigService();
   const authService = new AuthService(configService);
-  const modelService = new ModelService(configService);
+  const modelService = new ModelService(configService, authService);
   const versionService = new VersionService();
   const usageService = new UsageService();
   const networkDetectService = new NetworkDetectService();

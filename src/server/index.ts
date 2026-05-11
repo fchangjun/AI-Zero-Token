@@ -1,7 +1,7 @@
 import { ConfigService } from "../core/services/config-service.js";
 import { createApp } from "./app.js";
 
-const DEFAULT_BODY_LIMIT_MB = 32;
+const DEFAULT_BODY_LIMIT_MB = 128;
 
 function resolveCorsOrigin(): true | string | RegExp | Array<string | RegExp> {
   const raw = process.env.AZT_CORS_ORIGIN?.trim();

@@ -21,9 +21,9 @@ AI Zero Token provides a local CLI, web console, and HTTP gateway that expose sa
 - Account JSON import/export, including ZIP batch import, selected batch export, and export audit indicators.
 - Apply a saved account to local Codex by backing up and updating `~/.codex/auth.json`.
 - `gpt-image-2` image generation and JSON image editing. Paid plans use the Codex Responses image tool; Free plans can optionally use the ChatGPT web image path from Settings.
-- Optional quota-exhaustion auto switch to the next saved API account with available quota, plus configurable quota refresh concurrency.
+- Optional quota-exhaustion auto switch to the next saved API account, including accounts whose quota has not been synced yet, plus configurable quota refresh concurrency.
 - Optional upstream proxy configuration for OAuth, model refresh, and gateway forwarding.
-- Local model discovery from the Codex model cache with manual refresh support.
+- Local model discovery from the Codex model cache, with manual network sync from the Codex backend.
 - OpenClaw-oriented chat compatibility for streaming, tool calls, tool result messages, and request-log diagnostics.
 - Persistent local usage statistics for known token usage, images, success/failure counts, latency, and account/model/endpoint breakdowns.
 
@@ -271,10 +271,10 @@ The web console settings are persisted in the same local state directory. The qu
 
 The global quota refresh concurrency can be configured in the web console settings. The default is `16`; lower it if upstream rate limits increase, or raise it for larger local account pools.
 
-The default request body limit is `32 MiB`, which is intended to make JSON base64 image references practical for local image editing. You can override it with:
+The default request body limit is `128 MiB`, which is intended to make JSON base64 image references and Codex context-compaction requests practical for local workflows. The dedicated `/codex/v1/responses/compact` route is allowed at least `256 MiB`. You can override the default with:
 
 ```bash
-AZT_BODY_LIMIT_MB=64 azt start
+AZT_BODY_LIMIT_MB=256 azt start
 ```
 
 ## Image Limits
@@ -283,7 +283,7 @@ ChatGPT Images availability and limits are controlled by the upstream account. P
 
 Paid-plan image requests use `gpt-5.4-mini` as the internal orchestration model and pass the requested image model, such as `gpt-image-2`, to the `image_generation` tool. Free-plan web image requests convert the same input to a ChatGPT web image task.
 
-For JSON image editing, base64 payloads are about 33% larger than the original image. With the default `32 MiB` body limit, a raw image around `24 MiB` is the practical upper bound before JSON overhead. For larger images or batch workflows, prefer a reachable image URL.
+For JSON image editing, base64 payloads are about 33% larger than the original image. With the default `128 MiB` body limit, a raw image around `96 MiB` is the practical upper bound before JSON overhead. For larger images or batch workflows, prefer a reachable image URL.
 
 ## Limitations
 

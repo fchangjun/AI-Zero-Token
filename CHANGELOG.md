@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.6 - 2026-05-11
+## 2.0.7 - 2026-05-11
 
 - Added persistent local usage statistics with today, current-process, lifetime, daily trend, account, model, endpoint, error, image-route, and source breakdowns.
 - Added safe usage event storage under the local state directory without persisting prompts, messages, access tokens, or base64 payloads.
@@ -8,6 +8,14 @@
 - Restored filtered-result bulk selection controls so filtered accounts can be selected or cleared for batch operations.
 - Clarified usage UI labels so token totals are shown as known upstream-returned usage, while requests without upstream usage are counted separately.
 - Improved the Settings Free-account image warning and removed duplicated Settings page heading copy.
+- Fixed Codex curl streaming status handling so interim `HTTP 100 Continue` responses are ignored before the final upstream status.
+- Changed model refresh to fetch the Codex model catalog from the network and write it back to the local Codex model cache.
+- Improved automatic account switching so unsynced accounts can be used as fallback candidates and invalid active accounts can rotate away.
+- Added request-level account rotation retries for OpenAI-compatible text requests, while binding Codex response ids to their source account and falling back to a new session if a sticky `previous_response_id` continuation cannot be used.
+- Improved Codex curl stream failure handling by tagging pre-header disconnects with gateway request metadata and retrying transient new-session stream failures once.
+- Increased the default request body limit to 128 MiB and allowed `/codex/v1/responses/compact` requests up to at least 256 MiB to avoid local compaction 413 failures.
+- Treated curl TLS, DNS, connect, and timeout failures as transient gateway errors so request-level rotation can retry without relying on quota probing, and labeled accounts without quota snapshots as pending request validation.
+- Captured token usage from Codex SSE `response.completed` events so native `/codex/v1/responses` traffic is no longer counted as unknown whenever upstream returns usage data.
 
 ## 2.0.5 - 2026-05-09
 

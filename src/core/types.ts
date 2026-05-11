@@ -73,12 +73,12 @@ export type ModelInfo = {
   id: string;
   name: string;
   input: Array<"text" | "image">;
-  source: "static" | "codex-cache";
+  source: "static" | "codex-cache" | "codex-network";
   isDefault?: boolean;
 };
 
 export type ModelCatalogInfo = {
-  source: "static-fallback" | "codex-cache";
+  source: "static-fallback" | "codex-cache" | "codex-network";
   cachePath: string;
   fetchedAt?: string;
   modelCount: number;
@@ -115,6 +115,8 @@ export type ChatToolCall = {
 export type ChatResult = {
   provider: ProviderId;
   model: string;
+  profile?: OAuthProfile;
+  retryCount?: number;
   text: string;
   toolCalls: ChatToolCall[];
   raw: unknown;

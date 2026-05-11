@@ -110,7 +110,7 @@ curl http://127.0.0.1:8787/_gateway/admin/usage
 
 The summary includes today, current-process, lifetime, daily trend, account, model, endpoint, error, image-route, and source breakdowns. Token totals are counted only when the upstream response returns `usage`; requests without upstream usage are counted separately as requests with missing usage. Usage files keep metadata only and do not store prompts, messages, access tokens, or base64 image payloads.
 
-Refresh the local Codex model list:
+Sync the Codex model list from the Codex backend into the local cache:
 
 ```bash
 azt models --refresh

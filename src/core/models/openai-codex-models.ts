@@ -1,9 +1,13 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import type { ModelCatalogInfo, ModelInfo } from "../types.js";
+import type { ModelCatalogInfo, ModelInfo, OAuthProfile } from "../types.js";
+import { requestText } from "../providers/http-client.js";
 
 export const DEFAULT_CODEX_MODEL = "gpt-5.4";
+const CODEX_MODELS_URL = process.env.CODEX_MODELS_URL || "https://chatgpt.com/backend-api/codex/models";
+const CODEX_MODELS_REFRESH_TIMEOUT_MS = 60_000;
+const DEFAULT_CODEX_MODELS_CLIENT_VERSION = "0.130.0";
 
 export const CODEX_MODEL_INFOS: ModelInfo[] = [
   { provider: "openai-codex", id: "gpt-5.4", name: "GPT-5.4", input: ["text", "image"], source: "static" },
@@ -33,7 +37,10 @@ export type SupportedCodexModel = (typeof SUPPORTED_CODEX_MODELS)[number];
 
 type CodexModelsCacheFile = {
   fetched_at?: string;
+  etag?: string;
+  client_version?: string;
   models?: CodexModelsCacheEntry[];
+  [key: string]: unknown;
 };
 
 type CodexModelsCacheEntry = {
@@ -41,6 +48,7 @@ type CodexModelsCacheEntry = {
   display_name?: string;
   input_modalities?: string[];
   visibility?: string;
+  [key: string]: unknown;
 };
 
 export function getCodexModelsCachePath(): string {
@@ -80,6 +88,92 @@ function normalizeCodexCacheEntry(entry: CodexModelsCacheEntry): ModelInfo | nul
     input: normalizeInputModalities(entry.input_modalities),
     source: "codex-cache",
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeNetworkModelsBody(
+  value: unknown,
+  headers: Record<string, string>,
+  clientVersion: string,
+): CodexModelsCacheFile {
+  const body = isRecord(value) ? value : {};
+  const rawModels = Array.isArray(value)
+    ? value
+    : Array.isArray(body.models)
+      ? body.models
+      : Array.isArray(body.data)
+        ? body.data
+        : null;
+
+  if (!rawModels) {
+    throw new Error("Codex 模型列表响应缺少 models 字段。");
+  }
+
+  const models = rawModels.filter(isRecord) as CodexModelsCacheEntry[];
+  const cache: CodexModelsCacheFile = {
+    ...body,
+    fetched_at: typeof body.fetched_at === "string" ? body.fetched_at : new Date().toISOString(),
+    client_version: typeof body.client_version === "string" ? body.client_version : clientVersion,
+    models,
+  };
+
+  const responseEtag = headers.etag;
+  if (!cache.etag && responseEtag) {
+    cache.etag = responseEtag;
+  }
+
+  return cache;
+}
+
+async function getCodexModelsClientVersion(cachePath: string): Promise<string> {
+  const override = process.env.CODEX_MODELS_CLIENT_VERSION?.trim();
+  if (override) {
+    return override;
+  }
+
+  try {
+    const parsed = JSON.parse(await fs.readFile(cachePath, "utf8")) as CodexModelsCacheFile;
+    if (typeof parsed.client_version === "string" && parsed.client_version.trim()) {
+      return parsed.client_version.trim();
+    }
+  } catch {
+    // A missing or unreadable cache should not prevent network refresh.
+  }
+
+  return DEFAULT_CODEX_MODELS_CLIENT_VERSION;
+}
+
+function buildCodexModelsUrl(clientVersion: string): string {
+  const url = new URL(CODEX_MODELS_URL);
+  if (!url.searchParams.has("client_version")) {
+    url.searchParams.set("client_version", clientVersion);
+  }
+  return url.toString();
+}
+
+function buildCodexModelsRequestHeaders(profile: OAuthProfile): Record<string, string> {
+  return {
+    Accept: "application/json",
+    Authorization: `Bearer ${profile.access}`,
+    "ChatGPT-Account-Id": profile.accountId,
+    "OpenAI-Beta": "responses=experimental",
+    Originator: "pi",
+    "User-Agent": "pi (bun demo)",
+  };
+}
+
+function createCodexModelsError(status: number, transport: "fetch" | "curl", body: string): Error {
+  const preview = body.trim().slice(0, 1000);
+  const error = new Error(`同步 Codex 模型失败: HTTP ${status} via ${transport}${preview ? ` ${preview}` : ""}`) as Error & {
+    upstreamStatus?: number;
+    upstreamErrorMessage?: string;
+  };
+  error.upstreamStatus = status;
+  error.upstreamErrorMessage = preview;
+  return error;
 }
 
 function dedupeModels(models: readonly ModelInfo[]): ModelInfo[] {
@@ -128,6 +222,55 @@ export async function getCodexModelCatalog(): Promise<{
       source: "static-fallback",
       cachePath,
       modelCount: CODEX_MODEL_INFOS.length,
+    },
+  };
+}
+
+export async function refreshCodexModelCatalogFromNetwork(profile: OAuthProfile): Promise<{
+  models: ModelInfo[];
+  catalog: ModelCatalogInfo;
+}> {
+  const cachePath = getCodexModelsCachePath();
+  const clientVersion = await getCodexModelsClientVersion(cachePath);
+  const response = await requestText({
+    method: "GET",
+    url: buildCodexModelsUrl(clientVersion),
+    headers: buildCodexModelsRequestHeaders(profile),
+    timeoutMs: CODEX_MODELS_REFRESH_TIMEOUT_MS,
+  });
+
+  if (response.status < 200 || response.status >= 300) {
+    throw createCodexModelsError(response.status, response.transport, response.body);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(response.body);
+  } catch {
+    throw new Error("同步 Codex 模型失败: 上游返回的模型列表不是有效 JSON。");
+  }
+
+  const cache = normalizeNetworkModelsBody(parsed, response.headers, clientVersion);
+  const models = dedupeModels((cache.models ?? []).map(normalizeCodexCacheEntry).filter(Boolean) as ModelInfo[]);
+  if (models.length === 0) {
+    throw new Error("同步 Codex 模型失败: 上游模型列表为空或没有可展示模型。");
+  }
+
+  await fs.mkdir(path.dirname(cachePath), { recursive: true });
+  await fs.writeFile(cachePath, `${JSON.stringify(cache, null, 2)}\n`, "utf8");
+
+  const networkModels = models.map((model) => ({
+    ...model,
+    source: "codex-network" as const,
+  }));
+
+  return {
+    models: networkModels,
+    catalog: {
+      source: "codex-network",
+      cachePath,
+      fetchedAt: cache.fetched_at,
+      modelCount: networkModels.length,
     },
   };
 }

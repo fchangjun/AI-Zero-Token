@@ -22,6 +22,7 @@ import {
   refreshOpenAICodexToken,
 } from "../providers/openai-codex/oauth.js";
 import { askOpenAICodex } from "../providers/openai-codex/chat.js";
+import { isTransientHttpError } from "../providers/http-client.js";
 import { ConfigService } from "./config-service.js";
 import {
   applyGatewayToCodexProviderConfig,
@@ -44,6 +45,12 @@ import {
 } from "../store/profile-transfer.js";
 
 const DEFAULT_QUOTA_SYNC_CONCURRENCY = 3;
+
+type ProfileRotationResult<T> = {
+  profile: OAuthProfile;
+  result: T;
+  retryCount: number;
+};
 
 function getQuotaSyncConcurrency(configured?: number): number {
   const raw = process.env.AZT_QUOTA_SYNC_CONCURRENCY;
@@ -205,6 +212,20 @@ export class AuthService {
     return percents.length > 0 && percents.some((value) => value >= 100);
   }
 
+  private isQuotaSnapshotExhausted(quota: CodexQuotaSnapshot | undefined): boolean {
+    if (!quota) {
+      return false;
+    }
+
+    return [quota.primaryUsedPercent, quota.secondaryUsedPercent].some(
+      (value) => typeof value === "number" && Number.isFinite(value) && value >= 100,
+    );
+  }
+
+  private isQuotaBlocked(profile: OAuthProfile): boolean {
+    return this.isQuotaExhausted(profile) && !this.hasResetElapsedForExhaustedQuota(profile);
+  }
+
   private timestampToMillis(value?: number): number | undefined {
     if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
       return undefined;
@@ -265,7 +286,7 @@ export class AuthService {
 
     const percents = this.getQuotaPercents(profile);
     if (percents.length === 0) {
-      return false;
+      return true;
     }
 
     return percents.every((value) => value < 100) || this.hasResetElapsedForExhaustedQuota(profile);
@@ -275,10 +296,51 @@ export class AuthService {
     return profile.authStatus?.state === "token_invalidated" || profile.authStatus?.state === "auth_error";
   }
 
+  private shouldLeaveActiveProfile(profile: OAuthProfile): boolean {
+    return this.hasInvalidAuthStatus(profile) || this.isQuotaBlocked(profile);
+  }
+
+  isRotationTrigger(error: unknown, quota?: CodexQuotaSnapshot): boolean {
+    if (this.isQuotaSnapshotExhausted(quota)) {
+      return true;
+    }
+    if (isTransientHttpError(error)) {
+      return true;
+    }
+
+    const normalized = error instanceof Error ? error : new Error(String(error));
+    const details = normalized as Error & {
+      upstreamStatus?: unknown;
+      upstreamErrorCode?: unknown;
+      upstreamErrorType?: unknown;
+      upstreamErrorMessage?: unknown;
+    };
+    const status = typeof details.upstreamStatus === "number" ? details.upstreamStatus : undefined;
+    const marker = [
+      normalized.message,
+      details.upstreamErrorCode,
+      details.upstreamErrorType,
+      details.upstreamErrorMessage,
+    ]
+      .filter((value): value is string => typeof value === "string")
+      .join(" ")
+      .toLowerCase();
+
+    return (
+      status === 429 ||
+      status === 401 ||
+      status === 403 ||
+      marker.includes("usage_limit_reached") ||
+      marker.includes("token_invalidated") ||
+      marker.includes("authentication token has been invalidated") ||
+      marker.includes("刷新 token 失败")
+    );
+  }
+
   private getQuotaUsageScore(profile: OAuthProfile): number {
     const percents = this.getQuotaPercents(profile);
     if (percents.length === 0) {
-      return 100;
+      return 50;
     }
 
     return Math.max(...percents);
@@ -303,14 +365,14 @@ export class AuthService {
       options.skipAutoSwitch ||
       !updated ||
       updated.provider !== provider ||
-      !this.isQuotaExhausted(updated)
+      !this.shouldLeaveActiveProfile(updated)
     ) {
       return updated;
     }
 
     const activeProfile = await this.getActiveProfile(provider);
     if (activeProfile?.profileId === updated.profileId) {
-      await this.maybeAutoSwitchProfile(updated, provider);
+      return this.maybeAutoSwitchProfile(updated, provider);
     }
 
     return updated;
@@ -345,7 +407,7 @@ export class AuthService {
   private async maybeAutoSwitchProfile(profile: OAuthProfile, provider: ProviderId): Promise<OAuthProfile> {
     const settings = await this.configService.getSettings();
     const excludedProfileIds = new Set(settings.autoSwitch.excludedProfileIds);
-    if (!settings.autoSwitch.enabled || excludedProfileIds.has(profile.profileId) || !this.isQuotaExhausted(profile)) {
+    if (!settings.autoSwitch.enabled || excludedProfileIds.has(profile.profileId) || !this.shouldLeaveActiveProfile(profile)) {
       return profile;
     }
 
@@ -404,8 +466,9 @@ export class AuthService {
       return profile;
     }
 
-    console.info("[auth] auto switched active profile after quota exhaustion", {
+    console.info("[auth] auto switched active profile", {
       provider,
+      reason: this.hasInvalidAuthStatus(profile) ? "auth_error" : "quota_exhausted",
       fromProfileId: profile.profileId,
       toProfileId: activated.profileId,
       avoidedCodexAccount: Boolean(codexAccountId && activated.accountId !== codexAccountId),
@@ -600,6 +663,93 @@ export class AuthService {
     return this.refreshStoredProfile(profile, provider);
   }
 
+  async requireUsableProfileById(profileId: string, provider: ProviderId = "openai-codex"): Promise<OAuthProfile> {
+    const profiles = await listProfiles();
+    const profile = profiles.find((item) => item.provider === provider && item.profileId === profileId);
+    if (!profile) {
+      throw new Error(`没有找到账号: ${profileId}`);
+    }
+
+    if (Date.now() < profile.expires) {
+      return this.toManagedProfile(profile);
+    }
+
+    return this.refreshStoredProfile(profile, provider);
+  }
+
+  async withProfileRotation<T extends { quota?: CodexQuotaSnapshot }>(
+    provider: ProviderId,
+    runner: (profile: OAuthProfile, attempt: number) => Promise<T>,
+    options?: {
+      maxAttempts?: number;
+      skipAutoSwitch?: boolean;
+    },
+  ): Promise<ProfileRotationResult<T>> {
+    const maxAttempts = Math.max(1, Math.min(8, options?.maxAttempts ?? 2));
+    const attemptedProfileIds = new Set<string>();
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      let profile: OAuthProfile;
+      try {
+        profile = await this.requireUsableProfile(provider, {
+          skipAutoSwitch: options?.skipAutoSwitch,
+        });
+      } catch (error) {
+        lastError = error;
+        if (options?.skipAutoSwitch || attempt >= maxAttempts - 1 || !this.isRotationTrigger(error)) {
+          throw error;
+        }
+
+        const activeProfile = await this.getActiveProfile(provider);
+        if (!activeProfile) {
+          throw error;
+        }
+
+        const switchedProfile = await this.recordProfileRequestFailure(activeProfile.profileId, error, undefined, provider);
+        if (!switchedProfile || switchedProfile.profileId === activeProfile.profileId) {
+          throw error;
+        }
+        continue;
+      }
+
+      if (attemptedProfileIds.has(profile.profileId)) {
+        break;
+      }
+      attemptedProfileIds.add(profile.profileId);
+
+      try {
+        const result = await runner(profile, attempt);
+        await this.recordProfileRequestSuccess(profile.profileId, result.quota, provider, {
+          skipAutoSwitch: options?.skipAutoSwitch,
+        });
+        return {
+          profile,
+          result,
+          retryCount: attempt,
+        };
+      } catch (error) {
+        lastError = error;
+        const quota = (error as { quota?: CodexQuotaSnapshot }).quota;
+        const switchedProfile = await this.recordProfileRequestFailure(profile.profileId, error, quota, provider, {
+          skipAutoSwitch: options?.skipAutoSwitch,
+        });
+        if (
+          options?.skipAutoSwitch ||
+          attempt >= maxAttempts - 1 ||
+          !this.isRotationTrigger(error, quota) ||
+          !switchedProfile ||
+          switchedProfile.profileId === profile.profileId ||
+          attemptedProfileIds.has(switchedProfile.profileId)
+        ) {
+          throw error;
+        }
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "没有可用账号可轮换。"));
+  }
+
   async requireFreshProfileWithIdToken(profileId: string, provider: ProviderId = "openai-codex"): Promise<OAuthProfile> {
     const profiles = await listProfiles();
     const profile = profiles.find((item) => item.provider === provider && item.profileId === profileId);
@@ -784,7 +934,7 @@ export class AuthService {
       }),
       {
         skipAutoSwitch: options?.skipAutoSwitch,
-        checkAutoSwitch: Boolean(quota),
+        checkAutoSwitch: Boolean(quota || authStatus),
       },
     );
   }

@@ -15,7 +15,7 @@ import cors from "@fastify/cors";
 import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
 import type { ChatResult, OAuthProfile, ProfileSummary } from "../core/types.js";
-import { requestText } from "../core/providers/http-client.js";
+import { isTransientHttpError, requestText } from "../core/providers/http-client.js";
 import { streamOpenAICodex } from "../core/providers/openai-codex/chat.js";
 import { generateChatGPTWebImage, type ChatGPTWebImageResult } from "../core/providers/openai-codex/chatgpt-web-image.js";
 import type { UsageImageRoute, UsageRecordEvent, UsageTokenUsage } from "../core/services/usage-service.js";
@@ -23,7 +23,11 @@ import type { UsageImageRoute, UsageRecordEvent, UsageTokenUsage } from "../core
 const packageRoot = path.dirname(fileURLToPath(new URL("../../package.json", import.meta.url)));
 const adminUiDistDir = path.join(packageRoot, "admin-ui", "dist");
 const adminUiIndexPath = path.join(adminUiDistDir, "index.html");
+const BYTES_PER_MIB = 1024 * 1024;
 const MAX_GATEWAY_REQUEST_LOGS = 100;
+const MAX_CODEX_RESPONSE_PROFILE_BINDINGS = 5000;
+const DEFAULT_ROUTE_BODY_LIMIT_BYTES = 128 * BYTES_PER_MIB;
+const CODEX_COMPACT_BODY_LIMIT_BYTES = 256 * BYTES_PER_MIB;
 const gunzipAsync = promisify(gunzip);
 const inflateAsync = promisify(inflate);
 const brotliDecompressAsync = promisify(brotliDecompress);
@@ -800,7 +804,24 @@ function summarizeResponsesRequest(
     toolChoice: typeof data.tool_choice === "undefined" ? "default" : typeof data.tool_choice,
     parallelToolCalls: data.parallel_tool_calls,
     hasReasoning: Boolean((data as Record<string, unknown>).reasoning),
+    hasPreviousResponseId: Boolean(getPreviousResponseId(data)),
   };
+}
+
+function getPreviousResponseId(data: z.infer<typeof responsesBodySchema>): string | undefined {
+  const direct = (data as Record<string, unknown>).previous_response_id;
+  if (typeof direct === "string" && direct.trim()) {
+    return direct.trim();
+  }
+
+  const experimental = data.experimental_codex?.body?.previous_response_id;
+  return typeof experimental === "string" && experimental.trim() ? experimental.trim() : undefined;
+}
+
+function removePreviousResponseId(body: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...body };
+  delete next.previous_response_id;
+  return next;
 }
 
 function createResponsesCodexBody(data: z.infer<typeof responsesBodySchema>): Record<string, unknown> {
@@ -1423,14 +1444,12 @@ function getErrorStatusCode(error: unknown): number {
   return 500;
 }
 
-function isQuotaLimitError(error: unknown): boolean {
-  const normalized = normalizeError(error) as Error & {
-    upstreamStatus?: unknown;
-    upstreamErrorCode?: unknown;
-    upstreamErrorType?: unknown;
-  };
-  const marker = `${normalized.upstreamErrorCode ?? ""} ${normalized.upstreamErrorType ?? ""} ${normalized.message}`.toLowerCase();
-  return normalized.upstreamStatus === 429 || marker.includes("usage_limit_reached");
+function formatBytesAsMiB(bytes: number | undefined): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
+    return "未知";
+  }
+
+  return `${Math.round((bytes / BYTES_PER_MIB) * 10) / 10} MB`;
 }
 
 type SseStreamStats = {
@@ -1438,6 +1457,8 @@ type SseStreamStats = {
   bytes: number;
   terminalEvent?: string;
   completed: boolean;
+  responseIds: Set<string>;
+  tokenUsage: UsageTokenUsage | null;
 };
 
 function createSseStreamStats(): SseStreamStats {
@@ -1445,7 +1466,27 @@ function createSseStreamStats(): SseStreamStats {
     buffer: "",
     bytes: 0,
     completed: false,
+    responseIds: new Set<string>(),
+    tokenUsage: null,
   };
+}
+
+function extractSseResponseId(value: unknown): string | undefined {
+  if (!isObjectRecord(value)) {
+    return undefined;
+  }
+
+  const directId = value.id;
+  if (typeof directId === "string" && directId.startsWith("resp_")) {
+    return directId;
+  }
+
+  const response = value.response;
+  if (isObjectRecord(response) && typeof response.id === "string" && response.id.startsWith("resp_")) {
+    return response.id;
+  }
+
+  return undefined;
 }
 
 function trackSseChunk(stats: SseStreamStats, chunk: unknown): void {
@@ -1479,6 +1520,14 @@ function trackSseChunk(stats: SseStreamStats, chunk: unknown): void {
         if (typeof parsed.type === "string") {
           eventType = parsed.type;
         }
+        const responseId = extractSseResponseId(parsed);
+        if (responseId) {
+          stats.responseIds.add(responseId);
+        }
+        const tokenUsage = extractTokenUsage(parsed);
+        if (tokenUsage) {
+          stats.tokenUsage = tokenUsage;
+        }
       } catch {
         // The tracker is diagnostic only; malformed chunks still pass through.
       }
@@ -1505,9 +1554,11 @@ export function createApp(params?: {
   onRestart?: () => void | Promise<void>;
   onRestartCodex?: () => void | Promise<void>;
 }) {
+  const defaultBodyLimit = params?.bodyLimit ?? DEFAULT_ROUTE_BODY_LIMIT_BYTES;
+  const codexCompactBodyLimit = Math.max(defaultBodyLimit, CODEX_COMPACT_BODY_LIMIT_BYTES);
   const app = Fastify({
     logger: false,
-    bodyLimit: params?.bodyLimit,
+    bodyLimit: defaultBodyLimit,
   });
   app.removeContentTypeParser("application/json");
   app.addContentTypeParser(
@@ -1521,6 +1572,27 @@ export function createApp(params?: {
   );
   const ctx = createGatewayContext();
   const gatewayRequestLogs: GatewayRequestLog[] = [];
+  const codexResponseProfileBindings = new Map<string, { profileId: string; accountId: string; seenAt: number }>();
+
+  function rememberCodexResponseProfile(responseId: string, profile: OAuthProfile): void {
+    codexResponseProfileBindings.set(responseId, {
+      profileId: profile.profileId,
+      accountId: profile.accountId,
+      seenAt: Date.now(),
+    });
+
+    if (codexResponseProfileBindings.size <= MAX_CODEX_RESPONSE_PROFILE_BINDINGS) {
+      return;
+    }
+
+    const overflow = codexResponseProfileBindings.size - MAX_CODEX_RESPONSE_PROFILE_BINDINGS;
+    const oldest = Array.from(codexResponseProfileBindings.entries())
+      .sort((left, right) => left[1].seenAt - right[1].seenAt)
+      .slice(0, overflow);
+    for (const [key] of oldest) {
+      codexResponseProfileBindings.delete(key);
+    }
+  }
 
   function pushGatewayRequestLog(log: Omit<GatewayRequestLog, "id" | "time"> & { id?: string; time?: number; usage?: GatewayRequestUsageMeta }): void {
     const entry: GatewayRequestLog = {
@@ -1572,18 +1644,24 @@ export function createApp(params?: {
   app.setErrorHandler((error, request, reply) => {
     const normalized = normalizeError(error);
     const statusCode = getErrorStatusCode(normalized);
+    const isBodyTooLarge = statusCode === 413;
+    const message = isBodyTooLarge
+      ? `请求体过大，当前网关默认上限 ${formatBytesAsMiB(defaultBodyLimit)}，Codex compact 上限 ${formatBytesAsMiB(codexCompactBodyLimit)}。如仍不够，请用 AZT_BODY_LIMIT_MB 调大后重启网关。`
+      : normalized.message;
     console.error("[gateway:error]", {
       method: request.method,
       url: request.url,
       statusCode,
-      message: normalized.message,
+      message,
+      code: (normalized as Error & { code?: unknown }).code,
+      upstreamRequestId: (normalized as Error & { requestId?: unknown }).requestId,
       stack: normalized.stack,
     });
     reply.code(statusCode);
     return {
       error: {
         type: "gateway_error",
-        message: normalized.message,
+        message,
       },
     };
   });
@@ -2180,6 +2258,9 @@ export function createApp(params?: {
     let retryCount = 0;
     let failureRecorded = false;
     let codexImageRoute: UsageImageRoute = "none";
+    const originalPreviousResponseId = getPreviousResponseId(data);
+    let adventureFallbackUsed = false;
+    let adventureFallbackReason: string | undefined;
     reply.raw.on("close", () => {
       if (!streamFinished) {
         abortController.abort();
@@ -2190,7 +2271,44 @@ export function createApp(params?: {
       const model = await ctx.modelService.resolveModel("openai-codex", data.model, {
         allowUnknown: data.experimental_codex?.allow_unknown_model,
       });
-      const codexBody = createCodexPassthroughBody(data, model);
+      let codexBody = createCodexPassthroughBody(data, model);
+      let activePreviousResponseId = originalPreviousResponseId;
+      let keepProfileSticky = Boolean(activePreviousResponseId);
+      let stickyProfileId = activePreviousResponseId ? codexResponseProfileBindings.get(activePreviousResponseId)?.profileId : undefined;
+      const useAdventureFallback = async (error: unknown, quota: import("../core/types.js").CodexQuotaSnapshot | undefined): Promise<boolean> => {
+        if (!keepProfileSticky || abortController.signal.aborted) {
+          return false;
+        }
+
+        const failedProfileId = profile?.profileId ?? stickyProfileId;
+        if (failedProfileId) {
+          await ctx.authService.recordProfileRequestFailure(failedProfileId, error, quota, "openai-codex", {
+            skipAutoSwitch: true,
+          });
+        }
+
+        codexBody = removePreviousResponseId(codexBody);
+        activePreviousResponseId = undefined;
+        keepProfileSticky = false;
+        stickyProfileId = undefined;
+        adventureFallbackUsed = true;
+        adventureFallbackReason = error instanceof Error ? error.message : String(error);
+        retryCount += 1;
+        profile = null;
+        failureRecorded = false;
+        console.warn("[gateway:codex:stream] sticky continuation failed; dropping previous_response_id and retrying as new session", {
+          requestId: request.id,
+          model,
+          retryCount,
+          previousResponseId: "[present]",
+          failedAccount: failedProfileId,
+          errorCode: (error as { code?: unknown }).code,
+          upstreamStatus: (error as { upstreamStatus?: unknown }).upstreamStatus,
+          upstreamRequestId: (error as { requestId?: unknown }).requestId,
+          message: adventureFallbackReason,
+        });
+        return true;
+      };
       const imageRequest = upstreamEndpoint === "responses" ? extractCodexImageGenerationRequest(codexBody) : null;
       if (imageRequest) {
         codexImageRoute = "codex-tool";
@@ -2268,10 +2386,16 @@ export function createApp(params?: {
       }
       let upstream: Awaited<ReturnType<typeof streamOpenAICodex>> | null = null;
       const maxProfileAttempts = 5;
+      const maxTransientStreamRetries = 1;
+      let transientStreamRetryCount = 0;
 
       for (let attempt = 0; attempt < maxProfileAttempts; attempt += 1) {
-        profile = await ctx.authService.requireUsableProfile("openai-codex");
         try {
+          profile = stickyProfileId
+            ? await ctx.authService.requireUsableProfileById(stickyProfileId, "openai-codex")
+            : await ctx.authService.requireUsableProfile("openai-codex", {
+                skipAutoSwitch: keepProfileSticky,
+              });
           upstream = await streamOpenAICodex({
             profile,
             model,
@@ -2283,11 +2407,44 @@ export function createApp(params?: {
           break;
         } catch (error) {
           const quota = (error as { quota?: import("../core/types.js").CodexQuotaSnapshot }).quota;
-          const switchedProfile = await ctx.authService.recordProfileRequestFailure(profile.profileId, error, quota, "openai-codex");
+          if (
+            keepProfileSticky &&
+            attempt < maxProfileAttempts - 1 &&
+            await useAdventureFallback(error, quota)
+          ) {
+            continue;
+          }
+          if (
+            !keepProfileSticky &&
+            isTransientHttpError(error) &&
+            transientStreamRetryCount < maxTransientStreamRetries &&
+            attempt < maxProfileAttempts - 1 &&
+            !abortController.signal.aborted
+          ) {
+            transientStreamRetryCount += 1;
+            retryCount += 1;
+            console.warn("[gateway:codex:stream] transient curl stream failure before headers; retrying request", {
+              requestId: request.id,
+              account: profileLogLabel(profile),
+              model,
+              retryCount,
+              errorCode: (error as { code?: unknown }).code,
+              upstreamRequestId: (error as { requestId?: unknown }).requestId,
+              message: error instanceof Error ? error.message : String(error),
+            });
+            continue;
+          }
+          if (!profile) {
+            throw error;
+          }
+          const switchedProfile = await ctx.authService.recordProfileRequestFailure(profile.profileId, error, quota, "openai-codex", {
+            skipAutoSwitch: keepProfileSticky,
+          });
           failureRecorded = true;
           if (
+            !keepProfileSticky &&
             attempt < maxProfileAttempts - 1 &&
-            isQuotaLimitError(error) &&
+            ctx.authService.isRotationTrigger(error, quota) &&
             switchedProfile &&
             switchedProfile.profileId !== profile.profileId &&
             !abortController.signal.aborted
@@ -2304,7 +2461,9 @@ export function createApp(params?: {
         throw new Error("Codex stream 未能建立。");
       }
 
-      await ctx.authService.recordProfileRequestSuccess(profile.profileId, upstream.quota, "openai-codex");
+      await ctx.authService.recordProfileRequestSuccess(profile.profileId, upstream.quota, "openai-codex", {
+        skipAutoSwitch: keepProfileSticky,
+      });
 
       const headers: Record<string, string> = {
         "Content-Type": upstream.headers["content-type"] ?? "text/event-stream; charset=utf-8",
@@ -2312,6 +2471,9 @@ export function createApp(params?: {
         Connection: "keep-alive",
         "X-Accel-Buffering": "no",
       };
+      if (adventureFallbackUsed) {
+        headers["X-AZT-Codex-Continuation-Mode"] = "adventure-fallback";
+      }
       for (const [key, value] of Object.entries(upstream.headers)) {
         if (key.startsWith("x-codex-") || key === "x-request-id") {
           headers[key] = value;
@@ -2331,6 +2493,9 @@ export function createApp(params?: {
       }
       streamFinished = true;
       reply.raw.end();
+      for (const responseId of streamStats.responseIds) {
+        rememberCodexResponseProfile(responseId, profile);
+      }
       if (!streamStats.completed) {
         console.warn("[gateway:codex:stream] upstream stream ended without response.completed", {
           requestId: request.id,
@@ -2361,13 +2526,21 @@ export function createApp(params?: {
             passthrough: true,
             upstreamEndpoint,
             retryCount,
+            profileSticky: keepProfileSticky,
+            previousResponseId: originalPreviousResponseId ? "[present]" : undefined,
+            previousResponseDropped: adventureFallbackUsed,
+            adventureFallbackReason: adventureFallbackUsed ? truncateForLog(adventureFallbackReason ?? "") : undefined,
+            stickyProfileResolved: Boolean(stickyProfileId),
+            responseIdsTracked: streamStats.responseIds.size,
             completed: streamStats.completed,
             terminalEvent: streamStats.terminalEvent,
             bytes: streamStats.bytes,
+            usageCaptured: Boolean(streamStats.tokenUsage),
           },
         },
         usage: {
           profile,
+          tokenUsage: streamStats.tokenUsage,
           imageRoute: codexImageRoute,
         },
       });
@@ -2375,7 +2548,9 @@ export function createApp(params?: {
     } catch (error) {
       const quota = (error as { quota?: import("../core/types.js").CodexQuotaSnapshot }).quota;
       if (profile && !failureRecorded) {
-        await ctx.authService.recordProfileRequestFailure(profile.profileId, error, quota, "openai-codex");
+        await ctx.authService.recordProfileRequestFailure(profile.profileId, error, quota, "openai-codex", {
+          skipAutoSwitch: Boolean(originalPreviousResponseId) && !adventureFallbackUsed,
+        });
       }
       const normalized = normalizeError(error);
       const statusCode = getErrorStatusCode(normalized);
@@ -2395,9 +2570,16 @@ export function createApp(params?: {
           response: {
             upstreamEndpoint,
             retryCount,
+            profileSticky: Boolean(originalPreviousResponseId) && !adventureFallbackUsed,
+            previousResponseId: originalPreviousResponseId ? "[present]" : undefined,
+            previousResponseDropped: adventureFallbackUsed,
+            adventureFallbackReason: adventureFallbackUsed ? truncateForLog(adventureFallbackReason ?? "") : undefined,
+            stickyProfileResolved: Boolean(originalPreviousResponseId && codexResponseProfileBindings.has(originalPreviousResponseId)),
           },
           error: {
             message: normalized.message,
+            code: (normalized as Error & { code?: unknown }).code,
+            upstreamRequestId: (normalized as Error & { requestId?: unknown }).requestId,
             upstreamStatus: (normalized as Error & { upstreamStatus?: unknown }).upstreamStatus,
             upstreamErrorCode: (normalized as Error & { upstreamErrorCode?: unknown }).upstreamErrorCode,
             upstreamErrorMessage: (normalized as Error & { upstreamErrorMessage?: unknown }).upstreamErrorMessage,
@@ -2451,7 +2633,7 @@ export function createApp(params?: {
     return handleCodexResponsesPassthrough(request, reply, parsed.data, startedAt);
   });
 
-  app.post("/codex/v1/responses/compact", async (request, reply) => {
+  app.post("/codex/v1/responses/compact", { bodyLimit: codexCompactBodyLimit }, async (request, reply) => {
     const startedAt = performance.now();
     const parsed = responsesBodySchema.safeParse(request.body);
     if (!parsed.success) {
@@ -2624,7 +2806,7 @@ export function createApp(params?: {
       throw error;
     }
 
-    const activeProfile = await ctx.authService.getActiveProfile();
+    const activeProfile = result.profile ?? await ctx.authService.getActiveProfile();
     pushGatewayRequestLog({
       method: request.method,
       endpoint: request.url,
@@ -2643,6 +2825,7 @@ export function createApp(params?: {
           textPreview: truncateForLog(result.text),
           textLength: result.text.length,
           artifactCount: result.artifacts.length,
+          retryCount: result.retryCount ?? 0,
         },
       },
       usage: {
@@ -2774,7 +2957,7 @@ export function createApp(params?: {
       throw error;
     }
 
-    const activeProfile = await ctx.authService.getActiveProfile();
+    const activeProfile = result.profile ?? await ctx.authService.getActiveProfile();
     pushGatewayRequestLog({
       method: request.method,
       endpoint: request.url,
@@ -2800,6 +2983,7 @@ export function createApp(params?: {
           })),
           artifactCount: result.artifacts.length,
           stream: parsed.data.stream ?? false,
+          retryCount: result.retryCount ?? 0,
         },
       },
       usage: {

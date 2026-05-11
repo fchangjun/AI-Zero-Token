@@ -31,6 +31,7 @@ export type ProfileFilter = {
     | "active"
     | "healthy"
     | "warning"
+    | "unknown"
     | "exhausted"
     | "expired"
     | "invalid"

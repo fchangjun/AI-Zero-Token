@@ -16,29 +16,26 @@ export class ChatService {
     const model = await this.deps.modelService.resolveModel(provider, request.model, {
       allowUnknown: request.experimental?.allowUnknownModel,
     });
-    const profile = await this.deps.authService.requireUsableProfile(provider);
-    try {
-      const result = await askOpenAICodex({
+    const rotation = await this.deps.authService.withProfileRotation(provider, (profile) =>
+      askOpenAICodex({
         profile,
         prompt: request.input,
         model,
         system: request.system,
         bodyOverride: request.experimental?.codexBody,
-      });
-      await this.deps.authService.recordProfileRequestSuccess(profile.profileId, result.quota, provider);
+      }),
+    );
+    const result = rotation.result;
 
-      return {
-        provider,
-        model,
-        text: result.text,
-        toolCalls: result.toolCalls,
-        raw: result.raw,
-        artifacts: result.artifacts,
-      };
-    } catch (error) {
-      const quota = (error as { quota?: import("../types.js").CodexQuotaSnapshot }).quota;
-      await this.deps.authService.recordProfileRequestFailure(profile.profileId, error, quota, provider);
-      throw error;
-    }
+    return {
+      provider,
+      model,
+      profile: rotation.profile,
+      retryCount: rotation.retryCount,
+      text: result.text,
+      toolCalls: result.toolCalls,
+      raw: result.raw,
+      artifacts: result.artifacts,
+    };
   }
 }

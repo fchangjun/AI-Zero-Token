@@ -111,10 +111,11 @@ export function authStatusText(profile: ProfileSummary): string {
   return `${prefix}${detail} · ${formatFullTime(authStatus.checkedAt)}`;
 }
 
-export function profileHealth(profile: ProfileSummary): { key: "healthy" | "warning" | "expired" | "exhausted" | "invalid"; label: string; tone: string } {
+export function profileHealth(profile: ProfileSummary): { key: "healthy" | "warning" | "unknown" | "expired" | "exhausted" | "invalid"; label: string; tone: string } {
   if (profile.authStatus?.state === "token_invalidated") return { key: "invalid", label: "登录失效", tone: "red" };
   if (profile.authStatus?.state === "auth_error") return { key: "invalid", label: "认证异常", tone: "red" };
   if (profile.expiresAt && profile.expiresAt <= Date.now()) return { key: "expired", label: "已过期", tone: "red" };
+  if (!profile.quota?.capturedAt) return { key: "unknown", label: "待请求验证", tone: "blue" };
   if (isQuotaExhausted(profile)) return { key: "exhausted", label: "额度耗尽", tone: "orange" };
   if (primaryUsage(profile) >= 75 || secondaryUsage(profile) >= 75) return { key: "warning", label: "即将耗尽", tone: "orange" };
   return { key: "healthy", label: "健康", tone: "green" };

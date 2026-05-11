@@ -96,6 +96,7 @@ export function AccountsPanel(props: {
           <option value="codex-active">Codex 使用中</option>
           <option value="healthy">健康</option>
           <option value="warning">即将耗尽</option>
+          <option value="unknown">待请求验证</option>
           <option value="exhausted">额度耗尽</option>
           <option value="invalid">登录/认证异常</option>
           <option value="login-invalid">登录失效</option>
