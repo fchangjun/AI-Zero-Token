@@ -59,6 +59,14 @@ export function getUsageLifetimePath(): string {
   return path.join(getUsageDir(), "lifetime.json");
 }
 
+export function getDiagnosticsDir(): string {
+  return path.join(stateDir, "diagnostics");
+}
+
+export function getCodexRequestDiagnosticsDir(): string {
+  return path.join(getDiagnosticsDir(), "codex-requests");
+}
+
 export async function ensureStateMigrated(): Promise<void> {
   if (!migrationPromise) {
     migrationPromise = (async () => {

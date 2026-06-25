@@ -72,6 +72,11 @@ export type SettingDraft = {
   autoSwitchEnabled: boolean;
   autoSwitchExcludedProfileIds: string[];
   quotaSyncConcurrency: string;
+  codexRequestSerializationEnabled: boolean;
+  codexRequestMinDelayMs: string;
+  codexRequestJitterMs: string;
+  captureRequestContentEnabled: boolean;
+  captureResponseProtocolEnabled: boolean;
   freeAccountWebGenerationEnabled: boolean;
   serverPort: string;
 };

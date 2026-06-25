@@ -168,6 +168,8 @@ export type GatewaySettings = {
     codexRequestSerializationEnabled: boolean;
     codexRequestMinDelayMs: number;
     codexRequestJitterMs: number;
+    captureRequestContentEnabled: boolean;
+    captureResponseProtocolEnabled: boolean;
   };
   image: {
     freeAccountWebGenerationEnabled: boolean;

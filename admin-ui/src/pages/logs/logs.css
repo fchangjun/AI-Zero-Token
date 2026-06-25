@@ -79,6 +79,25 @@ td code {
   color: var(--text-muted);
   font-size: 12px;
 }
+
+.log-diagnostics-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.log-diagnostics-actions span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.log-diagnostics-status {
+  margin: -4px 0 12px;
+}
+
 .log-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -173,4 +192,73 @@ td code {
 .log-detail-pre {
   min-height: 220px;
   max-height: 320px;
+}
+
+.log-detail-json-stack {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.log-content-capture {
+  display: grid;
+  gap: 8px;
+}
+
+.log-content-capture-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.log-content-capture-head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.log-content-capture-head span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.log-content-pre {
+  max-height: 420px;
+}
+
+.log-diagnostic-view {
+  display: grid;
+  gap: 10px;
+}
+
+.log-diagnostic-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.log-diagnostic-tabs button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.log-diagnostic-tabs button.is-active {
+  border-color: rgba(79, 70, 229, 0.28);
+  background: rgba(79, 70, 229, 0.08);
+  color: #4338ca;
+}
+
+.log-diagnostic-tabs .copy-tab {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }

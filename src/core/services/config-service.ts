@@ -126,8 +126,11 @@ export class ConfigService {
     codexRequestSerializationEnabled?: boolean;
     codexRequestMinDelayMs?: number;
     codexRequestJitterMs?: number;
+    captureRequestContentEnabled?: boolean;
+    captureResponseProtocolEnabled?: boolean;
   }): Promise<GatewaySettings> {
     const settings = await this.getSettings();
+    const captureRequestContentEnabled = params.captureRequestContentEnabled ?? settings.runtime.captureRequestContentEnabled;
     const next = {
       ...settings,
       runtime: {
@@ -136,6 +139,8 @@ export class ConfigService {
         codexRequestSerializationEnabled: params.codexRequestSerializationEnabled ?? settings.runtime.codexRequestSerializationEnabled,
         codexRequestMinDelayMs: normalizeMilliseconds(params.codexRequestMinDelayMs, settings.runtime.codexRequestMinDelayMs, 0, 60_000),
         codexRequestJitterMs: normalizeMilliseconds(params.codexRequestJitterMs, settings.runtime.codexRequestJitterMs, 0, 60_000),
+        captureRequestContentEnabled,
+        captureResponseProtocolEnabled: captureRequestContentEnabled && (params.captureResponseProtocolEnabled ?? settings.runtime.captureResponseProtocolEnabled),
       },
     };
     await saveSettings(next);
@@ -169,6 +174,8 @@ export class ConfigService {
       codexRequestSerializationEnabled?: boolean;
       codexRequestMinDelayMs?: number;
       codexRequestJitterMs?: number;
+      captureRequestContentEnabled?: boolean;
+      captureResponseProtocolEnabled?: boolean;
     };
     image?: { freeAccountWebGenerationEnabled?: boolean };
     server?: { port: number };
@@ -205,6 +212,7 @@ export class ConfigService {
     }
 
     if (params.runtime) {
+      const captureRequestContentEnabled = params.runtime.captureRequestContentEnabled ?? next.runtime.captureRequestContentEnabled;
       next = {
         ...next,
         runtime: {
@@ -213,6 +221,8 @@ export class ConfigService {
           codexRequestSerializationEnabled: params.runtime.codexRequestSerializationEnabled ?? next.runtime.codexRequestSerializationEnabled,
           codexRequestMinDelayMs: normalizeMilliseconds(params.runtime.codexRequestMinDelayMs, next.runtime.codexRequestMinDelayMs, 0, 60_000),
           codexRequestJitterMs: normalizeMilliseconds(params.runtime.codexRequestJitterMs, next.runtime.codexRequestJitterMs, 0, 60_000),
+          captureRequestContentEnabled,
+          captureResponseProtocolEnabled: captureRequestContentEnabled && (params.runtime.captureResponseProtocolEnabled ?? next.runtime.captureResponseProtocolEnabled),
         },
       };
     }

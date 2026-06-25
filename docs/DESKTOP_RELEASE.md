@@ -2,6 +2,17 @@
 
 This project ships the desktop app with Electron. The desktop main process starts the existing local Fastify gateway and loads the React management UI served by that gateway.
 
+## 2.0.12 Release Notes
+
+Version `2.0.12` improves Codex diagnostics, compatibility, and desktop packaging:
+
+- Codex request diagnostics are now saved in separate local files and can be viewed or cleared from the request logs page.
+- Codex streaming responses are saved as compact summaries by default, with optional full SSE protocol capture for deep debugging.
+- Settings exposes Codex serialization delay/jitter and diagnostic capture controls.
+- Legacy Codex Desktop requests that still send `gpt-5.4` are rewritten to the current default model when needed, while logs keep the requested/effective model details.
+- Codex provider setup now supports external OpenAI-compatible API base URLs and bearer tokens.
+- macOS release packaging now creates HFS+ DMGs from ad-hoc hardened-runtime signed app bundles and includes clearer Gatekeeper quarantine guidance.
+
 ## 2.0.11 Release Notes
 
 Version `2.0.11` improves Codex account import compatibility and native Codex traffic stability:
@@ -101,7 +112,7 @@ npm run dist:win
 
 Creates macOS and Windows distributables. macOS builds should be produced on macOS. Windows builds are best produced on Windows CI or a runner with a complete Windows packaging environment.
 
-`npm run dist:mac` must build both Apple Silicon and Intel macOS packages. It runs:
+`npm run dist:mac` must build both Apple Silicon and Intel macOS packages. The macOS scripts first ask `electron-builder` for unpacked `.app` directories, then `scripts/package-mac-dmg.mjs` re-signs each app with ad-hoc hardened runtime and creates an HFS+ DMG. This avoids APFS DMGs and ad-hoc signatures that omit hardened runtime.
 
 ```bash
 npm run dist:mac:arm64
@@ -132,7 +143,24 @@ Unsigned builds are suitable for internal testing only. Public commercial distri
 
 `electron-builder` reads the standard signing environment variables. Configure these in CI instead of committing credentials to the repository.
 
-Until macOS Developer ID signing and notarization are configured, each macOS DMG must include `build/mac-install-guide.txt` so users can handle the Gatekeeper verification prompt.
+Before uploading a macOS release, verify Gatekeeper status locally:
+
+```bash
+spctl --assess --type open --context context:primary-signature --verbose=4 "release/AI Zero Token-X.Y.Z-mac-arm64.dmg"
+spctl --assess --type execute --verbose=4 "release/mac-arm64/AI Zero Token.app"
+codesign -dv --verbose=4 "release/mac-arm64/AI Zero Token.app"
+hdiutil imageinfo "release/AI Zero Token-X.Y.Z-mac-arm64.dmg" | grep "partition-hint: Apple_HFS"
+```
+
+The `codesign` output for unsigned internal builds must include `Signature=adhoc` and `runtime`, for example `flags=0x10002(adhoc,runtime)`. The DMG image info must report `partition-hint: Apple_HFS`.
+
+Unsigned or ad-hoc signed macOS builds can still be blocked after browser download with a misleading “damaged and cannot be opened” DMG dialog. This is expected for internal testing builds but is not acceptable for normal public distribution. Until macOS Developer ID signing and notarization are configured, each macOS DMG must include `build/mac-install-guide.txt`, and the GitHub Release notes should mention the quarantine workaround:
+
+```bash
+xattr -dr com.apple.quarantine "$HOME/Downloads/AI Zero Token-X.Y.Z-mac-arm64.dmg"
+```
+
+Use the matching x64 file name for Intel builds.
 
 ## Release Artifacts
 

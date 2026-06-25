@@ -651,6 +651,8 @@ export class AuthService {
   async applyGatewayToCodexProvider(params: {
     baseUrl: string;
     providerId?: string;
+    kind?: "codex_gateway" | "openai_compatible";
+    bearerToken?: string;
   }): Promise<ApplyCodexGatewayProviderResult> {
     return applyGatewayToCodexProviderConfig(params);
   }

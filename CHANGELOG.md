@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.12 - 2026-06-25
+
+- Added Codex request diagnostics that store captured request details in separate local diagnostic files, with request-log viewing and cleanup controls.
+- Captured Codex stream responses as compact diagnostic summaries by default, with an opt-in full SSE protocol capture mode for deep debugging.
+- Added Settings controls for Codex request serialization delay/jitter and diagnostic capture options.
+- Added compatibility handling for legacy Codex Desktop requests that still send `gpt-5.4`, rewriting them to the current default model when needed and recording the requested/effective model in logs.
+- Added external OpenAI-compatible API takeover support for Codex provider configuration with bearer-token storage.
+- Improved macOS desktop packaging by creating HFS+ DMGs from ad-hoc hardened-runtime signed app bundles and expanding the macOS install guide for Gatekeeper quarantine prompts.
+
 ## 2.0.11 - 2026-06-10
 
 - Accepted sub2api-style Codex account JSON imports that do not include a real `chatgpt_account_id`, using user id, JWT subject, email, or token hash as gateway-only identities.

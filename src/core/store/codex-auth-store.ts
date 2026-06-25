@@ -26,6 +26,8 @@ export type CodexGatewayProviderStatus = {
   active: boolean;
   baseUrl?: string;
   modelProvider?: string;
+  authType?: "none" | "bearer_token" | "env_key";
+  envKey?: string;
 };
 
 export type CodexAuthStatus = {
@@ -48,6 +50,8 @@ export type ApplyCodexGatewayProviderResult = {
   backupPath?: string;
   providerId: string;
   baseUrl: string;
+  kind: "codex_gateway" | "openai_compatible";
+  authType: "none" | "bearer_token" | "env_key";
   historyMigration?: CodexHistoryMigrationResult;
 };
 
@@ -267,7 +271,7 @@ async function migrateLegacyCodexHistoryProvider(): Promise<CodexHistoryMigratio
   }
 }
 
-function normalizeCodexProviderBaseUrl(value: string): string {
+function normalizeCodexProviderBaseUrl(value: string, kind: "codex_gateway" | "openai_compatible" = "codex_gateway"): string {
   let normalized = value.trim();
   if (!normalized) {
     throw new Error("Codex provider base_url 不能为空。");
@@ -291,7 +295,14 @@ function normalizeCodexProviderBaseUrl(value: string): string {
   url.hash = "";
   url.search = "";
   const path = url.pathname.replace(/\/+$/g, "");
-  if (!path || path === "/") {
+
+  if (kind === "openai_compatible") {
+    if (!path || path === "/") {
+      url.pathname = "/v1";
+    } else {
+      url.pathname = path;
+    }
+  } else if (!path || path === "/") {
     url.pathname = "/codex/v1";
   } else if (path === "/v1") {
     url.pathname = "/codex/v1";
@@ -350,7 +361,13 @@ function parseRootModelProvider(raw: string): string | undefined {
   return parseRootString(raw, "model_provider");
 }
 
-function parseGatewayProviderTable(raw: string, providerId: string): { exists: boolean; baseUrl?: string } {
+function parseGatewayProviderTable(raw: string, providerId: string): {
+  exists: boolean;
+  baseUrl?: string;
+  bearerToken?: string;
+  envKey?: string;
+  authType?: "none" | "bearer_token" | "env_key";
+} {
   const lines = raw.split(/\r?\n/);
   const tablePattern = new RegExp(`^\\s*\\[\\s*model_providers\\.${escapeRegExp(providerId)}\\s*\\]\\s*$`);
   const start = lines.findIndex((line) => tablePattern.test(line));
@@ -359,14 +376,31 @@ function parseGatewayProviderTable(raw: string, providerId: string): { exists: b
   }
 
   let baseUrl: string | undefined;
+  let bearerToken: string | undefined;
+  let envKey: string | undefined;
   for (let index = start + 1; index < lines.length && !/^\s*\[/.test(lines[index] ?? ""); index += 1) {
-    const match = /^\s*base_url\s*=\s*(.+)$/.exec(lines[index] ?? "");
-    if (match) {
-      baseUrl = parseTomlStringValue(match[1] ?? "");
+    const match = /^\s*(base_url|experimental_bearer_token|env_key)\s*=\s*(.+)$/.exec(lines[index] ?? "");
+    if (!match) {
+      continue;
+    }
+
+    const parsed = parseTomlStringValue(match[2] ?? "");
+    if (match[1] === "base_url") {
+      baseUrl = parsed;
+    } else if (match[1] === "experimental_bearer_token") {
+      bearerToken = parsed;
+    } else if (match[1] === "env_key") {
+      envKey = parsed;
     }
   }
 
-  return { exists: true, baseUrl };
+  return {
+    exists: true,
+    baseUrl,
+    bearerToken,
+    envKey,
+    authType: bearerToken ? "bearer_token" : envKey ? "env_key" : "none",
+  };
 }
 
 function upsertRootString(raw: string, key: string, value: string): string {
@@ -394,22 +428,47 @@ function upsertRootModelProvider(raw: string, providerId: string): string {
   return upsertRootString(raw, "model_provider", providerId);
 }
 
-function buildGatewayProviderBlock(providerId: string, baseUrl: string): string[] {
-  return [
+function buildGatewayProviderBlock(
+  providerId: string,
+  baseUrl: string,
+  options?: {
+    displayName?: string;
+    bearerToken?: string;
+    envKey?: string;
+  },
+): string[] {
+  const block = [
     "# AI Zero Token managed Codex provider",
     `[model_providers.${providerId}]`,
-    'name = "AI Zero Token"',
+    `name = ${formatTomlString(options?.displayName || "AI Zero Token")}`,
     `base_url = ${formatTomlString(baseUrl)}`,
     'wire_api = "responses"',
     "supports_websockets = false",
   ];
+
+  if (options?.bearerToken) {
+    block.push(`experimental_bearer_token = ${formatTomlString(options.bearerToken)}`);
+  } else if (options?.envKey) {
+    block.push(`env_key = ${formatTomlString(options.envKey)}`);
+  }
+
+  return block;
 }
 
-function upsertGatewayProviderTable(raw: string, providerId: string, baseUrl: string): string {
+function upsertGatewayProviderTable(
+  raw: string,
+  providerId: string,
+  baseUrl: string,
+  options?: {
+    displayName?: string;
+    bearerToken?: string;
+    envKey?: string;
+  },
+): string {
   const lines = raw.split(/\r?\n/);
   const tablePattern = new RegExp(`^\\s*\\[\\s*model_providers\\.${escapeRegExp(providerId)}\\s*\\]\\s*$`);
   const start = lines.findIndex((line) => tablePattern.test(line));
-  const block = buildGatewayProviderBlock(providerId, baseUrl);
+  const block = buildGatewayProviderBlock(providerId, baseUrl, options);
 
   if (start === -1) {
     const trimmed = raw.replace(/\s+$/g, "");
@@ -428,9 +487,18 @@ function upsertGatewayProviderTable(raw: string, providerId: string, baseUrl: st
   return lines.join("\n").replace(/\s+$/g, "\n");
 }
 
-function applyGatewayProviderConfig(raw: string, providerId: string, baseUrl: string): string {
+function applyGatewayProviderConfig(
+  raw: string,
+  providerId: string,
+  baseUrl: string,
+  options?: {
+    displayName?: string;
+    bearerToken?: string;
+    envKey?: string;
+  },
+): string {
   const sanitizedRaw = removeOpenAIGatewayConfig(raw).raw;
-  return upsertGatewayProviderTable(upsertRootModelProvider(sanitizedRaw, providerId), providerId, baseUrl);
+  return upsertGatewayProviderTable(upsertRootModelProvider(sanitizedRaw, providerId), providerId, baseUrl, options);
 }
 
 function applyOpenAIGatewayConfig(raw: string, baseUrl: string): string {
@@ -562,6 +630,7 @@ export async function getCodexGatewayProviderStatus(params?: {
         active: !modelProvider || modelProvider === OPENAI_CODEX_PROVIDER_ID,
         baseUrl: openAIBaseUrl,
         modelProvider,
+        authType: "none",
       };
     }
 
@@ -574,6 +643,8 @@ export async function getCodexGatewayProviderStatus(params?: {
         active: modelProvider === LEGACY_CODEX_PROVIDER_ID,
         baseUrl: legacyTable.baseUrl,
         modelProvider,
+        authType: legacyTable.authType,
+        envKey: legacyTable.envKey,
       };
     }
   }
@@ -586,6 +657,8 @@ export async function getCodexGatewayProviderStatus(params?: {
     active: modelProvider === providerId && table.exists,
     baseUrl: table.baseUrl,
     modelProvider,
+    authType: table.authType,
+    envKey: table.envKey,
   };
 }
 
@@ -673,10 +746,13 @@ export async function applyProfileToCodexAuth(profile: OAuthProfile): Promise<Ap
 export async function applyGatewayToCodexProviderConfig(params: {
   baseUrl: string;
   providerId?: string;
+  kind?: "codex_gateway" | "openai_compatible";
+  bearerToken?: string;
 }): Promise<ApplyCodexGatewayProviderResult> {
   const providerId = params.providerId?.trim() || DEFAULT_CODEX_PROVIDER_ID;
   validateProviderId(providerId);
-  const baseUrl = normalizeCodexProviderBaseUrl(params.baseUrl);
+  const kind = params.kind ?? "codex_gateway";
+  const baseUrl = normalizeCodexProviderBaseUrl(params.baseUrl, kind);
 
   const configPath = getCodexConfigPath();
   const codexHomeDir = path.dirname(configPath);
@@ -694,9 +770,25 @@ export async function applyGatewayToCodexProviderConfig(params: {
   }
 
   const useOpenAIProvider = providerId === OPENAI_CODEX_PROVIDER_ID;
+  if (kind === "openai_compatible" && useOpenAIProvider) {
+    throw new Error("外部 API Token 需要写入独立 Codex provider，不能使用 openai_base_url 模式。");
+  }
+
+  const existingProvider = parseGatewayProviderTable(raw, providerId);
+  const bearerToken = params.bearerToken?.trim() || (kind === "openai_compatible" ? existingProvider.bearerToken : undefined);
+  if (kind === "openai_compatible" && !bearerToken) {
+    throw new Error("请填写外部 API Token。");
+  }
+
+  const providerOptions = kind === "openai_compatible"
+    ? {
+        displayName: "External API",
+        bearerToken,
+      }
+    : undefined;
   const next = useOpenAIProvider
     ? applyOpenAIGatewayConfig(raw, baseUrl)
-    : applyGatewayProviderConfig(raw, providerId, baseUrl);
+    : applyGatewayProviderConfig(raw, providerId, baseUrl, providerOptions);
   const tmpPath = `${configPath}.tmp-${process.pid}`;
   await fs.writeFile(tmpPath, next, {
     encoding: "utf8",
@@ -710,6 +802,8 @@ export async function applyGatewayToCodexProviderConfig(params: {
     backupPath,
     providerId,
     baseUrl,
+    kind,
+    authType: bearerToken ? "bearer_token" : "none",
     historyMigration: useOpenAIProvider ? await migrateLegacyCodexHistoryProvider() : undefined,
   };
 }

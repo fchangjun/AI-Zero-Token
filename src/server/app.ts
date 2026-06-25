@@ -34,6 +34,12 @@ const MAX_CODEX_RESPONSE_PROFILE_BINDINGS = 5000;
 const CODEX_STREAM_DRAIN_AFTER_CLIENT_CLOSE_MS = 30_000;
 const DEFAULT_ROUTE_BODY_LIMIT_BYTES = 128 * BYTES_PER_MIB;
 const CODEX_COMPACT_BODY_LIMIT_BYTES = 256 * BYTES_PER_MIB;
+const REQUEST_CONTENT_CAPTURE_MAX_TOTAL_CHARS = 160_000;
+const REQUEST_CONTENT_CAPTURE_MAX_STRING_CHARS = 4_000;
+const REQUEST_CONTENT_CAPTURE_MAX_ARRAY_ITEMS = 500;
+const REQUEST_CONTENT_CAPTURE_MAX_OBJECT_KEYS = 120;
+const REQUEST_CONTENT_CAPTURE_MAX_DEPTH = 10;
+const RESPONSE_COMPACT_TEXT_MAX_CHARS = 20_000;
 const gunzipAsync = promisify(gunzip);
 const inflateAsync = promisify(inflate);
 const brotliDecompressAsync = promisify(brotliDecompress);
@@ -243,6 +249,8 @@ const settingsUpdateSchema = z.object({
       codexRequestSerializationEnabled: z.boolean().optional(),
       codexRequestMinDelayMs: z.number().int().min(0).max(60_000).optional(),
       codexRequestJitterMs: z.number().int().min(0).max(60_000).optional(),
+      captureRequestContentEnabled: z.boolean().optional(),
+      captureResponseProtocolEnabled: z.boolean().optional(),
     })
     .optional(),
   image: z
@@ -303,6 +311,12 @@ const codexApplySchema = z.object({
 const codexProviderConfigSchema = z.object({
   baseUrl: z.string().min(1).optional(),
   providerId: z.string().min(1).optional(),
+  kind: z.enum(["codex_gateway", "openai_compatible"]).optional(),
+  bearerToken: z.string().optional(),
+});
+
+const diagnosticRequestParamsSchema = z.object({
+  id: z.string().uuid(),
 });
 
 const githubImageBedConfigSchema = z.object({
@@ -832,6 +846,107 @@ function truncateForLog(value: string, maxLength = 300): string {
   return `${normalized.slice(0, maxLength)}...`;
 }
 
+type RequestContentCaptureState = {
+  remainingChars: number;
+};
+
+function looksLikeLargeBase64(value: string): boolean {
+  if (value.length < 2_000) {
+    return false;
+  }
+
+  const sample = value.slice(0, 512).replace(/\s+/g, "");
+  return sample.length > 256 && /^[A-Za-z0-9+/=]+$/.test(sample);
+}
+
+function captureDiagnosticString(value: string, state: RequestContentCaptureState): string {
+  if (/^data:[^;]+;base64,/i.test(value)) {
+    return `[data URL omitted: ${value.length} chars]`;
+  }
+  if (looksLikeLargeBase64(value)) {
+    return `[base64 omitted: ${value.length} chars]`;
+  }
+  if (state.remainingChars <= 0) {
+    return "[truncated: request content capture budget exhausted]";
+  }
+
+  const maxLength = Math.min(REQUEST_CONTENT_CAPTURE_MAX_STRING_CHARS, state.remainingChars);
+  state.remainingChars -= Math.min(value.length, maxLength);
+  if (value.length <= maxLength) {
+    return value;
+  }
+
+  return `${value.slice(0, maxLength)}... [truncated ${value.length - maxLength} chars]`;
+}
+
+function captureDiagnosticValue(value: unknown, state: RequestContentCaptureState, depth = 0): unknown {
+  if (state.remainingChars <= 0) {
+    return "[truncated: request content capture budget exhausted]";
+  }
+  if (depth > REQUEST_CONTENT_CAPTURE_MAX_DEPTH) {
+    return "[truncated: max depth reached]";
+  }
+  if (value === null || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return captureDiagnosticString(value, state);
+  }
+  if (Array.isArray(value)) {
+    const captured = value.slice(0, REQUEST_CONTENT_CAPTURE_MAX_ARRAY_ITEMS).map((item) => captureDiagnosticValue(item, state, depth + 1));
+    if (value.length > captured.length) {
+      captured.push(`[truncated: ${value.length - captured.length} more items]`);
+    }
+    return captured;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).slice(0, REQUEST_CONTENT_CAPTURE_MAX_OBJECT_KEYS);
+    const captured: Record<string, unknown> = {};
+    for (const [key, item] of entries) {
+      captured[key] = captureDiagnosticValue(item, state, depth + 1);
+    }
+    const omitted = Object.keys(value as Record<string, unknown>).length - entries.length;
+    if (omitted > 0) {
+      captured.__truncated_keys__ = `${omitted} more keys`;
+    }
+    return captured;
+  }
+
+  return typeof value;
+}
+
+function captureResponsesRequestContent(data: z.infer<typeof responsesBodySchema>): Record<string, unknown> {
+  const state: RequestContentCaptureState = {
+    remainingChars: REQUEST_CONTENT_CAPTURE_MAX_TOTAL_CHARS,
+  };
+  const record = data as Record<string, unknown>;
+  const captured: Record<string, unknown> = {
+    model: captureDiagnosticValue(data.model, state),
+    input: captureDiagnosticValue(data.input, state),
+    instructions: captureDiagnosticValue(data.instructions, state),
+    tools: captureDiagnosticValue(data.tools, state),
+    tool_choice: captureDiagnosticValue(data.tool_choice, state),
+    reasoning: captureDiagnosticValue(record.reasoning, state),
+    include: captureDiagnosticValue(data.include, state),
+    text: captureDiagnosticValue(data.text, state),
+    parallel_tool_calls: data.parallel_tool_calls,
+    previous_response_id: captureDiagnosticValue(record.previous_response_id, state),
+  };
+
+  return {
+    capturedAt: Date.now(),
+    note: "Diagnostic request content capture is enabled. Values are truncated and large base64/data URLs are omitted.",
+    limits: {
+      maxTotalChars: REQUEST_CONTENT_CAPTURE_MAX_TOTAL_CHARS,
+      maxStringChars: REQUEST_CONTENT_CAPTURE_MAX_STRING_CHARS,
+      maxArrayItems: REQUEST_CONTENT_CAPTURE_MAX_ARRAY_ITEMS,
+      maxObjectKeys: REQUEST_CONTENT_CAPTURE_MAX_OBJECT_KEYS,
+    },
+    remainingChars: state.remainingChars,
+    body: captured,
+  };
+}
+
 function extractChatMessageText(message: z.infer<typeof chatCompletionMessageSchema>): string {
   if (typeof message.content === "string") {
     return message.content;
@@ -892,12 +1007,20 @@ function summarizeToolNames(tools: unknown[] | undefined): string[] {
 function summarizeResponsesRequest(
   data: z.infer<typeof responsesBodySchema>,
   endpoint = "/v1/responses",
+  options?: {
+    diagnosticCapture?: Record<string, unknown>;
+    effectiveModel?: string;
+    requestedModel?: string;
+    modelOverride?: Record<string, unknown>;
+  },
 ): Record<string, unknown> {
   const input = data.input;
   const toolNames = summarizeToolNames(Array.isArray(data.tools) ? data.tools : undefined);
-  return {
+  const summary: Record<string, unknown> = {
     endpoint,
-    model: data.model ?? "default",
+    model: options?.effectiveModel ?? data.model ?? "default",
+    requestedModel: options?.requestedModel,
+    modelOverride: options?.modelOverride,
     stream: data.stream ?? false,
     inputKind: typeof input === "string" ? "string" : Array.isArray(input) ? "array" : "override",
     inputItems: Array.isArray(input) ? input.length : undefined,
@@ -911,6 +1034,10 @@ function summarizeResponsesRequest(
     hasReasoning: Boolean((data as Record<string, unknown>).reasoning),
     hasPreviousResponseId: Boolean(getPreviousResponseId(data)),
   };
+  if (options?.diagnosticCapture) {
+    summary.diagnosticCapture = options.diagnosticCapture;
+  }
+  return summary;
 }
 
 function getPreviousResponseId(data: z.infer<typeof responsesBodySchema>): string | undefined {
@@ -921,6 +1048,30 @@ function getPreviousResponseId(data: z.infer<typeof responsesBodySchema>): strin
 
   const experimental = data.experimental_codex?.body?.previous_response_id;
   return typeof experimental === "string" && experimental.trim() ? experimental.trim() : undefined;
+}
+
+function getRequestedResponseModel(data: z.infer<typeof responsesBodySchema>): string | undefined {
+  return typeof data.model === "string" && data.model.trim() ? data.model.trim() : undefined;
+}
+
+function resolveCodexPassthroughModel(params: {
+  requestedModel?: string;
+  defaultModel: string;
+}): { model: string; modelOverride?: Record<string, unknown> } {
+  if (params.requestedModel === "gpt-5.4" && params.defaultModel !== params.requestedModel) {
+    return {
+      model: params.defaultModel,
+      modelOverride: {
+        requestedModel: params.requestedModel,
+        effectiveModel: params.defaultModel,
+        reason: "legacy_gpt_5_4_not_supported_for_chatgpt_account",
+      },
+    };
+  }
+
+  return {
+    model: params.requestedModel ?? params.defaultModel,
+  };
 }
 
 function removePreviousResponseId(body: Record<string, unknown>): Record<string, unknown> {
@@ -1658,6 +1809,23 @@ type SseStreamStats = {
   parseErrorCount: number;
 };
 
+type ParsedSseDiagnosticEvent = {
+  event?: string;
+  type?: string;
+  data: unknown;
+};
+
+type DiagnosticResponseStream = {
+  completed?: boolean;
+  terminalEvent?: string;
+  bytes: number;
+  parseErrorCount?: number;
+  responseIds?: string[];
+  tokenUsage?: UsageTokenUsage | null;
+  tokenUsageStatus?: UsageTokenStatus;
+  clientDisconnected?: boolean;
+};
+
 function createSseStreamStats(): SseStreamStats {
   return {
     buffer: "",
@@ -1667,6 +1835,14 @@ function createSseStreamStats(): SseStreamStats {
     tokenUsage: null,
     parseErrorCount: 0,
   };
+}
+
+function sseChunkToText(chunk: unknown): string {
+  return typeof chunk === "string"
+    ? chunk
+    : chunk instanceof Uint8Array
+      ? Buffer.from(chunk).toString("utf8")
+      : String(chunk);
 }
 
 function extractSseResponseId(value: unknown): string | undefined {
@@ -1697,11 +1873,7 @@ function isSseTerminalUsageEvent(eventType: string | undefined): boolean {
 }
 
 function trackSseChunk(stats: SseStreamStats, chunk: unknown): void {
-  const text = typeof chunk === "string"
-    ? chunk
-    : chunk instanceof Uint8Array
-      ? Buffer.from(chunk).toString("utf8")
-      : String(chunk);
+  const text = sseChunkToText(chunk);
   stats.bytes += Buffer.byteLength(text);
   stats.buffer += text.replace(/\r\n/g, "\n");
 
@@ -1754,6 +1926,189 @@ function trackSseChunk(stats: SseStreamStats, chunk: unknown): void {
   if (stats.buffer.length > 65536) {
     stats.buffer = stats.buffer.slice(-65536);
   }
+}
+
+function parseSseDiagnosticEvents(rawSse: string): ParsedSseDiagnosticEvent[] {
+  const normalized = rawSse.replace(/\r\n/g, "\n");
+  return normalized
+    .split("\n\n")
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => {
+      const lines = block.split("\n");
+      const event = lines.find((line) => line.startsWith("event:"))?.slice("event:".length).trim();
+      const rawData = lines
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice("data:".length).trim())
+        .join("\n");
+      if (!rawData || rawData === "[DONE]") {
+        return {
+          event,
+          type: event,
+          data: rawData || "",
+        };
+      }
+
+      try {
+        const data = JSON.parse(rawData) as { type?: unknown };
+        return {
+          event,
+          type: typeof data?.type === "string" ? data.type : event,
+          data,
+        };
+      } catch {
+        return {
+          event,
+          type: event,
+          data: rawData,
+        };
+      }
+    });
+}
+
+function truncateCompactText(value: string): { text: string; truncated: boolean; originalLength: number } {
+  if (value.length <= RESPONSE_COMPACT_TEXT_MAX_CHARS) {
+    return {
+      text: value,
+      truncated: false,
+      originalLength: value.length,
+    };
+  }
+
+  return {
+    text: `${value.slice(0, RESPONSE_COMPACT_TEXT_MAX_CHARS)}... [truncated ${value.length - RESPONSE_COMPACT_TEXT_MAX_CHARS} chars]`,
+    truncated: true,
+    originalLength: value.length,
+  };
+}
+
+function compactHeaders(headers: Record<string, string>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(headers)) {
+    const normalized = key.toLowerCase();
+    if (
+      normalized === "content-type" ||
+      normalized === "x-request-id" ||
+      normalized === "openai-processing-ms" ||
+      normalized.startsWith("x-codex-")
+    ) {
+      result[key] = value;
+    }
+  }
+  return result;
+}
+
+function compactOutputItem(item: unknown): Record<string, unknown> | null {
+  if (!isObjectRecord(item)) {
+    return null;
+  }
+
+  return {
+    id: typeof item.id === "string" ? item.id : undefined,
+    type: typeof item.type === "string" ? item.type : undefined,
+    status: typeof item.status === "string" ? item.status : undefined,
+    role: typeof item.role === "string" ? item.role : undefined,
+    name: typeof item.name === "string" ? item.name : undefined,
+    callId: typeof item.call_id === "string" ? item.call_id : undefined,
+  };
+}
+
+function compactResponseObject(response: unknown): Record<string, unknown> | null {
+  if (!isObjectRecord(response)) {
+    return null;
+  }
+
+  return {
+    id: typeof response.id === "string" ? response.id : undefined,
+    model: typeof response.model === "string" ? response.model : undefined,
+    status: typeof response.status === "string" ? response.status : undefined,
+    outputCount: Array.isArray(response.output) ? response.output.length : undefined,
+    usage: isObjectRecord(response.usage) ? response.usage : undefined,
+  };
+}
+
+function buildCompactSseDiagnostic(
+  rawSse: string,
+  events: ParsedSseDiagnosticEvent[],
+  stream: DiagnosticResponseStream,
+): Record<string, unknown> {
+  const eventCounts: Record<string, number> = {};
+  const eventTypes: string[] = [];
+  const outputItems: Record<string, unknown>[] = [];
+  let textFromDeltas = "";
+  let textFromDone = "";
+  let finalResponse: Record<string, unknown> | null = null;
+
+  for (const item of events) {
+    const type = item.type ?? item.event ?? "unknown";
+    eventCounts[type] = (eventCounts[type] ?? 0) + 1;
+    eventTypes.push(type);
+
+    const data = isObjectRecord(item.data) ? item.data : null;
+    if (!data) {
+      continue;
+    }
+
+    if (type === "response.output_text.delta" && typeof data.delta === "string") {
+      textFromDeltas += data.delta;
+    } else if (type === "response.output_text.done" && typeof data.text === "string") {
+      textFromDone = data.text;
+    } else if (type === "response.output_item.done") {
+      const compactItem = compactOutputItem(data.item);
+      if (compactItem) {
+        outputItems.push(compactItem);
+      }
+    } else if (type === "response.completed" || type === "response.done") {
+      finalResponse = compactResponseObject(data.response ?? data);
+    }
+  }
+
+  const finalText = truncateCompactText(textFromDone || textFromDeltas);
+  return {
+    note: "Compact diagnostic response. Full SSE events/rawSse are only saved when the full protocol capture setting is enabled.",
+    rawBytes: Buffer.byteLength(rawSse),
+    eventCount: events.length,
+    eventCounts,
+    eventTypes,
+    finalText: finalText.text,
+    finalTextTruncated: finalText.truncated,
+    finalTextOriginalLength: finalText.originalLength,
+    outputItems,
+    finalResponse,
+    usage: stream.tokenUsage ?? finalResponse?.usage ?? null,
+  };
+}
+
+function buildDiagnosticResponse(params: {
+  capturedAt?: number;
+  statusCode?: number;
+  upstreamRequestId?: string;
+  upstreamEndpoint: string;
+  headers?: Record<string, string>;
+  stream: DiagnosticResponseStream;
+  rawSse: string;
+  includeProtocol: boolean;
+  partial?: boolean;
+}): Record<string, unknown> {
+  const events = parseSseDiagnosticEvents(params.rawSse);
+  return {
+    capturedAt: params.capturedAt ?? Date.now(),
+    statusCode: params.statusCode,
+    upstreamRequestId: params.upstreamRequestId,
+    upstreamEndpoint: params.upstreamEndpoint,
+    partial: params.partial || undefined,
+    headers: params.headers ? compactHeaders(params.headers) : undefined,
+    stream: params.stream,
+    compact: buildCompactSseDiagnostic(params.rawSse, events, params.stream),
+    ...(params.includeProtocol
+      ? {
+          protocol: {
+            events,
+            rawSse: params.rawSse,
+          },
+        }
+      : {}),
+  };
 }
 
 function sseTokenUsageStatus(stats: SseStreamStats, statusCode: number): UsageTokenStatus {
@@ -1914,6 +2269,35 @@ export function createApp(params?: {
   app.get("/_gateway/admin/request-logs", async () => ({
     data: gatewayRequestLogs,
   }));
+
+  app.get("/_gateway/admin/diagnostics/codex-requests", async () => ctx.requestDiagnosticService.getCodexRequestSummary());
+
+  app.get("/_gateway/admin/diagnostics/codex-requests/:id", async (request, reply) => {
+    const parsed = diagnosticRequestParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求参数格式错误",
+        },
+      };
+    }
+
+    const record = await ctx.requestDiagnosticService.readCodexRequest(parsed.data.id);
+    if (!record) {
+      reply.code(404);
+      return {
+        error: {
+          type: "not_found",
+          message: "诊断请求内容不存在或已清理。",
+        },
+      };
+    }
+    return { data: record };
+  });
+
+  app.delete("/_gateway/admin/diagnostics/codex-requests", async () => ctx.requestDiagnosticService.clearCodexRequests());
 
   app.get("/_gateway/admin/usage", async () => ctx.usageService.getSummary());
 
@@ -2351,6 +2735,8 @@ export function createApp(params?: {
       codexProvider: await ctx.authService.applyGatewayToCodexProvider({
         baseUrl,
         providerId: parsed.data.providerId,
+        kind: parsed.data.kind,
+        bearerToken: parsed.data.bearerToken,
       }),
       config: await buildAdminConfig(request),
     };
@@ -2426,11 +2812,23 @@ export function createApp(params?: {
       };
     }
 
-    await params.onRestartCodex();
-    return {
-      ok: true,
-      restarted: true,
-    };
+    try {
+      await params.onRestartCodex();
+      return {
+        ok: true,
+        restarted: true,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("[gateway:restart-codex]", error);
+      reply.code(500);
+      return {
+        error: {
+          type: "restart_codex_failed",
+          message,
+        },
+      };
+    }
   });
 
   app.post("/_gateway/admin/settings/proxy-test", async (request, reply) => {
@@ -2595,6 +2993,11 @@ export function createApp(params?: {
     const originalPreviousResponseId = getPreviousResponseId(data);
     let adventureFallbackUsed = false;
     let adventureFallbackReason: string | undefined;
+    let requestSummary: Record<string, unknown> = summarizeResponsesRequest(data, request.url);
+    let diagnosticCapture: Record<string, unknown> | undefined;
+    let diagnosticRawSse = "";
+    let captureResponseProtocolEnabled = false;
+    let effectiveModelForLog = data.model ?? "default";
     reply.raw.on("close", () => {
       if (!streamFinished) {
         clientDisconnected = true;
@@ -2610,8 +3013,54 @@ export function createApp(params?: {
     });
 
     try {
-      const model = await ctx.modelService.resolveModel("openai-codex", data.model, {
-        allowUnknown: data.experimental_codex?.allow_unknown_model,
+      const gatewaySettings = await ctx.configService.getSettings();
+      const defaultModel = await ctx.modelService.getDefaultModel("openai-codex");
+      const requestedModel = getRequestedResponseModel(data);
+      const modelResolution = resolveCodexPassthroughModel({
+        requestedModel,
+        defaultModel,
+      });
+      const model = modelResolution.model;
+      effectiveModelForLog = model;
+      captureResponseProtocolEnabled = gatewaySettings.runtime.captureResponseProtocolEnabled;
+      if (modelResolution.modelOverride) {
+        console.info("[gateway:codex:model] overriding unsupported legacy Codex model", {
+          requestId: request.id,
+          ...modelResolution.modelOverride,
+        });
+      }
+      if (gatewaySettings.runtime.captureRequestContentEnabled) {
+        try {
+          const ref = await ctx.requestDiagnosticService.recordCodexRequest({
+            requestId: request.id,
+            method: request.method,
+            endpoint: request.url,
+            model,
+            source: "Codex",
+            remoteAddress: request.ip,
+            userAgent: request.headers["user-agent"],
+            content: captureResponsesRequestContent(data),
+          });
+          diagnosticCapture = {
+            ...ref,
+            storedSeparately: true,
+          };
+        } catch (error) {
+          console.warn("[gateway:diagnostic] failed to capture Codex request content", {
+            requestId: request.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          diagnosticCapture = {
+            storedSeparately: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+      requestSummary = summarizeResponsesRequest(data, request.url, {
+        diagnosticCapture,
+        effectiveModel: model,
+        requestedModel,
+        modelOverride: modelResolution.modelOverride,
       });
       let codexBody = createCodexPassthroughBody(data, model);
       let activePreviousResponseId = originalPreviousResponseId;
@@ -2654,8 +3103,7 @@ export function createApp(params?: {
       const imageRequest = upstreamEndpoint === "responses" ? extractCodexImageGenerationRequest(codexBody) : null;
       if (imageRequest) {
         codexImageRoute = "codex-tool";
-        const settings = await ctx.configService.getSettings();
-        if (settings.image.freeAccountWebGenerationEnabled) {
+        if (gatewaySettings.image.freeAccountWebGenerationEnabled) {
           profile = await ctx.authService.requireUsableProfile("openai-codex", {
             skipAutoSwitch: true,
           });
@@ -2706,7 +3154,7 @@ export function createApp(params?: {
               requestId: request.id,
               remoteAddress: request.ip,
               userAgent: request.headers["user-agent"],
-              request: summarizeResponsesRequest(data, request.url),
+              request: requestSummary,
               response: {
                 stream: true,
                 passthrough: false,
@@ -2858,6 +3306,9 @@ export function createApp(params?: {
         }
       };
       for await (const chunk of Readable.fromWeb(upstream.body as unknown as Parameters<typeof Readable.fromWeb>[0])) {
+        if (diagnosticCapture?.id) {
+          diagnosticRawSse += sseChunkToText(chunk);
+        }
         trackSseChunk(streamStats, chunk);
         await writeChunkToClient(chunk);
       }
@@ -2882,6 +3333,35 @@ export function createApp(params?: {
           terminalEvent: streamStats.terminalEvent,
         });
       }
+      if (diagnosticCapture?.id) {
+        const diagnosticUpdate = await ctx.requestDiagnosticService.updateCodexRequest({
+          id: String(diagnosticCapture.id),
+          response: buildDiagnosticResponse({
+            statusCode: upstream.status,
+            upstreamRequestId: upstream.requestId,
+            upstreamEndpoint,
+            headers: upstream.headers,
+            stream: {
+              completed: streamStats.completed,
+              terminalEvent: streamStats.terminalEvent,
+              bytes: streamStats.bytes,
+              parseErrorCount: streamStats.parseErrorCount,
+              responseIds: Array.from(streamStats.responseIds),
+              tokenUsage: streamStats.tokenUsage,
+              tokenUsageStatus: sseTokenUsageStatus(streamStats, upstream.status),
+              clientDisconnected,
+            },
+            rawSse: diagnosticRawSse,
+            includeProtocol: captureResponseProtocolEnabled,
+          }),
+        });
+        if (diagnosticUpdate) {
+          diagnosticCapture.bytes = diagnosticUpdate.bytes;
+          diagnosticCapture.relativePath = diagnosticUpdate.relativePath;
+          diagnosticCapture.responseCaptured = true;
+          diagnosticCapture.responseProtocolCaptured = captureResponseProtocolEnabled;
+        }
+      }
 
       pushGatewayRequestLog({
         method: request.method,
@@ -2896,7 +3376,7 @@ export function createApp(params?: {
           upstreamRequestId: upstream.requestId,
           remoteAddress: request.ip,
           userAgent: request.headers["user-agent"],
-          request: summarizeResponsesRequest(data, request.url),
+          request: requestSummary,
           response: {
             stream: true,
             passthrough: true,
@@ -2938,11 +3418,45 @@ export function createApp(params?: {
       }
       const normalized = normalizeError(error);
       const statusCode = getErrorStatusCode(normalized);
+      if (diagnosticCapture?.id) {
+        const diagnosticUpdate = await ctx.requestDiagnosticService.updateCodexRequest({
+          id: String(diagnosticCapture.id),
+          ...(diagnosticRawSse
+            ? {
+                response: buildDiagnosticResponse({
+                  upstreamEndpoint,
+                  stream: {
+                    bytes: Buffer.byteLength(diagnosticRawSse),
+                  },
+                  partial: true,
+                  rawSse: diagnosticRawSse,
+                  includeProtocol: captureResponseProtocolEnabled,
+                }),
+              }
+            : {}),
+          error: {
+            capturedAt: Date.now(),
+            message: normalized.message,
+            code: (normalized as Error & { code?: unknown }).code,
+            upstreamRequestId: (normalized as Error & { requestId?: unknown }).requestId,
+            upstreamStatus: (normalized as Error & { upstreamStatus?: unknown }).upstreamStatus,
+            upstreamErrorCode: (normalized as Error & { upstreamErrorCode?: unknown }).upstreamErrorCode,
+            upstreamErrorMessage: (normalized as Error & { upstreamErrorMessage?: unknown }).upstreamErrorMessage,
+          },
+        });
+        if (diagnosticUpdate) {
+          diagnosticCapture.bytes = diagnosticUpdate.bytes;
+          diagnosticCapture.relativePath = diagnosticUpdate.relativePath;
+          diagnosticCapture.responseCaptured = Boolean(diagnosticRawSse);
+          diagnosticCapture.responseProtocolCaptured = Boolean(diagnosticRawSse) && captureResponseProtocolEnabled;
+          diagnosticCapture.errorCaptured = true;
+        }
+      }
       pushGatewayRequestLog({
         method: request.method,
         endpoint: request.url,
         account: profileLogLabel(profile),
-        model: data.model ?? "default",
+        model: effectiveModelForLog,
         statusCode,
         durationMs: performance.now() - startedAt,
         source: "Codex",
@@ -2950,7 +3464,7 @@ export function createApp(params?: {
           requestId: request.id,
           remoteAddress: request.ip,
           userAgent: request.headers["user-agent"],
-          request: summarizeResponsesRequest(data, request.url),
+          request: requestSummary,
           response: {
             upstreamEndpoint,
             retryCount,

@@ -6,6 +6,7 @@ import { ImageService } from "./services/image-service.js";
 import { ModelService } from "./services/model-service.js";
 import { NetworkDetectService } from "./services/network-detect-service.js";
 import { RequestThrottleService } from "./services/request-throttle-service.js";
+import { RequestDiagnosticService } from "./services/request-diagnostic-service.js";
 import { VersionService } from "./services/version-service.js";
 import { UsageService } from "./services/usage-service.js";
 
@@ -18,6 +19,7 @@ export function createGatewayContext() {
   const networkDetectService = new NetworkDetectService();
   const githubImageBedService = new GithubImageBedService();
   const requestThrottleService = new RequestThrottleService(configService);
+  const requestDiagnosticService = new RequestDiagnosticService();
   const chatService = new ChatService({
     authService,
     modelService,
@@ -37,6 +39,7 @@ export function createGatewayContext() {
     networkDetectService,
     githubImageBedService,
     requestThrottleService,
+    requestDiagnosticService,
     chatService,
     imageService,
   };

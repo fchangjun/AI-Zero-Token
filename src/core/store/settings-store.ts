@@ -26,6 +26,8 @@ export function createDefaultSettings(): GatewaySettings {
       codexRequestSerializationEnabled: true,
       codexRequestMinDelayMs: 2500,
       codexRequestJitterMs: 1500,
+      captureRequestContentEnabled: false,
+      captureResponseProtocolEnabled: false,
     },
     image: {
       freeAccountWebGenerationEnabled: false,
@@ -39,6 +41,7 @@ export function createDefaultSettings(): GatewaySettings {
 
 function normalizeSettings(parsed: Partial<GatewaySettings>): GatewaySettings {
   const defaults = createDefaultSettings();
+  const captureRequestContentEnabled = parsed.runtime?.captureRequestContentEnabled ?? defaults.runtime.captureRequestContentEnabled;
   return {
     version: 1,
     defaultProvider: parsed.defaultProvider ?? defaults.defaultProvider,
@@ -57,6 +60,8 @@ function normalizeSettings(parsed: Partial<GatewaySettings>): GatewaySettings {
       codexRequestSerializationEnabled: parsed.runtime?.codexRequestSerializationEnabled ?? defaults.runtime.codexRequestSerializationEnabled,
       codexRequestMinDelayMs: normalizeMilliseconds(parsed.runtime?.codexRequestMinDelayMs, defaults.runtime.codexRequestMinDelayMs, 0, 60_000),
       codexRequestJitterMs: normalizeMilliseconds(parsed.runtime?.codexRequestJitterMs, defaults.runtime.codexRequestJitterMs, 0, 60_000),
+      captureRequestContentEnabled,
+      captureResponseProtocolEnabled: captureRequestContentEnabled && (parsed.runtime?.captureResponseProtocolEnabled ?? defaults.runtime.captureResponseProtocolEnabled),
     },
     image: {
       freeAccountWebGenerationEnabled: parsed.image?.freeAccountWebGenerationEnabled ?? defaults.image.freeAccountWebGenerationEnabled,

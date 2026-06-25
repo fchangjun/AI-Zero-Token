@@ -69,6 +69,8 @@ export type GatewaySettings = {
     codexRequestSerializationEnabled: boolean;
     codexRequestMinDelayMs: number;
     codexRequestJitterMs: number;
+    captureRequestContentEnabled: boolean;
+    captureResponseProtocolEnabled: boolean;
   };
   image: {
     freeAccountWebGenerationEnabled: boolean;
@@ -214,6 +216,8 @@ export type AdminConfig = {
       active: boolean;
       baseUrl?: string;
       modelProvider?: string;
+      authType?: "none" | "bearer_token" | "env_key";
+      envKey?: string;
     };
   };
   usage?: UsageSummary;
@@ -236,4 +240,34 @@ export type RequestLog = {
   durationMs: number;
   source: string;
   details?: Record<string, unknown>;
+};
+
+export type RequestDiagnosticSummary = {
+  directory: string;
+  fileCount: number;
+  totalBytes: number;
+  oldestCreatedAt?: number;
+  latestCreatedAt?: number;
+};
+
+export type RequestDiagnosticClearResult = RequestDiagnosticSummary & {
+  deletedFiles: number;
+  deletedBytes: number;
+};
+
+export type RequestDiagnosticRecord = {
+  version: 1;
+  id: string;
+  createdAt: number;
+  updatedAt?: number;
+  requestId?: string;
+  method: string;
+  endpoint: string;
+  model: string;
+  source: string;
+  remoteAddress?: string;
+  userAgent?: string;
+  content: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  error?: Record<string, unknown>;
 };

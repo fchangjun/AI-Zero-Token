@@ -36,6 +36,7 @@ let tray: Tray | null = null;
 let accountPanelWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let isRestarting = false;
+let isRestartingCodex = false;
 let isAccountPanelBusy = false;
 let currentGatewayUrl: string | null = null;
 let currentAdminUrl: string | null = null;
@@ -48,6 +49,9 @@ const accountPanelWidth = 420;
 const accountPanelHeight = 640;
 const execFileAsync = promisify(execFile);
 const codexAppPath = "/Applications/Codex.app";
+const codexQuitTimeoutMs = 3000;
+const codexKillTimeoutMs = 3000;
+const codexOpenTimeoutMs = 5000;
 
 electronApp.setName("AI Zero Token");
 
@@ -143,26 +147,65 @@ async function restartCodexApp(): Promise<void> {
     throw new Error("当前仅支持在 macOS 上重启 Codex。");
   }
 
-  await execFileAsync("osascript", ["-e", 'tell application "Codex" to quit']).catch(() => undefined);
-  const gracefullyExited = await waitForCodexMainProcess(false, 6000);
-  if (!gracefullyExited) {
-    await execFileAsync("pkill", ["-TERM", "-x", "Codex"]).catch(() => undefined);
-    await waitForCodexMainProcess(false, 3000);
+  if (isRestartingCodex) {
+    throw new Error("Codex 正在重启，请稍候再试。");
   }
 
-  await execFileAsync("open", [codexAppPath]).catch(async () => {
-    await execFileAsync("open", ["-a", "Codex"]);
-  });
+  isRestartingCodex = true;
+  try {
+    await runDesktopCommand("osascript", ["-e", 'tell application "Codex" to quit'], codexQuitTimeoutMs).catch((error) => {
+      console.warn("[desktop:codex:quit]", error instanceof Error ? error.message : error);
+    });
 
-  const started = await waitForCodexMainProcess(true, 8000);
-  if (!started) {
-    throw new Error("Codex 已退出，但未能确认重新启动。");
+    const gracefullyExited = await waitForCodexMainProcess(false, 6000);
+    if (!gracefullyExited) {
+      await runDesktopCommand("pkill", ["-TERM", "-x", "Codex"], codexKillTimeoutMs).catch((error) => {
+        console.warn("[desktop:codex:term]", error instanceof Error ? error.message : error);
+      });
+      await waitForCodexMainProcess(false, 3000);
+    }
+
+    if (await isCodexMainProcessRunning()) {
+      await runDesktopCommand("pkill", ["-KILL", "-x", "Codex"], codexKillTimeoutMs).catch((error) => {
+        console.warn("[desktop:codex:kill]", error instanceof Error ? error.message : error);
+      });
+      const forceExited = await waitForCodexMainProcess(false, 3000);
+      if (!forceExited) {
+        throw new Error("旧 Codex 进程未能退出，请手动退出 Codex 后再打开。");
+      }
+    }
+
+    await openCodexApp();
+
+    const started = await waitForCodexMainProcess(true, 12_000);
+    if (!started) {
+      throw new Error("已发送启动命令，但未检测到 Codex 进程。请手动打开 Codex.app。");
+    }
+  } finally {
+    isRestartingCodex = false;
+  }
+}
+
+async function runDesktopCommand(command: string, args: string[], timeoutMs: number): Promise<void> {
+  await execFileAsync(command, args, {
+    timeout: timeoutMs,
+    maxBuffer: 1024 * 1024,
+  });
+}
+
+async function openCodexApp(): Promise<void> {
+  try {
+    await runDesktopCommand("open", [codexAppPath], codexOpenTimeoutMs);
+  } catch {
+    await runDesktopCommand("open", ["-a", "Codex"], codexOpenTimeoutMs);
   }
 }
 
 async function isCodexMainProcessRunning(): Promise<boolean> {
   try {
-    await execFileAsync("pgrep", ["-x", "Codex"]);
+    await execFileAsync("pgrep", ["-x", "Codex"], {
+      timeout: 1500,
+    });
     return true;
   } catch {
     return false;
