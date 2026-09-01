@@ -221,17 +221,21 @@ export function importProfileFromJson(value: unknown): OAuthProfile {
     throw new Error("导入失败: JSON 根节点必须是对象。");
   }
 
-  const access = getString(value.access_token) ?? getString(value.access);
-  const refresh = getString(value.refresh_token) ?? getString(value.refresh);
-  const idToken = getString(value.id_token) ?? getString(value.idToken);
+  // Also accept the native Codex auth.json shape:
+  // { auth_mode, last_refresh, tokens: { access_token, refresh_token, ... } }.
+  const nestedTokens = isRecord(value.tokens) ? value.tokens : undefined;
+  const input = nestedTokens ? { ...value, ...nestedTokens } : value;
+  const access = getString(input.access_token) ?? getString(input.access);
+  const refresh = getString(input.refresh_token) ?? getString(input.refresh);
+  const idToken = getString(input.id_token) ?? getString(input.idToken);
   if (!access || !refresh) {
     throw new Error("导入失败: 缺少 access_token/access 或 refresh_token/refresh。");
   }
 
   const payload = decodeJwtPayload(access);
-  const identity = extractImportIdentity(value, payload, access);
-  const email = extractEmail(payload, value.email);
-  const expires = parseExpiry(value, payload);
+  const identity = extractImportIdentity(input, payload, access);
+  const email = extractEmail(payload, input.email);
+  const expires = parseExpiry(input, payload);
 
   return {
     provider: "openai-codex",
