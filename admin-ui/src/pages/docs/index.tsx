@@ -5,6 +5,7 @@ import { copyText } from "@/shared/lib/app-utils";
 import type { AdminConfig } from "@/shared/types";
 import { skillMarkdown } from "@/content/skill-doc";
 import "./docs.css";
+import { useT } from "@/i18n";
 
 type DocsTab = "quick-start" | "openclaw" | "skill" | "examples";
 
@@ -13,11 +14,13 @@ function SnippetCard({
   description,
   code,
   onCopy,
+  copyTitle,
 }: {
   title: string;
   description: string;
   code: string;
   onCopy: () => void;
+  copyTitle: string;
 }) {
   return (
     <section className="docs-snippet">
@@ -26,7 +29,7 @@ function SnippetCard({
           <strong>{title}</strong>
           <p>{description}</p>
         </div>
-        <button className="btn-secondary icon-only" type="button" onClick={onCopy} title="复制代码">
+        <button className="btn-secondary icon-only" type="button" onClick={onCopy} title={copyTitle}>
           <Copy size={16} />
         </button>
       </div>
@@ -49,6 +52,7 @@ export function DocsPage({
   setStatus: (value: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<DocsTab>("quick-start");
+  const t = useT();
   const baseUrl = config?.baseUrl || "http://127.0.0.1:8787/v1";
   const apiKey = "local";
   const startCommand = "azt start";
@@ -62,10 +66,13 @@ export function DocsPage({
   }, []);
 
   const skillHighlights = [
-    { label: "用途", value: "本地网关接入说明" },
-    { label: "接入参数", value: `baseURL + apiKey = ${baseUrl} / ${apiKey}` },
-    { label: "启动命令", value: "azt start / npx ai-zero-token start" },
-    { label: "常用接口", value: "/v1/models · /v1/responses · /v1/chat/completions · /v1/images/generations" },
+    { label: t("docs.skill.highlights.purposeLabel"), value: t("docs.skill.highlights.purposeValue") },
+    {
+      label: t("docs.skill.highlights.paramsLabel"),
+      value: t("docs.skill.highlights.paramsValue", { baseUrl, apiKey }),
+    },
+    { label: t("docs.skill.highlights.startLabel"), value: t("docs.skill.highlights.startValue") },
+    { label: t("docs.skill.highlights.endpointsLabel"), value: t("docs.skill.highlights.endpointsValue") },
   ];
 
   const quickStartSnippet = `baseURL = "${baseUrl}"\napiKey = "${apiKey}"`;
@@ -77,12 +84,12 @@ export function DocsPage({
 
   async function copyDoc() {
     const ok = await copyText(skillMarkdown);
-    setStatus(ok ? "Skill.md 已复制。" : "Skill.md 复制失败。");
+    setStatus(ok ? t("docs.copySkillDone") : t("docs.copySkillFailed"));
   }
 
   function downloadDoc() {
     downloadTextFile("AI-Zero-Token-Skill.md", skillMarkdown, "text/markdown;charset=utf-8");
-    setStatus("Skill.md 已下载。");
+    setStatus(t("docs.downloadSkillDone"));
   }
 
   return (
@@ -91,52 +98,52 @@ export function DocsPage({
         <div className="docs-page-actions">
           <button className="btn-secondary" type="button" onClick={() => void copyDoc()}>
             <Copy size={16} />
-            复制 Skill.md
+            {t("docs.copySkill")}
           </button>
           <button className="btn-secondary" type="button" onClick={downloadDoc}>
             <Download size={16} />
-            下载 Skill.md
+            {t("docs.downloadSkill")}
           </button>
           <button className="btn-primary" type="button" onClick={() => onRoute("tester")}>
             <ExternalLink size={16} />
-            打开接口测试
+            {t("docs.openTester")}
           </button>
         </div>
       </header>
 
       <section className="docs-summary">
         <div className="docs-summary-item">
-          <span>Base URL</span>
+          <span>{t("docs.baseUrlLabel")}</span>
           <strong>{baseUrl}</strong>
         </div>
         <div className="docs-summary-item">
-          <span>API Key</span>
+          <span>{t("docs.apiKeyLabel")}</span>
           <strong>{apiKey}</strong>
         </div>
         <div className="docs-summary-item">
-          <span>启动命令</span>
+          <span>{t("docs.startCommandLabel")}</span>
           <strong>{startCommand}</strong>
         </div>
         <div className="docs-summary-item">
-          <span>文档规模</span>
-          <strong>{docStats.lines} 行 · {docStats.headings} 级标题 · {docStats.codeBlocks} 段代码</strong>
+          <span>{t("docs.docSizeLabel")}</span>
+          <strong>{t("docs.docSizeValue", { lines: docStats.lines, headings: docStats.headings, codeBlocks: docStats.codeBlocks })}</strong>
         </div>
       </section>
 
       <div className="docs-layout">
         <div className="docs-main">
-          <nav className="docs-tab-bar" aria-label="Skill 文档视图切换">
+          <nav className="docs-tab-bar" aria-label={t("docs.tabBarAria")}>
             <button className={activeTab === "quick-start" ? "is-active" : ""} type="button" onClick={() => setActiveTab("quick-start")}>
-              快速接入
+              {t("docs.tabs.quickStart")}
             </button>
             <button className={activeTab === "openclaw" ? "is-active" : ""} type="button" onClick={() => setActiveTab("openclaw")}>
-              OpenClaw
+              {t("docs.tabs.openclaw")}
             </button>
             <button className={activeTab === "skill" ? "is-active" : ""} type="button" onClick={() => setActiveTab("skill")}>
-              Skill.md
+              {t("docs.tabs.skill")}
             </button>
             <button className={activeTab === "examples" ? "is-active" : ""} type="button" onClick={() => setActiveTab("examples")}>
-              示例代码
+              {t("docs.tabs.examples")}
             </button>
           </nav>
 
@@ -145,22 +152,22 @@ export function DocsPage({
               <section className="docs-panel">
                 <div className="docs-panel-head">
                   <div>
-                    <h3>三步接入</h3>
-                    <p>先启动本地网关，再把 Skill.md 放进你的工具或项目。</p>
+                    <h3>{t("docs.quickStart.sectionTitle")}</h3>
+                    <p>{t("docs.quickStart.sectionDescription")}</p>
                   </div>
                 </div>
                 <ol className="docs-step-list">
                   <li>
-                    <strong>启动网关</strong>
-                    <span>执行 <code>{startCommand}</code>，管理页默认在 <code>http://127.0.0.1:8787</code>。</span>
+                    <strong>{t("docs.quickStart.step1Title")}</strong>
+                    <span>{t("docs.quickStart.step1Body", { command: startCommand })}</span>
                   </li>
                   <li>
-                    <strong>复制接入参数</strong>
-                    <span>Base URL 用 <code>{baseUrl}</code>，API Key 用 <code>{apiKey}</code>。</span>
+                    <strong>{t("docs.quickStart.step2Title")}</strong>
+                    <span>{t("docs.quickStart.step2Body", { baseUrl, apiKey })}</span>
                   </li>
                   <li>
-                    <strong>下载 Skill.md</strong>
-                    <span>把这份文档保存到你的工作流里，或直接复制给支持 Skill 的工具。</span>
+                    <strong>{t("docs.quickStart.step3Title")}</strong>
+                    <span>{t("docs.quickStart.step3Body")}</span>
                   </li>
                 </ol>
               </section>
@@ -168,18 +175,18 @@ export function DocsPage({
               <section className="docs-panel">
                 <div className="docs-panel-head">
                   <div>
-                    <h3>接入模板</h3>
-                    <p>最少只需要这两项。</p>
+                    <h3>{t("docs.quickStart.templateTitle")}</h3>
+                    <p>{t("docs.quickStart.templateDescription")}</p>
                   </div>
                 </div>
                 <div className="docs-mini-grid">
                   <button className="docs-mini-copy" type="button" onClick={copyBaseUrl}>
-                    <span>Base URL</span>
+                    <span>{t("docs.baseUrlLabel")}</span>
                     <strong>{baseUrl}</strong>
                     <Copy size={14} />
                   </button>
-                  <button className="docs-mini-copy" type="button" onClick={() => void copyText(apiKey).then((ok) => setStatus(ok ? "API Key 已复制。" : "API Key 复制失败。"))}>
-                    <span>API Key</span>
+                  <button className="docs-mini-copy" type="button" onClick={() => void copyText(apiKey).then((ok) => setStatus(ok ? t("docs.copyApiKeyDone") : t("docs.copyApiKeyFailed")))}>
+                    <span>{t("docs.apiKeyLabel")}</span>
                     <strong>{apiKey}</strong>
                     <Copy size={14} />
                   </button>
@@ -192,8 +199,8 @@ export function DocsPage({
               <section className="docs-panel docs-panel-wide">
                 <div className="docs-panel-head">
                   <div>
-                    <h3>常用接口</h3>
-                    <p>这个 Skill 文档覆盖了模型、对话和生图三类常见用法。</p>
+                    <h3>{t("docs.quickStart.endpointsTitle")}</h3>
+                    <p>{t("docs.quickStart.endpointsDescription")}</p>
                   </div>
                 </div>
                 <div className="docs-endpoint-grid">
@@ -211,25 +218,27 @@ export function DocsPage({
           {activeTab === "openclaw" ? (
             <div className="docs-example-grid">
               <SnippetCard
-                title="OpenClaw 接入参数"
-                description="在 OpenClaw 里选择 OpenAI-compatible provider。"
+                title={t("docs.openclaw.settingsTitle")}
+                description={t("docs.openclaw.settingsDescription")}
                 code={openClawSettings}
-                onCopy={() => void copyText(openClawSettings).then((ok) => setStatus(ok ? "OpenClaw 接入参数已复制。" : "复制失败。"))}
+                onCopy={() => void copyText(openClawSettings).then((ok) => setStatus(ok ? t("docs.openclaw.settingsCopyDone") : t("docs.copyFailed")))}
+                copyTitle={t("common.copy")}
               />
               <SnippetCard
-                title="流式工具调用自测"
-                description="验证 stream=true、tools 和 tool_choice 是否能被客户端识别。"
+                title={t("docs.openclaw.toolTitle")}
+                description={t("docs.openclaw.toolDescription")}
                 code={openClawToolExample}
-                onCopy={() => void copyText(openClawToolExample).then((ok) => setStatus(ok ? "OpenClaw 工具调用示例已复制。" : "复制失败。"))}
+                onCopy={() => void copyText(openClawToolExample).then((ok) => setStatus(ok ? t("docs.openclaw.toolCopyDone") : t("docs.copyFailed")))}
+                copyTitle={t("common.copy")}
               />
               <section className="docs-panel docs-note-panel">
-                <h3>兼容范围</h3>
+                <h3>{t("docs.openclaw.scopeTitle")}</h3>
                 <ul>
-                  <li>支持 <code>stream=true</code>，返回 OpenAI 风格 SSE chunk。</li>
-                  <li>支持 <code>tools</code>、<code>tool_choice</code>、<code>parallel_tool_calls</code> 和 <code>reasoning_effort</code>。</li>
-                  <li>支持 assistant <code>tool_calls</code> 和 tool role 结果消息回传。</li>
-                  <li>请求日志会识别 OpenClaw user agent，并展示安全摘要。</li>
-                  <li><code>/v1/responses</code> 暂不支持流式，<code>n &gt; 1</code> 暂不支持。</li>
+                  <li>{t("docs.openclaw.scopeStream")}</li>
+                  <li>{t("docs.openclaw.scopeTools")}</li>
+                  <li>{t("docs.openclaw.scopeToolCalls")}</li>
+                  <li>{t("docs.openclaw.scopeLogs")}</li>
+                  <li>{t("docs.openclaw.scopeLimits")}</li>
                 </ul>
               </section>
             </div>
@@ -239,8 +248,8 @@ export function DocsPage({
             <section className="docs-panel docs-preview-panel">
               <div className="docs-panel-head">
                 <div>
-                  <h3>Skill.md 摘要</h3>
-                  <p>先看关键信息，再按需展开源码。</p>
+                  <h3>{t("docs.skill.summaryTitle")}</h3>
+                  <p>{t("docs.skill.summaryDescription")}</p>
                 </div>
               </div>
               <div className="docs-skill-summary">
@@ -253,8 +262,8 @@ export function DocsPage({
               </div>
               <details className="docs-source-fold">
                 <summary>
-                  查看源码
-                  <span>{sourceLines} 行</span>
+                  {t("docs.skill.sourceSummary")}
+                  <span>{t("docs.skill.sourceLineCount", { count: sourceLines })}</span>
                 </summary>
                 <pre className="docs-source">
                   <code>{skillMarkdown}</code>
@@ -266,39 +275,42 @@ export function DocsPage({
           {activeTab === "examples" ? (
             <div className="docs-example-grid">
               <SnippetCard
-                title="OpenAI SDK"
-                description="适合前端和本地脚本。"
+                title={t("docs.examples.openaiTitle")}
+                description={t("docs.examples.openaiDescription")}
                 code={openAIExample}
-                onCopy={() => void copyText(openAIExample).then((ok) => setStatus(ok ? "OpenAI SDK 示例已复制。" : "复制失败。"))}
+                onCopy={() => void copyText(openAIExample).then((ok) => setStatus(ok ? t("docs.examples.openaiCopyDone") : t("docs.copyFailed")))}
+                copyTitle={t("common.copy")}
               />
               <SnippetCard
-                title="curl Chat Completions"
-                description="最直接的接口自测方式。"
+                title={t("docs.examples.curlTitle")}
+                description={t("docs.examples.curlDescription")}
                 code={curlExample}
-                onCopy={() => void copyText(curlExample).then((ok) => setStatus(ok ? "Chat Completions 示例已复制。" : "复制失败。"))}
+                onCopy={() => void copyText(curlExample).then((ok) => setStatus(ok ? t("docs.examples.curlCopyDone") : t("docs.copyFailed")))}
+                copyTitle={t("common.copy")}
               />
               <SnippetCard
-                title="Responses API"
-                description="适用于新式文本生成调用。"
+                title={t("docs.examples.responsesTitle")}
+                description={t("docs.examples.responsesDescription")}
                 code={responsesExample}
-                onCopy={() => void copyText(responsesExample).then((ok) => setStatus(ok ? "Responses API 示例已复制。" : "复制失败。"))}
+                onCopy={() => void copyText(responsesExample).then((ok) => setStatus(ok ? t("docs.examples.responsesCopyDone") : t("docs.copyFailed")))}
+                copyTitle={t("common.copy")}
               />
               <section className="docs-panel docs-note-panel">
-                <h3>用户如何使用</h3>
+                <h3>{t("docs.examples.usageTitle")}</h3>
                 <ul>
-                  <li>在侧边栏打开“使用文档”。</li>
-                  <li>先复制 Base URL 和 API Key，再下载 Skill.md。</li>
-                  <li>把 Skill.md 放到你的 AI 工具、项目文档或自动化流程里。</li>
-                  <li>需要验证时，直接跳到“接口测试”页面跑一条请求。</li>
+                  <li>{t("docs.examples.usage1")}</li>
+                  <li>{t("docs.examples.usage2")}</li>
+                  <li>{t("docs.examples.usage3")}</li>
+                  <li>{t("docs.examples.usage4")}</li>
                 </ul>
                 <div className="docs-action-row">
                   <button className="btn-secondary" type="button" onClick={() => onRoute("overview")}>
                     <Server size={16} />
-                    回到概览
+                    {t("docs.examples.backOverview")}
                   </button>
                   <button className="btn-secondary" type="button" onClick={() => onRoute("tester")}>
                     <ShieldCheck size={16} />
-                    去接口测试
+                    {t("docs.examples.goTester")}
                   </button>
                 </div>
               </section>

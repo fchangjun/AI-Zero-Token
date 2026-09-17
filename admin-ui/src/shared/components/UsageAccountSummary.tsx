@@ -1,5 +1,6 @@
 import { profileLabel, maskEmail, maskIdentifier } from "@/shared/lib/profiles";
 import type { ProfileSummary } from "@/shared/types";
+import { useT } from "@/i18n";
 
 export function UsageAccountSummary(props: {
   apiProfile: ProfileSummary | null;
@@ -8,6 +9,7 @@ export function UsageAccountSummary(props: {
   codexAccountId?: string;
   showEmails: boolean;
 }) {
+  const t = useT();
   const apiLabel = profileLabel(props.apiProfile, props.showEmails);
   const codexLabel = props.codexProfile
     ? profileLabel(props.codexProfile, props.showEmails)
@@ -19,16 +21,16 @@ export function UsageAccountSummary(props: {
         ? props.showEmails
           ? props.codexAccountId
           : maskIdentifier(props.codexAccountId)
-        : "未应用";
+        : t("usageAccountSummary.notApplied");
 
   return (
     <div className="usage-summary">
       <div className="usage-summary-row">
-        <span>网关:</span>
+        <span>{t("usageAccountSummary.gateway")}:</span>
         <strong>{apiLabel}</strong>
       </div>
       <div className="usage-summary-row">
-        <span>Codex:</span>
+        <span>{t("usageAccountSummary.codex")}:</span>
         <strong>{codexLabel}</strong>
       </div>
     </div>

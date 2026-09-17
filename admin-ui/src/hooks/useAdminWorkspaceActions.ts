@@ -4,6 +4,7 @@ import type { AdminConfig } from "@/shared/types";
 import { errorMessage } from "@/shared/lib/app-utils";
 import type { AppRoute } from "@/routes/routes";
 import type { WorkspaceState } from "./useAdminWorkspaceState";
+import { useT } from "@/i18n";
 
 export type WorkspaceActions = {
   login: () => Promise<void>;
@@ -28,9 +29,10 @@ function isManualLoginResult(value: AdminConfig | ManualLoginResult): value is M
 }
 
 export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceActions {
+  const t = useT();
   const login = useCallback(async () => {
     state.setBusy("login");
-    state.setStatus("正在打开 OAuth 登录...");
+    state.setStatus(t("workspace.openingOauth"));
     try {
       const result = await fetchJson<AdminConfig | ManualLoginResult>("/_gateway/admin/login", { method: "POST" });
       if (isManualLoginResult(result)) {
@@ -47,7 +49,7 @@ export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceAction
       const next = result;
       state.setConfig(next);
       state.setAccountModalOpen(false);
-      state.setStatus("登录完成，账号状态已同步。");
+      state.setStatus(t("workspace.loginDone"));
     } catch (error) {
       state.setStatus(errorMessage(error));
     } finally {
@@ -59,16 +61,16 @@ export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceAction
     const pending = state.manualLogin;
     const manualInput = input.trim();
     if (!pending) {
-      state.setStatus("没有等待中的 OAuth 登录，请重新点击登录。");
+      state.setStatus(t("workspace.noPendingOauth"));
       return;
     }
     if (!manualInput) {
-      state.setStatus("请粘贴完整回调 URL 或 authorization code。");
+      state.setStatus(t("workspace.manualInputRequired"));
       return;
     }
 
     state.setBusy("login-manual");
-    state.setStatus("正在提交手动授权结果...");
+    state.setStatus(t("workspace.submittingManual"));
     try {
       const next = await fetchJson<AdminConfig>("/_gateway/admin/login/manual", {
         method: "POST",
@@ -78,7 +80,7 @@ export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceAction
       state.setConfig(next);
       state.setManualLogin(null);
       state.setAccountModalOpen(false);
-      state.setStatus("登录完成，账号状态已同步。");
+      state.setStatus(t("workspace.loginDone"));
     } catch (error) {
       state.setStatus(errorMessage(error));
     } finally {
@@ -102,7 +104,7 @@ export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceAction
       });
       state.setConfig(next);
       state.setManualLogin(null);
-      state.setStatus("已取消 OAuth 登录。");
+      state.setStatus(t("workspace.oauthCancelled"));
     } catch (error) {
       state.setStatus(errorMessage(error));
     } finally {
@@ -111,16 +113,16 @@ export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceAction
   }, [state]);
 
   const logout = useCallback(async () => {
-    if (!window.confirm("确认清空本地保存的所有账号？")) {
+    if (!window.confirm(t("workspace.clearAccountsConfirm"))) {
       return;
     }
     state.setBusy("logout");
-    state.setStatus("正在清空账号...");
+    state.setStatus(t("workspace.clearingAccounts"));
     try {
       const next = await fetchJson<AdminConfig>("/_gateway/admin/logout", { method: "POST" });
       state.setConfig(next);
       state.setRequestLogs([]);
-      state.setStatus("账号已清空。");
+      state.setStatus(t("workspace.accountsCleared"));
     } catch (error) {
       state.setStatus(errorMessage(error));
     } finally {
@@ -141,7 +143,7 @@ export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceAction
   const copyBaseUrl = useCallback(() => {
     const value = state.config?.baseUrl || "http://127.0.0.1:8787/v1";
     navigator.clipboard.writeText(value).then(
-      () => state.setStatus("Base URL 已复制。"),
+      () => state.setStatus(t("workspace.baseUrlCopied")),
       () => state.setStatus(value),
     );
   }, [state]);

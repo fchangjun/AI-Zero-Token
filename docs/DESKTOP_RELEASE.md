@@ -2,6 +2,16 @@
 
 This project ships the desktop app with Electron. The desktop main process starts the existing local Fastify gateway and loads the React management UI served by that gateway.
 
+## 2.0.13 Release Notes
+
+Version `2.0.13` adds a bilingual management experience and a safer external-provider workflow for Codex:
+
+- The desktop management console now supports Simplified Chinese and English with a persistent language switcher and locale-aware formatting.
+- External OpenAI-compatible providers can be discovered and verified automatically through streamed Responses, function-call round trips, and reasoning-effort probes.
+- Verified models are written to a managed Codex model catalog, while URL-scoped inspection history enables safe cached reconnects without sharing tokens or model results across endpoints.
+- Disconnecting restores the previous Codex model, provider, and model-catalog settings while retaining an inactive compatibility definition for existing conversations unless the user explicitly purges it.
+- OpenAI-compatible chat requests now preserve `minimal` and `xhigh` reasoning effort values.
+
 ## 2.0.12 Release Notes
 
 Version `2.0.12` improves Codex diagnostics, compatibility, and desktop packaging:

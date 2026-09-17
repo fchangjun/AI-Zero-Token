@@ -1,5 +1,6 @@
 import type { AdminConfig, RequestLog } from "@/shared/types";
 import type { TrendWindow } from "@/shared/lib/app-types";
+import { useLocaleValue, useT } from "@/i18n";
 
 function primaryUsage(profile: { quota?: { primaryUsedPercent?: number } } | null | undefined): number {
   const value = profile?.quota?.primaryUsedPercent;
@@ -39,6 +40,9 @@ export function TrendCard(props: {
   windowMinutes: TrendWindow;
   onWindow: (value: TrendWindow) => void;
 }) {
+  const t = useT();
+  const locale = useLocaleValue();
+  const intlLocale = locale === "en" ? "en-US" : "zh-CN";
   const width = 720;
   const height = 210;
   const upperSeries = buildTrendSeries(props.config, props.requestLogs, 0, props.windowMinutes);
@@ -49,7 +53,7 @@ export function TrendCard(props: {
   const now = Date.now();
   const labelStep = Math.max(10, Math.round(props.windowMinutes / 6));
   const labels = Array.from({ length: 6 }, (_, index) =>
-    new Date(now - (5 - index) * labelStep * 60 * 1000).toLocaleTimeString("zh-CN", {
+    new Date(now - (5 - index) * labelStep * 60 * 1000).toLocaleTimeString(intlLocale, {
       hour12: false,
       hour: "2-digit",
       minute: "2-digit",
@@ -57,30 +61,30 @@ export function TrendCard(props: {
   );
 
   return (
-    <section className="trend-card" aria-label="请求耗时趋势">
+    <section className="trend-card" aria-label={t("trend.ariaLabel")}>
       <div className="section-head compact">
         <div>
-          <h3>请求耗时趋势</h3>
-          <p>基于最近调试请求和账号额度状态生成的本地趋势视图。</p>
+          <h3>{t("trend.title")}</h3>
+          <p>{t("trend.description")}</p>
         </div>
         <select className="control" value={props.windowMinutes} onChange={(event) => props.onWindow(Number(event.target.value) as TrendWindow)}>
-          <option value={60}>近 1 小时</option>
-          <option value={180}>近 3 小时</option>
-          <option value={720}>近 12 小时</option>
+          <option value={60}>{t("trend.windowHour1")}</option>
+          <option value={180}>{t("trend.windowHour3")}</option>
+          <option value={720}>{t("trend.windowHour12")}</option>
         </select>
       </div>
       <div className="chart-wrap">
         <div className="chart-legend">
           <span className="legend-item">
             <span className="legend-swatch purple" />
-            网关响应
+            {t("trend.gatewayResponse")}
           </span>
           <span className="legend-item">
             <span className="legend-swatch blue" />
-            上游响应
+            {t("trend.upstreamResponse")}
           </span>
         </div>
-        <svg className="trend-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="请求耗时趋势折线图">
+        <svg className="trend-svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={t("trend.ariaLabelSvg")}>
           <defs>
             <linearGradient id="areaA" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="rgba(99,91,255,0.18)" />

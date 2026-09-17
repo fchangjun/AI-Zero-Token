@@ -5,6 +5,7 @@ import type { RequestDiagnosticClearResult, RequestDiagnosticRecord, RequestDiag
 import { copyText, errorMessage } from "@/shared/lib/app-utils";
 import { formatDuration, formatFileSize, formatTime } from "@/shared/lib/format";
 import { formatJson } from "@/shared/lib/format";
+import { useLocaleValue, useT } from "@/i18n";
 
 type DiagnosticDetailTab = "overview" | "request" | "response" | "protocol";
 
@@ -29,19 +30,19 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-function diagnosticTabPayload(record: RequestDiagnosticRecord, tab: DiagnosticDetailTab): unknown {
+function diagnosticTabPayload(record: RequestDiagnosticRecord, tab: DiagnosticDetailTab, t: (key: string, values?: Record<string, string | number>) => string): unknown {
   if (tab === "request") {
     return record.content;
   }
   if (tab === "response") {
     const response = asRecord(record.response);
-    return response?.compact ?? record.response ?? record.error ?? { message: "还没有捕获到返回内容。" };
+    return response?.compact ?? record.response ?? record.error ?? { message: t("logs.responseEmpty") };
   }
   if (tab === "protocol") {
     const response = asRecord(record.response);
     const protocol = asRecord(response?.protocol);
     return protocol ?? {
-      message: "未保存完整返回协议。需要在设置里开启“同时保存完整返回 SSE 协议”，之后的新请求才会包含 events/rawSse。",
+      message: t("logs.protocolEmpty"),
       responseMeta: response
         ? {
             capturedAt: response.capturedAt,
@@ -92,6 +93,10 @@ function diagnosticTabPayload(record: RequestDiagnosticRecord, tab: DiagnosticDe
 }
 
 export function RequestLogs(props: { logs: RequestLog[] }) {
+  const t = useT();
+  const locale = useLocaleValue();
+  const intlLocale = locale === "en" ? "en-US" : "zh-CN";
+
   const [query, setQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
@@ -114,7 +119,8 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
     }
   }, [props.logs, selectedId]);
 
-  const sources = useMemo(() => Array.from(new Set(props.logs.map((item) => item.source || "管理页"))), [props.logs]);
+  const sourceFallback = t("logs.sourceFallback");
+  const sources = useMemo(() => Array.from(new Set(props.logs.map((item) => item.source || sourceFallback))), [props.logs, sourceFallback]);
   const methods = useMemo(() => Array.from(new Set(props.logs.map((item) => item.method))), [props.logs]);
 
   const filteredLogs = useMemo(() => {
@@ -123,7 +129,7 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
       const haystack = [item.time, item.method, item.endpoint, item.account, item.model, item.statusCode, item.durationMs, item.source].join(" ").toLowerCase();
       if (search && !haystack.includes(search)) return false;
       if (methodFilter !== "all" && item.method !== methodFilter) return false;
-      if (sourceFilter !== "all" && (item.source || "管理页") !== sourceFilter) return false;
+      if (sourceFilter !== "all" && (item.source || sourceFallback) !== sourceFilter) return false;
       if (statusFilter === "ok" && item.statusCode >= 400) return false;
       if (statusFilter === "error" && item.statusCode < 400) return false;
       return true;
@@ -138,7 +144,7 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
     try {
       setDiagnosticSummary(await fetchJson<RequestDiagnosticSummary>("/_gateway/admin/diagnostics/codex-requests"));
     } catch (error) {
-      setDiagnosticStatus(`诊断目录读取失败: ${errorMessage(error)}`);
+      setDiagnosticStatus(t("logs.diagnosticsReadError", { error: errorMessage(error) }));
     }
   }
 
@@ -166,7 +172,7 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
       .catch((error) => {
         if (cancelled) return;
         setDiagnosticRecord(null);
-        setDiagnosticStatus(`诊断内容不可用: ${errorMessage(error)}`);
+        setDiagnosticStatus(t("logs.diagnosticsReadFailed", { error: errorMessage(error) }));
       })
       .finally(() => {
         if (!cancelled) {
@@ -190,11 +196,11 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
 
   function copyDiagnosticPayload() {
     if (!diagnosticRecord) return;
-    copyText(formatJson(diagnosticTabPayload(diagnosticRecord, diagnosticTab))).catch(() => undefined);
+    copyText(formatJson(diagnosticTabPayload(diagnosticRecord, diagnosticTab, t))).catch(() => undefined);
   }
 
   async function clearDiagnostics() {
-    if (!window.confirm("将清空单独保存的 Codex 请求诊断内容文件。普通请求日志和用量统计不会被删除。确认继续？")) {
+    if (!window.confirm(t("logs.confirmClearDiagnostics"))) {
       return;
     }
 
@@ -203,9 +209,9 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
       const result = await fetchJson<RequestDiagnosticClearResult>("/_gateway/admin/diagnostics/codex-requests", { method: "DELETE" });
       setDiagnosticSummary(result);
       setDiagnosticRecord(null);
-      setDiagnosticStatus(`已清理 ${result.deletedFiles} 个诊断文件，释放 ${formatFileSize(result.deletedBytes)}。`);
+      setDiagnosticStatus(t("logs.diagnosticsCleared", { count: result.deletedFiles, size: formatFileSize(result.deletedBytes) }));
     } catch (error) {
-      setDiagnosticStatus(`诊断文件清理失败: ${errorMessage(error)}`);
+      setDiagnosticStatus(t("logs.diagnosticsClearFailed", { error: errorMessage(error) }));
     } finally {
       setDiagnosticClearing(false);
     }
@@ -215,17 +221,17 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
     <section className="log-table-wrap" id="logs">
       <div className="section-head compact">
         <div>
-          <h2>请求日志</h2>
-          <p>记录网关最近收到的 API 请求。默认显示安全摘要；开启诊断捕获后，新请求会把截断后的请求内容写入单独诊断文件。</p>
+          <h2>{t("logs.title")}</h2>
+          <p>{t("logs.description")}</p>
         </div>
         <div className="log-diagnostics-actions">
-          <span>{diagnosticSummary ? `诊断文件 ${diagnosticSummary.fileCount} 个 · ${formatFileSize(diagnosticSummary.totalBytes)}` : "诊断目录 -"}</span>
+          <span>{diagnosticSummary ? t("logs.diagnosticsSummary", { count: diagnosticSummary.fileCount, size: formatFileSize(diagnosticSummary.totalBytes) }) : t("logs.diagnosticsEmpty")}</span>
           <button className="btn-secondary" type="button" onClick={() => void refreshDiagnosticSummary()} disabled={diagnosticClearing}>
-            刷新
+            {t("logs.refresh")}
           </button>
           <button className="btn-danger" type="button" onClick={() => void clearDiagnostics()} disabled={diagnosticClearing || !diagnosticSummary?.fileCount}>
             {diagnosticClearing ? <Loader2 className="spin" size={16} /> : <Trash2 size={16} />}
-            清理诊断
+            {t("logs.clearDiagnostics")}
           </button>
         </div>
       </div>
@@ -233,12 +239,12 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
       <div className="log-toolbar">
         <label className="search-box log-search">
           <Search size={16} />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索时间、接口、账号、模型或状态" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("logs.searchPlaceholder")} />
         </label>
         <label className="filter-chip">
           <Filter size={14} />
           <select value={methodFilter} onChange={(event) => setMethodFilter(event.target.value)}>
-            <option value="all">全部方法</option>
+            <option value="all">{t("logs.methodAll")}</option>
             {methods.map((method) => (
               <option key={method} value={method}>
                 {method}
@@ -248,7 +254,7 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
         </label>
         <label className="filter-chip">
           <select value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
-            <option value="all">全部来源</option>
+            <option value="all">{t("logs.sourceAll")}</option>
             {sources.map((source) => (
               <option key={source} value={source}>
                 {source}
@@ -258,9 +264,9 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
         </label>
         <label className="filter-chip">
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="all">全部状态</option>
-            <option value="ok">成功</option>
-            <option value="error">失败</option>
+            <option value="all">{t("logs.statusAll")}</option>
+            <option value="ok">{t("logs.statusOk")}</option>
+            <option value="error">{t("logs.statusError")}</option>
           </select>
         </label>
       </div>
@@ -268,25 +274,25 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
         <table>
           <thead>
             <tr>
-              <th>时间</th>
-              <th>方法</th>
-              <th>接口</th>
-              <th>账号</th>
-              <th>模型</th>
-              <th>状态</th>
-              <th>耗时</th>
-              <th>来源</th>
+              <th>{t("logs.columnTime")}</th>
+              <th>{t("logs.columnMethod")}</th>
+              <th>{t("logs.columnEndpoint")}</th>
+              <th>{t("logs.columnAccount")}</th>
+              <th>{t("logs.columnModel")}</th>
+              <th>{t("logs.columnStatus")}</th>
+              <th>{t("logs.columnDuration")}</th>
+              <th>{t("logs.columnSource")}</th>
             </tr>
           </thead>
           <tbody>
             {filteredLogs.length === 0 ? (
               <tr>
-                <td colSpan={8}>最近 API 请求会在这里显示。</td>
+                <td colSpan={8}>{t("logs.tableEmpty")}</td>
               </tr>
             ) : (
               filteredLogs.map((item) => (
                 <tr key={item.id} className={item.id === selectedLog?.id ? "is-selected" : ""} onClick={() => setSelectedId(item.id)}>
-                  <td>{formatTime(item.time)}</td>
+                  <td>{formatTime(item.time, intlLocale)}</td>
                   <td>
                     <span className={`method-pill method-${item.method.toLowerCase()}`}>{item.method}</span>
                   </td>
@@ -299,49 +305,49 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
                     <span className={`status-pill ${item.statusCode >= 400 ? "is-error" : "is-ok"}`}>{item.statusCode}</span>
                   </td>
                   <td>{formatDuration(item.durationMs)}</td>
-                  <td>{item.source || "管理页"}</td>
+                  <td>{item.source || sourceFallback}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
-      <div className="table-footer">当前展示 {filteredLogs.length} 条请求记录，最近总计 {props.logs.length} 条。</div>
+      <div className="table-footer">{t("logs.footerCount", { filtered: filteredLogs.length, total: props.logs.length })}</div>
       {selectedLog && (
         <div className="log-detail-panel">
           <div className="log-detail-head">
             <div>
-              <h3>日志详情</h3>
-              <p>{formatTime(selectedLog.time)} · {selectedLog.method} {selectedLog.endpoint}</p>
+              <h3>{t("logs.detailTitle")}</h3>
+              <p>{formatTime(selectedLog.time, intlLocale)} · {selectedLog.method} {selectedLog.endpoint}</p>
             </div>
             <button className="btn-secondary" type="button" onClick={copySelectedLog}>
               <Copy size={16} />
-              复制详情
+              {t("logs.copyDetail")}
             </button>
           </div>
           <div className="log-detail-grid">
             <div className="log-detail-meta">
-              <div><span>账号</span><strong>{selectedLog.account}</strong></div>
-              <div><span>模型</span><strong>{selectedLog.model}</strong></div>
-              <div><span>状态</span><strong>{selectedLog.statusCode}</strong></div>
-              <div><span>耗时</span><strong>{formatDuration(selectedLog.durationMs)}</strong></div>
-              <div><span>来源</span><strong>{selectedLog.source || "管理页"}</strong></div>
+              <div><span>{t("logs.detailMetaAccount")}</span><strong>{selectedLog.account}</strong></div>
+              <div><span>{t("logs.detailMetaModel")}</span><strong>{selectedLog.model}</strong></div>
+              <div><span>{t("logs.detailMetaStatus")}</span><strong>{selectedLog.statusCode}</strong></div>
+              <div><span>{t("logs.detailMetaDuration")}</span><strong>{formatDuration(selectedLog.durationMs)}</strong></div>
+              <div><span>{t("logs.detailMetaSource")}</span><strong>{selectedLog.source || sourceFallback}</strong></div>
             </div>
             <div className="log-detail-json-stack">
               {selectedDiagnosticCapture && (
                 <div className="log-content-capture">
                   <div className="log-content-capture-head">
-                    <strong>诊断内容</strong>
+                    <strong>{t("logs.captureTitle")}</strong>
                     <span>
                       {diagnosticLoading
-                        ? "读取诊断文件中"
+                        ? t("logs.diagnosticsReading")
                         : diagnosticRecord
-                          ? `${formatFileSize(selectedDiagnosticCapture.bytes as number)} · ${selectedDiagnosticCapture.relativePath || selectedDiagnosticCapture.id}`
-                          : "诊断文件不可用"}
+                          ? t("logs.captureBytes", { size: formatFileSize(Number(selectedDiagnosticCapture.bytes ?? 0)), path: String(selectedDiagnosticCapture.relativePath ?? selectedDiagnosticCapture.id ?? "") })
+                          : t("logs.diagnosticsUnavailable")}
                     </span>
                   </div>
                   {diagnosticLoading ? (
-                    <pre className="pre log-detail-pre log-content-pre">读取中...</pre>
+                    <pre className="pre log-detail-pre log-content-pre">{t("logs.captureReading")}</pre>
                   ) : diagnosticRecord ? (
                     <div className="log-diagnostic-view">
                       <div className="log-diagnostic-tabs">
@@ -352,18 +358,18 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
                             type="button"
                             onClick={() => setDiagnosticTab(tab)}
                           >
-                            {tab === "overview" ? "概览" : tab === "request" ? "请求" : tab === "response" ? "返回" : "协议"}
+                            {tab === "overview" ? t("logs.tabOverview") : tab === "request" ? t("logs.tabRequest") : tab === "response" ? t("logs.tabResponse") : t("logs.tabProtocol")}
                           </button>
                         ))}
                         <button className="copy-tab" type="button" onClick={copyDiagnosticPayload}>
                           <Copy size={14} />
-                          复制当前
+                          {t("logs.copyCurrent")}
                         </button>
                       </div>
-                      <pre className="pre log-detail-pre log-content-pre">{formatJson(diagnosticTabPayload(diagnosticRecord, diagnosticTab))}</pre>
+                      <pre className="pre log-detail-pre log-content-pre">{formatJson(diagnosticTabPayload(diagnosticRecord, diagnosticTab, t))}</pre>
                     </div>
                   ) : (
-                    <pre className="pre log-detail-pre log-content-pre">{diagnosticStatus || "诊断内容不存在或已清理。"}</pre>
+                    <pre className="pre log-detail-pre log-content-pre">{diagnosticStatus || t("logs.diagnosticsMissing")}</pre>
                   )}
                 </div>
               )}

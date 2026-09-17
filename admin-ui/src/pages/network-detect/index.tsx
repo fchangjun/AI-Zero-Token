@@ -17,6 +17,8 @@ import claudeIcon from "@/assets/platform-claude.svg";
 import chatgptIcon from "@/assets/platform-chatgpt.svg";
 import googleIcon from "@/assets/platform-google.svg";
 import xIcon from "@/assets/platform-x.svg";
+import { useT, useLocaleValue } from "@/i18n";
+import type { Translator } from "@/shared/lib/profiles";
 import youtubeIcon from "@/assets/platform-youtube.svg";
 
 type Tone = "green" | "orange" | "red" | "blue" | "slate";
@@ -25,7 +27,7 @@ type NetworkPlatformProbe = {
   key: string;
   label: string;
   url: string;
-  status: "可达" | "受限" | "不可用";
+  status: "reachable" | "limited" | "unavailable";
   detail: string;
   tone: Tone;
   httpStatus?: number;
@@ -134,11 +136,11 @@ function detectBrowserLabel(ua: string): string {
   return ua.slice(0, 40);
 }
 
-async function detectWebRtc(): Promise<LocalEnvironment["webrtc"]> {
+async function detectWebRtc(t: Translator): Promise<LocalEnvironment["webrtc"]> {
   if (typeof RTCPeerConnection === "undefined") {
     return {
-      status: "不支持",
-      detail: "当前环境不支持 WebRTC。",
+      status: t("network.webrtc.unsupported"),
+      detail: t("network.webrtc.unsupportedDetail"),
       tone: "orange",
       candidates: [],
     };
@@ -183,8 +185,8 @@ async function detectWebRtc(): Promise<LocalEnvironment["webrtc"]> {
 
   if (hasPublicCandidate) {
     return {
-      status: "需要留意",
-      detail: `收集到 ${lines.length} 个候选地址，其中包含公网回显特征。`,
+      status: t("network.webrtc.needsAttention"),
+      detail: t("network.webrtc.publicCandidates", { count: lines.length }),
       tone: "red",
       candidates: lines,
     };
@@ -192,23 +194,23 @@ async function detectWebRtc(): Promise<LocalEnvironment["webrtc"]> {
 
   if (hasHostCandidate || complete) {
     return {
-      status: "本地候选为主",
-      detail: `收集到 ${lines.length} 个候选地址，主要来自本地网段。`,
+      status: t("network.webrtc.localFirst"),
+      detail: t("network.webrtc.localCandidates", { count: lines.length }),
       tone: "orange",
       candidates: lines,
     };
   }
 
   return {
-    status: "暂未发现异常",
-    detail: "未收集到可识别的候选地址。",
+    status: t("network.webrtc.noAnomaly"),
+    detail: t("network.webrtc.noAnomalyDetail"),
     tone: "green",
     candidates: lines,
   };
 }
 
-async function detectLocalEnvironment(): Promise<LocalEnvironment> {
-  const [webrtc] = await Promise.all([detectWebRtc()]);
+async function detectLocalEnvironment(t: Translator): Promise<LocalEnvironment> {
+  const [webrtc] = await Promise.all([detectWebRtc(t)]);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "-";
   const language = navigator.language || "-";
   const browser = detectBrowserLabel(navigator.userAgent || "");
@@ -232,71 +234,71 @@ function summarizeDnsTone(servers: string[]): Tone {
   return "green";
 }
 
-function summarizeDnsLabel(servers: string[]): string {
+function summarizeDnsLabel(servers: string[], t: Translator): string {
   if (servers.length === 0) {
-    return "未读取";
+    return t("network.dns.notRead");
   }
 
   if (servers.some((item) => isPrivateOrReservedIp(item))) {
-    return "内网 / 企业 DNS";
+    return t("network.dns.internal");
   }
 
-  return "公网 DNS";
+  return t("network.dns.public");
 }
 
-function summarizePlatformCounts(platforms: NetworkPlatformProbe[]) {
+function summarizePlatformCounts(platforms: NetworkPlatformProbe[], t: Translator) {
   const total = platforms.length;
-  const reachable = platforms.filter((item) => item.status === "可达").length;
-  const limited = platforms.filter((item) => item.status === "受限").length;
-  const unavailable = platforms.filter((item) => item.status === "不可用").length;
+  const reachable = platforms.filter((item) => item.status === "reachable").length;
+  const limited = platforms.filter((item) => item.status === "limited").length;
+  const unavailable = platforms.filter((item) => item.status === "unavailable").length;
   return { total, reachable, limited, unavailable };
 }
 
-function buildAccessVerdict(report: NetworkDetectReport | null, counts: ReturnType<typeof summarizePlatformCounts>): { label: string; detail: string; tone: Tone } {
+function buildAccessVerdict(report: NetworkDetectReport | null, counts: ReturnType<typeof summarizePlatformCounts>, t: Translator): { label: string; detail: string; tone: Tone } {
   if (!report || counts.total === 0) {
     return {
-      label: "正在判断海外访问",
-      detail: "正在检查 ChatGPT、Claude、Google、YouTube 和 X 的连通性。",
+      label: t("network.verdict.checkingLabel"),
+      detail: t("network.verdict.checkingDetail"),
       tone: "blue",
     };
   }
 
   if (counts.unavailable > 0) {
     return {
-      label: "海外访问受阻",
-      detail: `${counts.unavailable} 个海外应用不可用，优先检查代理出口、DNS 或上游链路。`,
+      label: t("network.verdict.blockedLabel"),
+      detail: t("network.verdict.blockedCountDetail", { count: counts.unavailable }),
       tone: "red",
     };
   }
 
   if (counts.limited > 0) {
     return {
-      label: "部分应用受限",
-      detail: `${counts.reachable}/${counts.total} 个海外应用可达，其余应用返回限制状态。`,
+      label: t("network.verdict.partialLabel"),
+      detail: t("network.verdict.partialCountDetail", { reachable: counts.reachable, total: counts.total }),
       tone: "orange",
     };
   }
 
   return {
-    label: "海外应用可访问",
-    detail: `${counts.total} 个目标应用均已连通，当前出口可用于海外反向代理场景。`,
+    label: t("network.verdict.okLabel"),
+    detail: t("network.verdict.okCountDetail", { count: counts.total }),
     tone: "green",
   };
 }
 
-function buildOverallStatus(report: NetworkDetectReport | null, local: LocalEnvironment | null): { label: string; detail: string; tone: Tone } {
+function buildOverallStatus(report: NetworkDetectReport | null, local: LocalEnvironment | null, t: Translator): { label: string; detail: string; tone: Tone } {
   if (!report && !local) {
     return {
-      label: "检测中",
-      detail: "正在采集公网出口、DNS、WebRTC、代理和平台可达性。",
+      label: t("network.overall.checkingLabel"),
+      detail: t("network.overall.checkingDetail"),
       tone: "blue",
     };
   }
 
   if (!report || !local) {
     return {
-      label: "部分结果",
-      detail: "已有项目返回，剩余项目会保留失败原因，方便继续排查。",
+      label: t("network.overall.partialLabel"),
+      detail: t("network.overall.partialDetail"),
       tone: "orange",
     };
   }
@@ -318,23 +320,23 @@ function buildOverallStatus(report: NetworkDetectReport | null, local: LocalEnvi
 
   if (redFlags.some(Boolean)) {
     return {
-      label: "建议先处理",
-      detail: "有明显阻塞项，先把出口或浏览器回显风险排掉。",
+      label: t("network.overall.blockedLabel"),
+      detail: t("network.overall.blockedDetail"),
       tone: "red",
     };
   }
 
   if (orangeFlags.some(Boolean)) {
     return {
-      label: "需要留意",
-      detail: "结果可用，但有几项信息值得再看一眼。",
+      label: t("network.overall.attentionLabel"),
+      detail: t("network.overall.attentionDetail"),
       tone: "orange",
     };
   }
 
   return {
-    label: "状态正常",
-    detail: "出口、DNS、WebRTC 和常用平台状态都比较稳定。",
+    label: t("network.overall.okLabel"),
+    detail: t("network.overall.okDetail"),
     tone: "green",
   };
 }
@@ -394,8 +396,8 @@ function NetworkBlock(props: { label: string; value: string; detail: string; ton
   );
 }
 
-function PlatformAccessRow(props: { item: NetworkPlatformProbe }) {
-  const { item } = props;
+function PlatformAccessRow(props: { item: NetworkPlatformProbe; t: Translator }) {
+  const { item, t } = props;
   return (
     <div className={`platform-access-row ${item.tone}`}>
       <div className="platform-access-main">
@@ -407,11 +409,11 @@ function PlatformAccessRow(props: { item: NetworkPlatformProbe }) {
       </div>
       <div className="platform-access-result">
         <AccessBadge tone={item.tone}>{item.status}</AccessBadge>
-        <span>{item.httpStatus ? `HTTP ${item.httpStatus}` : "连接结果"}</span>
+        <span>{item.httpStatus ? t("network.accessScore.httpStatus", { status: item.httpStatus }) : t("network.accessScore.connectResult")}</span>
       </div>
       <div className="platform-access-latency">
         <strong>{parseLatency(item.elapsedMs)}</strong>
-        <span>{item.httpStatus ? `${item.httpStatus} 响应` : "等待结果"}</span>
+        <span>{item.httpStatus ? t("network.accessScore.statusResponse", { status: item.httpStatus }) : t("network.accessScore.waiting")}</span>
       </div>
       <div className="platform-access-detail">
         <span>{item.detail}</span>
@@ -424,9 +426,9 @@ function parseLatency(value?: number): string {
   return typeof value === "number" ? `${value} ms` : "-";
 }
 
-function normalizeDetectError(error: unknown): string {
+function normalizeDetectError(error: unknown, t: Translator): string {
   if (error instanceof DOMException && error.name === "AbortError") {
-    return "网络探测超过 18 秒，已停止等待。";
+    return t("network.status.timeout");
   }
 
   return error instanceof Error ? error.message : String(error);
@@ -436,19 +438,22 @@ export function NetworkDetectPage() {
   const [report, setReport] = useState<NetworkDetectReport | null>(null);
   const [local, setLocal] = useState<LocalEnvironment | null>(null);
   const [loading, setLoading] = useState(true);
-  const [status, setStatus] = useState("正在采集真实网络状态...");
+  const [status, setStatus] = useState("");
+  const t = useT();
+  const locale = useLocaleValue();
+  const intlLocale = locale === "en" ? "en-US" : "zh-CN";
   const [error, setError] = useState<string | null>(null);
 
   async function refresh() {
     setLoading(true);
     setError(null);
-    setStatus("正在采集真实网络状态...");
+    setStatus(t("network.status.running"));
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => controller.abort(), 18000);
     try {
       const [reportResult, localResult] = await Promise.allSettled([
         fetchJson<NetworkDetectReport>("/_gateway/admin/network-detect", { signal: controller.signal }),
-        detectLocalEnvironment(),
+        detectLocalEnvironment(t),
       ]);
 
       if (reportResult.status === "fulfilled") {
@@ -460,23 +465,23 @@ export function NetworkDetectPage() {
 
       const messages: string[] = [];
       if (reportResult.status === "rejected") {
-        messages.push(`网络探测: ${normalizeDetectError(reportResult.reason)}`);
+        messages.push(`${t("network.status.probePrefix")}${normalizeDetectError(reportResult.reason, t)}`);
       }
       if (localResult.status === "rejected") {
-        messages.push(`本地环境: ${normalizeDetectError(localResult.reason)}`);
+        messages.push(`${t("network.status.environmentPrefix")}${normalizeDetectError(localResult.reason, t)}`);
       }
 
       const nextStatus =
         reportResult.status === "fulfilled" && localResult.status === "fulfilled"
-          ? "检测完成。"
+          ? t("network.status.complete")
           : reportResult.status === "fulfilled" || localResult.status === "fulfilled"
-            ? "部分结果已更新。"
-            : "检测失败。";
+            ? t("network.status.partial")
+            : t("network.status.failed");
       setError(messages.length > 0 ? messages.join(" · ") : null);
       setStatus(nextStatus);
     } catch (nextError) {
-      setError(normalizeDetectError(nextError));
-      setStatus("检测失败。");
+      setError(normalizeDetectError(nextError, t));
+      setStatus(t("network.status.failed"));
     } finally {
       window.clearTimeout(timeoutId);
       setLoading(false);
@@ -500,26 +505,38 @@ export function NetworkDetectPage() {
     }).format(new Date(report.checkedAt));
   }, [report]);
 
-  const overall = buildOverallStatus(report, local);
+  const overall = buildOverallStatus(report, local, t);
   const dnsTone = summarizeDnsTone(report?.dns.servers || []);
-  const dnsLabel = summarizeDnsLabel(report?.dns.servers || []);
+  const dnsLabel = summarizeDnsLabel(report?.dns.servers || [], t);
   const dnsValue = report?.dns.servers?.length ? report.dns.servers.slice(0, 2).join(" / ") : "-";
-  const dnsDetail = report?.dns.detail || "尚未检测到系统 DNS。";
-  const platformCounts = summarizePlatformCounts(report?.platforms || []);
+  const dnsDetail = report?.dns.detail || t("network.environment.notDetected");
+  const platformCounts = summarizePlatformCounts(report?.platforms || [], t);
   const ipv4Tone = report ? (report.publicIpv4.available && report.publicIpv4.ip ? "green" : "orange") : "blue";
   const ipv6Tone = report ? (report.publicIpv6.available ? "green" : "orange") : "blue";
-  const ipv4Value = report ? (report.publicIpv4.available && report.publicIpv4.ip ? report.publicIpv4.ip : "未获取到") : loading ? "检测中" : "未读取";
-  const ipv4Detail = report?.publicIpv4.detail || "正在采集公网 IPv4 出口。";
-  const proxyLabel = report?.proxy.enabled ? "代理已启用" : report ? "直连" : "待检测";
-  const proxyDetail = report?.proxy.enabled ? report.proxy.url || "代理地址未读取" : "检测请求按当前网关配置发起。";
+  const ipv4Value = report
+    ? (report.publicIpv4.available && report.publicIpv4.ip
+      ? report.publicIpv4.ip
+      : t("network.environment.notAcquired"))
+    : loading
+      ? t("network.environment.proxyPending")
+      : t("network.dns.notRead");
+  const ipv4Detail = report?.publicIpv4.detail || t("network.environment.ipv4Detail");
+  const proxyLabel = report?.proxy.enabled
+    ? t("network.environment.proxyEnabled")
+    : report
+      ? t("network.environment.proxyDirect")
+      : t("network.environment.proxyPending");
+  const proxyDetail = report?.proxy.enabled
+    ? report.proxy.url || t("network.environment.proxyUrlUnknown")
+    : t("network.environment.proxyDirectDetail");
   const proxyTone = report ? (report.proxy.enabled ? "orange" : "green") : "blue";
-  const accessVerdict = buildAccessVerdict(report, platformCounts);
+  const accessVerdict = buildAccessVerdict(report, platformCounts, t);
   const accessPercent = platformCounts.total > 0 ? Math.round((platformCounts.reachable / platformCounts.total) * 100) : 0;
   const accessScore = report ? `${accessPercent}%` : "--";
   const platformTotalLabel = platformCounts.total > 0 ? String(platformCounts.total) : "5";
   const exitLocation = report?.publicIpv4.countryName
     ? `${report.publicIpv4.countryName}${report.publicIpv4.colo ? ` · ${report.publicIpv4.colo}` : ""}`
-    : report?.publicIpv4.countryCode || "未知出口";
+    : report?.publicIpv4.countryCode || t("network.environment.unknownExit");
   const exitDetail = report?.publicIpv4.available
     ? `${report.publicIpv4.source} · ${parseLatency(report.publicIpv4.elapsedMs)}`
     : ipv4Detail;
@@ -527,8 +544,8 @@ export function NetworkDetectPage() {
   const routeSummary = firstBlockedPlatform
     ? `${firstBlockedPlatform.label}: ${firstBlockedPlatform.detail}`
     : report
-      ? "海外目标应用均有响应。"
-      : "等待海外目标应用响应。";
+      ? t("network.accessScore.allResponded")
+      : t("network.accessScore.waitingForResponse");
   const environmentTone: Tone =
     local?.webrtc.tone === "red"
       ? "red"
@@ -544,7 +561,7 @@ export function NetworkDetectPage() {
         <div className="network-command-copy">
           <div className="network-eyebrow">
             <Wifi size={14} />
-            <span>海外应用访问诊断</span>
+            <span>{t("network.commandCopy.title")}</span>
           </div>
           <h2>{accessVerdict.label}</h2>
           <p>{accessVerdict.detail}</p>
@@ -559,31 +576,31 @@ export function NetworkDetectPage() {
         </div>
 
         <div className="access-score-card">
-          <span>海外可达率</span>
+          <span>{t("network.accessScore.cardLabel")}</span>
           <strong>{accessScore}</strong>
           <div className="access-score-bar" aria-hidden="true">
             <i style={{ width: `${accessPercent}%` }} />
           </div>
           <p>
-            {platformCounts.reachable}/{platformTotalLabel} 个目标应用可达
+            {t("network.accessScore.platformCount", { count: `${platformCounts.reachable}/${platformTotalLabel}` })}
           </p>
           <button className="btn-secondary" type="button" onClick={() => refresh().catch(() => undefined)} disabled={loading}>
             <RefreshCw size={16} />
-            {loading ? "检测中" : "重新检测"}
+            {loading ? t("network.accessScore.checking") : t("network.accessScore.redetect")}
           </button>
         </div>
       </section>
 
-      {error ? <p className="network-error">检测提示: {error}</p> : null}
+      {error ? <p className="network-error">{t("network.errorHint", { error })}</p> : null}
 
       <section className="signal-grid">
-        <SignalCard icon={Activity} label="海外连通性" value={`${platformCounts.reachable}/${platformTotalLabel}`} detail={routeSummary} tone={accessVerdict.tone} />
-        <SignalCard icon={MapPin} label="当前出口" value={report?.publicIpv4.available ? exitLocation : ipv4Value} detail={exitDetail} tone={ipv4Tone} />
-        <SignalCard icon={Server} label="代理路径" value={proxyLabel} detail={proxyDetail} tone={proxyTone} />
+        <SignalCard icon={Activity} label={t("network.signals.connectivityLabel")} value={`${platformCounts.reachable}/${platformTotalLabel}`} detail={routeSummary} tone={accessVerdict.tone} />
+        <SignalCard icon={MapPin} label={t("network.signals.exitLabel")} value={report?.publicIpv4.available ? exitLocation : ipv4Value} detail={exitDetail} tone={ipv4Tone} />
+        <SignalCard icon={Server} label={t("network.signals.proxyLabel")} value={proxyLabel} detail={proxyDetail} tone={proxyTone} />
         <SignalCard
           icon={ShieldCheck}
-          label="解析与浏览器"
-          value={local ? `${dnsLabel} · ${local.webrtc.status}` : "检测中"}
+          label={t("network.signals.environmentLabel")}
+          value={local ? `${dnsLabel} · ${local.webrtc.status}` : t("network.environment.proxyPending")}
           detail={local?.webrtc.detail || dnsDetail}
           tone={environmentTone}
         />
@@ -593,21 +610,21 @@ export function NetworkDetectPage() {
         <section className="card network-section network-platform-panel">
           <div className="section-head compact">
             <div>
-              <h3>海外应用矩阵</h3>
-              <p>反代链路最常用目标的实时可达性。</p>
+              <h3>{t("network.accessScore.rowTitle")}</h3>
+              <p>{t("network.accessScore.rowDescription")}</p>
             </div>
             <div className="platform-summary-strip">
               <div className="platform-summary-chip green">
                 <strong>{platformCounts.reachable}</strong>
-                <span>可达</span>
+                <span>{t("network.accessScore.reachable")}</span>
               </div>
               <div className="platform-summary-chip orange">
                 <strong>{platformCounts.limited}</strong>
-                <span>受限</span>
+                <span>{t("network.accessScore.limited")}</span>
               </div>
               <div className="platform-summary-chip red">
                 <strong>{platformCounts.unavailable}</strong>
-                <span>阻断</span>
+                <span>{t("network.accessScore.blocked")}</span>
               </div>
             </div>
           </div>
@@ -615,19 +632,19 @@ export function NetworkDetectPage() {
           {report?.platforms.length ? (
             <>
               <div className="platform-access-header" aria-hidden="true">
-                <span>应用</span>
-                <span>状态</span>
-                <span>耗时</span>
-                <span>说明</span>
+                <span>{t("network.accessScore.platformColumn")}</span>
+                <span>{t("network.accessScore.statusColumn")}</span>
+                <span>{t("network.accessScore.elapsedColumn")}</span>
+                <span>{t("network.accessScore.detailColumn")}</span>
               </div>
               <div className="platform-access-list">
                 {report.platforms.map((item) => (
-                  <PlatformAccessRow item={item} key={item.key} />
+                  <PlatformAccessRow item={item} key={item.key} t={t} />
                 ))}
               </div>
             </>
           ) : (
-            <div className="network-empty-state">平台探测结果还没有返回。</div>
+            <div className="network-empty-state">{t("network.accessScore.empty")}</div>
           )}
         </section>
 
@@ -635,8 +652,8 @@ export function NetworkDetectPage() {
           <section className="card network-section network-diagnosis-panel">
             <div className="section-head compact">
               <div>
-                <h3>访问结论</h3>
-                <p>用于判断当前环境是否适合海外反向代理。</p>
+                <h3>{t("network.diagnosis.title")}</h3>
+                <p>{t("network.diagnosis.description")}</p>
               </div>
             </div>
             <div className="network-list">
@@ -649,8 +666,8 @@ export function NetworkDetectPage() {
                 <p>{overall.detail}</p>
               </div>
               <div className="network-list-item">
-                <StatusChip tone={local?.webrtc.tone || "blue"}>{local?.webrtc.status || "检测中"}</StatusChip>
-                <p>{local?.webrtc.detail || "正在采集 WebRTC 候选。"}</p>
+                <StatusChip tone={local?.webrtc.tone || "blue"}>{local?.webrtc.status || t("network.environment.proxyPending")}</StatusChip>
+                <p>{local?.webrtc.detail || t("network.environment.webrtcCollecting")}</p>
               </div>
             </div>
           </section>
@@ -658,27 +675,27 @@ export function NetworkDetectPage() {
           <section className="card network-section">
             <div className="section-head compact">
               <div>
-                <h3>出口与代理</h3>
-                <p>反代请求实际经过的公网出口。</p>
+                <h3>{t("network.environment.exitTitle")}</h3>
+                <p>{t("network.environment.exitDescription")}</p>
               </div>
             </div>
             <div className="network-dual">
               <NetworkBlock
-                label="IPv4 出口"
+                label={t("network.environment.ipv4Label")}
                 value={ipv4Value}
                 detail={
                   report
                     ? report.publicIpv4.available
                       ? `${exitLocation} · ${parseLatency(report.publicIpv4.elapsedMs)}`
                       : `${report.publicIpv4.detail} · ${parseLatency(report.publicIpv4.elapsedMs)}`
-                    : "正在采集公网出口信息。"
+                    : t("network.environment.ipv4Detail")
                 }
                 tone={ipv4Tone}
               />
               <NetworkBlock
-                label="IPv6 出口"
-                value={report?.publicIpv6.available ? report.publicIpv6.ip || "-" : "未检测到"}
-                detail={report?.publicIpv6.detail || "未检测到独立 IPv6 出口。"}
+                label={t("network.environment.ipv6Label")}
+                value={report?.publicIpv6.available ? report.publicIpv6.ip || "-" : t("network.environment.ipv6Unavailable")}
+                detail={report?.publicIpv6.detail || t("network.environment.ipv6Detail")}
                 tone={ipv6Tone}
               />
             </div>
@@ -695,19 +712,19 @@ export function NetworkDetectPage() {
       <section className="card network-section network-environment-panel">
         <div className="section-head compact">
           <div>
-            <h3>解析与本地指纹</h3>
-            <p>DNS、WebRTC、时区和语言会影响海外应用的风控判断。</p>
+            <h3>{t("network.environment.title")}</h3>
+            <p>{t("network.environment.riskDescription")}</p>
           </div>
         </div>
         <div className="network-three-up">
-          <NetworkMetric label="DNS" value={dnsValue} detail={`${dnsLabel} · ${report?.dns.source || "尚未获取"}`} tone={dnsTone} />
+          <NetworkMetric label={t("network.environment.dnsLabel")} value={dnsValue} detail={`${dnsLabel} · ${report?.dns.source || t("network.environment.notCollected")}`} tone={dnsTone} />
           <NetworkMetric
             label="WebRTC"
-            value={local?.webrtc.status || (loading ? "检测中" : "-")}
-            detail={local?.webrtc.detail || "正在采集 WebRTC 候选。"}
+            value={local?.webrtc.status || (loading ? t("network.environment.proxyPending") : "-")}
+            detail={local?.webrtc.detail || t("network.environment.webrtcCollecting")}
             tone={local?.webrtc.tone || "blue"}
           />
-          <NetworkMetric label="本地环境" value={local?.timezone || "-"} detail={`${local?.language || "-"} · ${local?.browser || "-"}`} tone={environmentTone} />
+          <NetworkMetric label={t("network.environment.environmentMetricLabel")} value={local?.timezone || "-"} detail={`${local?.language || "-"} · ${local?.browser || "-"}`} tone={environmentTone} />
         </div>
         {report?.dns.servers.length ? (
           <div className="dns-chip-row">

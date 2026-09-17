@@ -5,12 +5,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import {
-  brotliDecompress,
-  gunzip,
-  inflate,
-  zstdDecompress,
-} from "node:zlib";
+import * as nodeZlib from "node:zlib";
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
@@ -40,10 +35,11 @@ const REQUEST_CONTENT_CAPTURE_MAX_ARRAY_ITEMS = 500;
 const REQUEST_CONTENT_CAPTURE_MAX_OBJECT_KEYS = 120;
 const REQUEST_CONTENT_CAPTURE_MAX_DEPTH = 10;
 const RESPONSE_COMPACT_TEXT_MAX_CHARS = 20_000;
-const gunzipAsync = promisify(gunzip);
-const inflateAsync = promisify(inflate);
-const brotliDecompressAsync = promisify(brotliDecompress);
-const zstdDecompressAsync = typeof zstdDecompress === "function" ? promisify(zstdDecompress) : null;
+const gunzipAsync = promisify(nodeZlib.gunzip);
+const inflateAsync = promisify(nodeZlib.inflate);
+const brotliDecompressAsync = promisify(nodeZlib.brotliDecompress);
+const zstdDecompressAsync =
+  typeof nodeZlib.zstdDecompress === "function" ? promisify(nodeZlib.zstdDecompress) : null;
 
 const assetContentTypes: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
@@ -215,6 +211,7 @@ const chatCompletionsBodySchema = z
     tool_choice: z.unknown().optional(),
     response_format: z.unknown().optional(),
     parallel_tool_calls: z.boolean().optional(),
+    reasoning_effort: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
     store: z.boolean().optional(),
     temperature: z.number().optional(),
     top_p: z.number().optional(),
@@ -313,6 +310,21 @@ const codexProviderConfigSchema = z.object({
   providerId: z.string().min(1).optional(),
   kind: z.enum(["codex_gateway", "openai_compatible"]).optional(),
   bearerToken: z.string().optional(),
+  model: z.string().min(1).max(256).optional(),
+  catalogModels: z.array(z.object({
+    id: z.string().min(1).max(256),
+    displayName: z.string().min(1).max(256).optional(),
+    contextWindow: z.number().int().min(8_192).max(4_000_000).optional(),
+    reasoningEfforts: z.array(z.enum(["minimal", "low", "medium", "high", "xhigh"])).max(5).optional(),
+  })).max(200).optional(),
+  inspectionId: z.string().uuid().optional(),
+  purgeProviderDefinition: z.boolean().optional(),
+});
+
+const codexProviderInspectSchema = z.object({
+  baseUrl: z.string().min(1).max(2048),
+  providerId: z.string().min(1).max(128).optional(),
+  bearerToken: z.string().max(16_384).optional(),
 });
 
 const diagnosticRequestParamsSchema = z.object({
@@ -813,14 +825,8 @@ function normalizeChatToolChoice(toolChoice: unknown): unknown {
 }
 
 function normalizeReasoningEffort(value: unknown): string | undefined {
-  if (value === "low" || value === "medium" || value === "high") {
+  if (value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh") {
     return value;
-  }
-  if (value === "minimal") {
-    return "low";
-  }
-  if (value === "xhigh") {
-    return "high";
   }
 
   return undefined;
@@ -1701,6 +1707,42 @@ function resolveOrigin(request: FastifyRequest): string {
 
 function isLoopbackHost(host: string): boolean {
   return host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]";
+}
+
+function isLoopbackAddress(address: string): boolean {
+  const normalized = address.trim().toLowerCase().replace(/^::ffff:/, "").replace(/^\[|\]$/g, "");
+  return normalized === "::1" || normalized === "localhost" || /^127(?:\.\d{1,3}){3}$/.test(normalized);
+}
+
+function requestHostName(request: FastifyRequest): string | undefined {
+  const host = request.headers.host?.trim();
+  if (!host) {
+    return undefined;
+  }
+  try {
+    return new URL(`${request.protocol}://${host}`).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+function isLocalProviderInspectionRequest(request: FastifyRequest): boolean {
+  if (!isLoopbackAddress(request.ip)) {
+    return false;
+  }
+  const host = requestHostName(request);
+  if (!host || !isLoopbackHost(host)) {
+    return false;
+  }
+  const origin = request.headers.origin;
+  if (!origin) {
+    return true;
+  }
+  try {
+    return isLoopbackHost(new URL(origin).hostname);
+  } catch {
+    return false;
+  }
 }
 
 function isPrivateIpv4(address: string): boolean {
@@ -2717,6 +2759,31 @@ export function createApp(params?: {
     };
   });
 
+  app.post("/_gateway/admin/codex/inspect-provider", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) {
+      reply.code(403);
+      return {
+        error: {
+          type: "local_access_required",
+          message: "外部 API 检测只能从本机管理页调用。",
+        },
+      };
+    }
+
+    const parsed = codexProviderInspectSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return {
+        error: {
+          type: "validation_error",
+          message: parsed.error.issues[0]?.message ?? "请求体格式错误",
+        },
+      };
+    }
+
+    return ctx.authService.inspectCodexProvider(parsed.data);
+  });
+
   app.post("/_gateway/admin/codex/configure-provider", async (request, reply) => {
     const parsed = codexProviderConfigSchema.safeParse(request.body ?? {});
     if (!parsed.success) {
@@ -2737,10 +2804,15 @@ export function createApp(params?: {
         providerId: parsed.data.providerId,
         kind: parsed.data.kind,
         bearerToken: parsed.data.bearerToken,
+        model: parsed.data.model,
+        catalogModels: parsed.data.catalogModels,
+        inspectionId: parsed.data.inspectionId,
       }),
       config: await buildAdminConfig(request),
     };
   });
+
+  app.get("/_gateway/admin/codex/inspection-history", async () => ({ data: await ctx.authService.listCodexProviderInspectionHistory() }));
 
   app.post("/_gateway/admin/codex/remove-provider", async (request, reply) => {
     const parsed = codexProviderConfigSchema.safeParse(request.body ?? {});
@@ -2757,6 +2829,7 @@ export function createApp(params?: {
     return {
       codexProvider: await ctx.authService.removeGatewayFromCodexProvider({
         providerId: parsed.data.providerId,
+        purgeProviderDefinition: parsed.data.purgeProviderDefinition,
       }),
       config: await buildAdminConfig(request),
     };

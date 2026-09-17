@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.13 - 2026-09-17
+
+- Added Simplified Chinese and English localization across the desktop management console, including a persistent language switcher and locale-aware number and time formatting.
+- Added one-click inspection for external OpenAI-compatible providers, with model discovery, streamed Responses validation, function-call and function-output verification, reasoning-effort probing, and non-text model filtering.
+- Added managed Codex model-catalog generation plus local inspection history and cached reconnects, with strict Base URL scoping so tokens and model results are never reused across a different origin, port, or path.
+- Improved Codex provider takeover and removal so the previous root model, provider, and model catalog are restored while inactive compatibility definitions can keep existing conversations loadable, with an explicit purge path when required.
+- Hardened external-provider inspection with loopback-only access, same-origin redirect enforcement, bounded responses, redacted errors, and private local history storage, while preserving `minimal` and `xhigh` reasoning effort values for OpenAI-compatible chat requests.
+
 ## 2.0.12 - 2026-06-25
 
 - Added Codex request diagnostics that store captured request details in separate local diagnostic files, with request-log viewing and cleanup controls.

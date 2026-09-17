@@ -4,6 +4,8 @@ import { fetchJson } from "@/shared/api";
 import type { BusyAction } from "@/shared/lib/app-types";
 import { copyText, errorMessage, readFileAsDataUrl } from "@/shared/lib/app-utils";
 import { formatFileSize, formatFullTime } from "@/shared/lib/format";
+import { useT, useLocaleValue } from "@/i18n";
+import type { Translator } from "@/shared/lib/profiles";
 
 type GithubImageBedConfig = {
   hasToken: boolean;
@@ -61,14 +63,14 @@ type UploadProgress = {
   percent: number;
 };
 
-function buildConnectionLabel(connection: GithubImageBedConnection | null, config: GithubImageBedConfig | null): string {
+function buildConnectionLabel(connection: GithubImageBedConnection | null, config: GithubImageBedConfig | null, t: Translator): string {
   if (connection) {
     return `${connection.owner}/${connection.repository} · ${connection.branch}`;
   }
   if (!config?.hasToken) {
-    return "尚未保存 token";
+    return t("imageBed.connection.notSaved");
   }
-  return "已保存，待验证";
+  return t("imageBed.connection.savedAwaiting");
 }
 
 function parseJsonError(text: string, fallback: string): string {
@@ -103,7 +105,7 @@ async function uploadFileWithProgress(
         onProgress((event.loaded / event.total) * 100);
       }
     };
-    xhr.onerror = () => reject(new Error("上传请求失败。"));
+    xhr.onerror = () => reject(new Error("Upload request failed."));
     xhr.onload = () => {
       const bodyText = xhr.responseText || "";
       if (xhr.status < 200 || xhr.status >= 300) {
@@ -115,7 +117,7 @@ async function uploadFileWithProgress(
         const parsed = JSON.parse(bodyText) as GithubImageBedUploadResult;
         resolve(parsed);
       } catch {
-        reject(new Error("上传响应解析失败。"));
+        reject(new Error("Upload response parse failed."));
       }
     };
     xhr.send(
@@ -134,13 +136,16 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
   const [connection, setConnection] = useState<GithubImageBedConnection | null>(null);
   const [history, setHistory] = useState<GithubImageBedHistoryItem[]>([]);
   const [visibleHistoryCount, setVisibleHistoryCount] = useState(12);
-  const [message, setMessage] = useState("正在读取图床配置...");
+  const [message, setMessage] = useState("");
+  const t = useT();
+  const locale = useLocaleValue();
+  const intlLocale = locale === "en" ? "en-US" : "zh-CN";
   const [dragging, setDragging] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const connectionLabel = useMemo(() => buildConnectionLabel(connection, config), [connection, config]);
+  const connectionLabel = useMemo(() => buildConnectionLabel(connection, config, t), [connection, config, t]);
   const visibleHistory = useMemo(() => history.slice(0, visibleHistoryCount), [history, visibleHistoryCount]);
 
   useEffect(() => {
@@ -153,7 +158,7 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
         }
         setConfig(next);
         setTokenEditing(!next.hasToken);
-        setMessage(next.hasToken ? "GitHub token 已保存，正在验证连接..." : "请先保存一个 GitHub token。");
+        setMessage(next.hasToken ? t("imageBed.tokenSavedValidating") : t("imageBed.pleaseFillToken"));
         if (next.hasToken) {
           await validateConnection(false);
         }
@@ -198,13 +203,13 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
         method: "POST",
       });
       setConnection(result);
-      setMessage(`已连接到 ${result.owner}/${result.repository}，默认分支 ${result.branch}。`);
-      props.setStatus(`图床连接正常：${result.owner}/${result.repository}`);
+      setMessage(t("imageBed.connectOk", { owner: result.owner, repo: result.repository, branch: result.branch }));
+      props.setStatus(t("imageBed.connectOkStatus", { owner: result.owner, repo: result.repository }));
       return result;
     } catch (error) {
       const text = errorMessage(error);
       setConnection(null);
-      setMessage(`连接失败: ${text}`);
+      setMessage(t("imageBed.connectFailed", { error: text }));
       props.setStatus(text);
       throw error;
     } finally {
@@ -217,7 +222,7 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
   async function saveToken() {
     const token = tokenDraft.trim();
     if (!token) {
-      setMessage("请先填写 GitHub token。");
+      setMessage(t("imageBed.pleaseFillToken"));
       return;
     }
 
@@ -231,18 +236,18 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
       setConfig(next);
       setTokenDraft("");
       setTokenEditing(false);
-      setMessage("GitHub token 已保存，正在验证...");
-      props.setStatus("GitHub token 已保存。");
+      setMessage(t("imageBed.tokenSavedValidating"));
+      props.setStatus(t("imageBed.tokenSaved"));
       try {
         await validateConnection(false);
-        setMessage("GitHub token 已保存并验证。");
+        setMessage(t("imageBed.tokenSavedAndVerified"));
       } catch (error) {
         setTokenEditing(true);
-        setMessage(`已保存，但验证失败: ${errorMessage(error)}`);
+        setMessage(t("imageBed.tokenSavedButVerifyFailed", { error: errorMessage(error) }));
       }
     } catch (error) {
       const text = errorMessage(error);
-      setMessage(`保存失败: ${text}`);
+      setMessage(t("imageBed.saveFailed", { error: text }));
       props.setStatus(text);
     } finally {
       props.setBusy(null);
@@ -259,11 +264,11 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
       setConnection(null);
       setTokenDraft("");
       setTokenEditing(true);
-      setMessage("GitHub token 已清除。");
-      props.setStatus("GitHub token 已清除。");
+      setMessage(t("imageBed.tokenCleared"));
+      props.setStatus(t("imageBed.tokenCleared"));
     } catch (error) {
       const text = errorMessage(error);
-      setMessage(`清除失败: ${text}`);
+      setMessage(t("imageBed.clearFailed", { error: text }));
       props.setStatus(text);
     } finally {
       props.setBusy(null);
@@ -277,7 +282,7 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
 
   async function uploadFile(file: File, progressCb: (percent: number) => void) {
     if (!file.type.startsWith("image/")) {
-      throw new Error(`文件 ${file.name} 不是图片。`);
+      throw new Error(t("imageBed.notImage", { name: file.name }));
     }
 
     return uploadFileWithProgress(file, progressCb);
@@ -286,11 +291,11 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
   async function handleFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList).filter((file) => file.type.startsWith("image/"));
     if (files.length === 0) {
-      setMessage("请选择图片文件。");
+      setMessage(t("imageBed.pleaseSelectImage"));
       return;
     }
     if (!config?.hasToken) {
-      setMessage("请先保存 GitHub token，再上传图片。");
+      setMessage(t("imageBed.pleaseSaveTokenFirst"));
       return;
     }
 
@@ -306,8 +311,8 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
           totalFiles: files.length,
           percent: (index / files.length) * 100,
         });
-        setMessage(`正在读取 ${index + 1}/${files.length}: ${file.name}`);
-        props.setStatus(`正在读取 ${index + 1}/${files.length}: ${file.name}`);
+        setMessage(t("imageBed.readingStatus", { index: index + 1, total: files.length, name: file.name }));
+        props.setStatus(t("imageBed.readingStatus", { index: index + 1, total: files.length, name: file.name }));
         const uploaded = await uploadFile(file, (percent) => {
           setUploadProgress({
             phase: "uploading",
@@ -337,12 +342,12 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
         setHistory((current) => [historyItem, ...current.filter((item) => item.id !== historyItem.id)].slice(0, 100));
       }
       setVisibleHistoryCount((current) => Math.max(current, Math.min(12, history.length + nextHistory.length)));
-      setMessage(`已上传 ${files.length} 张图片。`);
-      props.setStatus(`已上传 ${files.length} 张图片。`);
+      setMessage(t("imageBed.uploadCountStatus", { count: files.length }));
+      props.setStatus(t("imageBed.uploadCountStatus", { count: files.length }));
       await refreshHistory();
     } catch (error) {
       const text = errorMessage(error);
-      setMessage(`上传失败: ${text}`);
+      setMessage(t("imageBed.uploadFailed", { error: text }));
       props.setStatus(text);
     } finally {
       setUploadProgress(null);
@@ -352,7 +357,7 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
 
   async function copyUrl(url: string) {
     const ok = await copyText(url);
-    const text = ok ? "链接已复制。" : "链接复制失败。";
+    const text = ok ? t("imageBed.linkCopied") : t("imageBed.linkCopyFailed");
     setMessage(text);
     props.setStatus(text);
   }
@@ -370,12 +375,12 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
     await fetchJson("/_gateway/image-bed/history", { method: "DELETE" });
     setHistory([]);
     setVisibleHistoryCount(12);
-    setMessage("历史记录已清空。");
-    props.setStatus("历史记录已清空。");
+    setMessage(t("imageBed.historyCleared"));
+    props.setStatus(t("imageBed.historyCleared"));
   }
 
   async function deleteHistoryItem(item: GithubImageBedHistoryItem) {
-    const confirmed = window.confirm(`确认从 GitHub 仓库删除 ${item.filename} 吗？删除后原链接会失效。`);
+    const confirmed = window.confirm(t("imageBed.deleteConfirm", { name: item.filename }));
     if (!confirmed) {
       return;
     }
@@ -387,11 +392,11 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
         method: "DELETE",
       });
       setHistory(nextHistory.items);
-      setMessage(`已删除 ${item.filename}。`);
-      props.setStatus(`已从图床删除 ${item.filename}。`);
+      setMessage(t("imageBed.deletedFromHistory", { name: item.filename }));
+      props.setStatus(t("imageBed.deletedFromBed", { name: item.filename }));
     } catch (error) {
       const text = errorMessage(error);
-      setMessage(`删除失败: ${text}`);
+      setMessage(t("imageBed.deleteFailed", { error: text }));
       props.setStatus(text);
     } finally {
       setDeletingHistoryId(null);
@@ -407,9 +412,9 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
       <div className="image-bed-workbench">
         <section className={`image-bed-upload-panel ${dragging ? "is-dragging" : ""}`}>
           <div className="image-bed-upload-copy">
-            <span>{config?.hasToken ? "GitHub 图床已准备" : "先配置 GitHub token"}</span>
-            <h2>拖入图片，直接拿公网链接</h2>
-            <p>文件会写入公开仓库 <strong>{config?.repository || "azt-img-bed"}</strong> 的 <strong>{config?.pathPrefix || "images"}</strong> 目录，上传结果会保存在本机历史里。</p>
+            <span>{config?.hasToken ? t("imageBed.titleReady") : t("imageBed.titleSetup")}</span>
+            <h2>{t("imageBed.subtitle")}</h2>
+            <p>{t("imageBed.description", { repo: config?.repository || t("imageBed.defaultRepo"), path: config?.pathPrefix || t("imageBed.defaultPath") })}</p>
           </div>
 
           <div
@@ -418,7 +423,7 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
             tabIndex={0}
             onClick={() => {
               if (!config?.hasToken) {
-                setMessage("请先保存 GitHub token，再上传图片。");
+                setMessage(t("imageBed.pleaseSaveTokenFirst"));
                 return;
               }
               if (fileInputRef.current) {
@@ -430,7 +435,7 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
                 if (!config?.hasToken) {
-                  setMessage("请先保存 GitHub token，再上传图片。");
+                  setMessage(t("imageBed.pleaseSaveTokenFirst"));
                   return;
                 }
                 if (fileInputRef.current) {
@@ -454,14 +459,14 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
             <div className="upload-dropzone-icon">
               <Upload size={22} />
             </div>
-            <strong>选择图片或拖拽到这里</strong>
-            <span>{config?.hasToken ? "支持批量上传，完成后自动生成可访问链接。" : "保存并验证 token 后即可上传。"}</span>
+            <strong>{t("imageBed.dropzoneTitle")}</strong>
+            <span>{config?.hasToken ? t("imageBed.dropzoneReady") : t("imageBed.dropzoneDisabled")}</span>
           </div>
 
           {uploadProgress ? (
             <div className="upload-progress-block" aria-live="polite">
               <div className="upload-progress-head">
-                <strong>{uploadProgress.phase === "reading" ? "正在读取" : "正在上传"}</strong>
+                <strong>{uploadProgress.phase === "reading" ? t("imageBed.progress.reading") : t("imageBed.progress.uploading")}</strong>
                 <span>
                   {uploadProgress.fileIndex}/{uploadProgress.totalFiles} · {uploadProgress.fileName}
                 </span>
@@ -472,17 +477,17 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
             </div>
           ) : latestHistory ? (
             <div className="image-bed-latest">
-              <button type="button" className="image-bed-latest-preview" onClick={() => void copyUrl(latestHistory.url)} title="点击复制链接">
+              <button type="button" className="image-bed-latest-preview" onClick={() => void copyUrl(latestHistory.url)} title={t("imageBed.copyTitle")}>
                 <img loading="lazy" decoding="async" src={latestHistory.previewUrl} alt={latestHistory.filename} />
               </button>
               <div className="image-bed-latest-info">
-                <span>最近上传</span>
+                <span>{t("imageBed.latest")}</span>
                 <strong>{latestHistory.filename}</strong>
                 <code>{latestHistory.url}</code>
               </div>
               <button className="btn-primary" type="button" onClick={() => void copyUrl(latestHistory.url)}>
                 <Copy size={16} />
-                复制链接
+                {t("imageBed.copyLink")}
               </button>
             </div>
           ) : (
@@ -493,7 +498,7 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
         <aside className="image-bed-side-stack">
           <section className="image-bed-side-card">
             <div className="image-bed-section-head">
-              <h4>连接</h4>
+              <h4>{t("imageBed.connection.title")}</h4>
               <span className={`image-bed-status-dot ${connection ? "is-ok" : config?.hasToken ? "is-warn" : ""}`} />
             </div>
             <strong className="image-bed-connection-label">{connectionLabel}</strong>
@@ -502,45 +507,45 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
 
           <section className="image-bed-side-card">
             <div className="image-bed-section-head">
-              <h4>Token</h4>
+              <h4>{t("imageBed.tokenSection.title")}</h4>
               {!tokenEditing && config?.hasToken && (
                 <button className="image-bed-link-button" type="button" onClick={() => void startEditing()}>
-                  修改
+                  {t("imageBed.tokenSection.edit")}
                 </button>
               )}
             </div>
             {tokenEditing || !config?.hasToken ? (
               <>
                 <label className="field">
-                  <span>GitHub token</span>
+                  <span>{t("imageBed.tokenSection.tokenName")}</span>
                   <input
                     className="input"
                     value={tokenDraft}
                     onChange={(event) => setTokenDraft(event.target.value)}
-                    placeholder="github_pat_..."
+                    placeholder={t("imageBed.tokenSection.placeholder")}
                     spellCheck={false}
                     autoComplete="off"
                   />
-                  <p className="image-bed-token-hint">推荐使用 fine-grained token，只给公开仓库 <code>azt-img-bed</code> 的 Contents 读写权限。</p>
+                  <p className="image-bed-token-hint">{t("imageBed.tokenSection.hint", { repo: config?.repository || t("imageBed.defaultRepo") })}</p>
                 </label>
                 <div className="image-bed-token-actions">
                   <button className="btn-primary" type="button" onClick={() => void saveToken()} disabled={activeBusy || !tokenDraft.trim()}>
                     {props.busy === "image-bed-save" ? <Loader2 className="spin" size={16} /> : <CheckCircle2 size={16} />}
-                    保存并验证
+                    {t("imageBed.tokenSection.saveAndVerify")}
                   </button>
                   <button className="btn-secondary" type="button" onClick={clearToken} disabled={!config?.hasToken}>
                     <Trash2 size={16} />
-                    清除
+                    {t("imageBed.tokenSection.clear")}
                   </button>
                 </div>
               </>
             ) : (
               <div className="image-bed-token-summary">
                 <div>
-                  <span>已保存到本机</span>
-                  <strong>GitHub token</strong>
+                  <span>{t("imageBed.tokenSection.savedLabel")}</span>
+                  <strong>{t("imageBed.tokenSection.tokenName")}</strong>
                 </div>
-                <button className="btn-secondary icon-only" type="button" onClick={clearToken} title="清除 Token">
+                <button className="btn-secondary icon-only" type="button" onClick={clearToken} title={t("imageBed.tokenSection.clearTitle")}>
                   <Trash2 size={16} />
                 </button>
               </div>
@@ -548,19 +553,19 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
           </section>
 
           <section className="image-bed-side-card image-bed-target-card">
-            <h4>目标</h4>
+            <h4>{t("imageBed.target.title")}</h4>
             <div className="image-bed-target-list">
               <div>
-                <span>仓库</span>
-                <strong>{config?.repository || "azt-img-bed"}</strong>
+                <span>{t("imageBed.target.repo")}</span>
+                <strong>{config?.repository || t("imageBed.defaultRepo")}</strong>
               </div>
               <div>
-                <span>分支</span>
-                <strong>{config?.defaultBranch || "auto"}</strong>
+                <span>{t("imageBed.target.branch")}</span>
+                <strong>{config?.defaultBranch || t("imageBed.target.defaultBranch")}</strong>
               </div>
               <div>
-                <span>目录</span>
-                <strong>{config?.pathPrefix || "images"}</strong>
+                <span>{t("imageBed.target.path")}</span>
+                <strong>{config?.pathPrefix || t("imageBed.defaultPath")}</strong>
               </div>
             </div>
           </section>
@@ -570,20 +575,20 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
       <section className="image-bed-gallery-section">
         <div className="image-bed-section-head">
           <div>
-            <h4>上传历史</h4>
-            <p>本机保存最近 100 条，只加载当前可见缩略图。</p>
+            <h4>{t("imageBed.gallery.title")}</h4>
+            <p>{t("imageBed.gallery.description")}</p>
           </div>
-          <button className="btn-secondary icon-only" type="button" onClick={() => void clearHistory()} disabled={history.length === 0} title="清空历史">
+          <button className="btn-secondary icon-only" type="button" onClick={() => void clearHistory()} disabled={history.length === 0} title={t("imageBed.gallery.clearTitle")}>
             <Trash2 size={16} />
           </button>
         </div>
         {history.length === 0 ? (
-          <div className="image-bed-empty">还没有上传记录。上传完成后，这里会以图库形式展示预览和链接。</div>
+          <div className="image-bed-empty">{t("imageBed.gallery.empty")}</div>
         ) : (
           <div className="image-bed-results-grid">
             {visibleHistory.map((item) => (
               <figure className="image-bed-result-card" key={item.path}>
-                <button type="button" className="image-bed-preview-button" onClick={() => void copyUrl(item.url)} title="点击复制链接">
+                <button type="button" className="image-bed-preview-button" onClick={() => void copyUrl(item.url)} title={t("imageBed.copyTitle")}>
                   <img loading="lazy" decoding="async" src={item.previewUrl} alt={item.filename} />
                 </button>
                 <figcaption>
@@ -591,21 +596,21 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
                   <span>
                     {formatFileSize(item.size)} · {item.mimeType}
                   </span>
-                  <code>{formatFullTime(item.createdAt)}</code>
+                  <code>{formatFullTime(item.createdAt, locale)}</code>
                 </figcaption>
                 <div className="image-bed-result-actions">
-                  <button className="image-bed-card-action" type="button" onClick={() => void copyUrl(item.url)} title="复制链接" aria-label="复制链接">
+                  <button className="image-bed-card-action" type="button" onClick={() => void copyUrl(item.url)} title={t("imageBed.gallery.copyLinkTitle")} aria-label={t("imageBed.gallery.copyLinkAria")}>
                     <Copy size={15} />
                   </button>
-                  <a className="image-bed-card-action" href={item.url} target="_blank" rel="noreferrer" title="打开原图" aria-label="打开原图">
+                  <a className="image-bed-card-action" href={item.url} target="_blank" rel="noreferrer" title={t("imageBed.gallery.openOriginalTitle")} aria-label={t("imageBed.gallery.openOriginalAria")}>
                     <Link2 size={15} />
                   </a>
                   <button
                     className="image-bed-card-action is-danger"
                     type="button"
                     onClick={() => void deleteHistoryItem(item)}
-                    title="删除图床文件"
-                    aria-label="删除图床文件"
+                    title={t("imageBed.gallery.deleteTitle")}
+                    aria-label={t("imageBed.gallery.deleteAria")}
                     disabled={deletingHistoryId === item.id}
                   >
                     {deletingHistoryId === item.id ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />}
@@ -618,44 +623,44 @@ export function ImageBedPage(props: { busy: BusyAction; setBusy: (value: BusyAct
         {history.length > visibleHistoryCount && (
           <button className="btn-secondary image-bed-load-more" type="button" onClick={() => setVisibleHistoryCount((current) => Math.min(current + 12, history.length))}>
             <ChevronDown size={16} />
-            加载更多
+            {t("imageBed.gallery.loadMore")}
           </button>
         )}
       </section>
 
       <details className="image-bed-help-section">
-        <summary>GitHub token 创建说明</summary>
+        <summary>{t("imageBed.help.summary")}</summary>
         <p className="image-bed-help-intro">
-          这个图床固定使用当前 GitHub 账号下的公开仓库 <code>azt-img-bed</code>，图片会写入 <code>images</code> 目录并返回 raw.githubusercontent.com 原图链接。
+          {t("imageBed.help.intro", { repo: t("imageBed.defaultRepo"), path: t("imageBed.defaultPath") })}
         </p>
         <ol className="image-bed-steps">
           <li>
-            <strong>先建公开仓库。</strong> 在 GitHub 新建仓库 <code>azt-img-bed</code>，Visibility 选 <strong>Public</strong>。如果仓库已经存在，确认它属于这个 token 对应的个人账号，并且不是 Private。
+            <strong>{t("imageBed.help.step1Title")}</strong> {t("imageBed.help.step1Body", { repo: t("imageBed.defaultRepo") })}
           </li>
           <li>
-            <strong>创建 fine-grained token。</strong> 打开 GitHub 的 <a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noreferrer">Personal access tokens</a> 页面，选择 <strong>Fine-grained tokens</strong>，点 <strong>Generate new token</strong>。
+            <strong>{t("imageBed.help.step2Title")}</strong> {t("imageBed.help.step2BodyPrefix")}<a href="https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens" target="_blank" rel="noreferrer">{t("imageBed.help.step2LinkText")}</a>{t("imageBed.help.step2BodySuffix")}
           </li>
           <li>
-            <strong>限制仓库范围。</strong> Token name 可填 <code>AI Zero Token image bed</code>，Expiration 按需设置，Resource owner 选自己的账号；Repository access 选择 <strong>Only select repositories</strong>，只勾选 <code>azt-img-bed</code>。
+            <strong>{t("imageBed.help.step3Title")}</strong> {t("imageBed.help.step3Body", { tokenName: t("imageBed.help.tokenName"), repo: t("imageBed.defaultRepo") })}
           </li>
           <li>
-            <strong>给最小权限。</strong> 在 Repository permissions 里把 <strong>Contents</strong> 设置为 <strong>Read and write</strong>；<strong>Metadata</strong> 保持默认 Read-only 即可，其它权限不需要打开。
+            <strong>{t("imageBed.help.step4Title")}</strong> {t("imageBed.help.step4Body")}
           </li>
           <li>
-            <strong>复制并验证。</strong> GitHub 只会展示一次生成后的 token，复制后回到这里粘贴，点击 <strong>保存并验证</strong>。验证通过后就可以拖图上传。
+            <strong>{t("imageBed.help.step5Title")}</strong> {t("imageBed.help.step5Body")}
           </li>
         </ol>
         <dl className="image-bed-help-facts">
           <div>
-            <dt>Token 格式</dt>
-            <dd>fine-grained token 通常以 <code>github_pat_</code> 开头。</dd>
+            <dt>{t("imageBed.help.factTokenTitle")}</dt>
+            <dd>{t("imageBed.help.factTokenBody")}</dd>
           </div>
           <div>
-            <dt>验证失败</dt>
-            <dd>如果提示未找到仓库，优先检查仓库名是否为 <code>azt-img-bed</code>、仓库是否 Public、Repository access 是否选中了这个仓库。</dd>
+            <dt>{t("imageBed.help.factVerifyTitle")}</dt>
+            <dd>{t("imageBed.help.factVerifyBody", { repo: t("imageBed.defaultRepo") })}</dd>
           </div>
         </dl>
-        <p className="hint">Token 要像密码一样保管，不要发给别人。这个页面只会把它保存到你本机状态目录。</p>
+        <p className="hint">{t("imageBed.help.hint")}</p>
       </details>
     </section>
   );

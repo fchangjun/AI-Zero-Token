@@ -8,6 +8,7 @@ import { formatDuration, formatFileSize, formatJson } from "@/shared/lib/format"
 import { profileLabel } from "@/shared/lib/profiles";
 import { TesterPanel } from "./components/TesterPanel";
 import type { ModalImage } from "@/hooks/useAdminWorkspace";
+import { useT } from "@/i18n";
 
 export type EditImageUploadMode = "base64" | "image-bed";
 
@@ -31,10 +32,11 @@ export function TesterPage(props: {
   refreshConfig: (options?: { runtime?: boolean; silent?: boolean }) => Promise<AdminConfig>;
   setPreviewImage: Dispatch<SetStateAction<ModalImage | null>>;
 }) {
+  const t = useT();
   const [endpoint, setEndpoint] = useState("/v1/models");
   const [requestBody, setRequestBody] = useState("");
-  const [responseBody, setResponseBody] = useState("等待请求...");
-  const [timingBody, setTimingBody] = useState("等待请求...");
+  const [responseBody, setResponseBody] = useState(() => t("tester.waiting"));
+  const [timingBody, setTimingBody] = useState(() => t("tester.waiting"));
   const [resultTab, setResultTab] = useState<ResultTab>("response");
   const [previewImages, setPreviewImages] = useState<PreviewImage[]>([]);
   const [imageUploadMode, setImageUploadMode] = useState<EditImageUploadMode>("base64");
@@ -55,12 +57,12 @@ export function TesterPage(props: {
     const fallback = endpointOrder.find((item) => props.config?.supportedEndpoints.some((endpointItem) => endpointItem.path === item));
     const nextEndpoint = props.config.supportedEndpoints.some((item) => item.path === endpoint) ? endpoint : fallback || "/v1/models";
     setEndpoint(nextEndpoint);
-    setRequestBody(buildExample(nextEndpoint, props.config.settings.defaultModel));
-  }, [props.config]);
+    setRequestBody(buildExample(nextEndpoint, props.config.settings.defaultModel, t));
+  }, [props.config, t]);
 
   function changeEndpoint(nextEndpoint: string) {
     setEndpoint(nextEndpoint);
-    setRequestBody(buildExample(nextEndpoint, props.config?.settings.defaultModel || "gpt-5.4"));
+    setRequestBody(buildExample(nextEndpoint, props.config?.settings.defaultModel || "gpt-5.4", t));
     setPreviewImages([]);
   }
 
@@ -69,21 +71,21 @@ export function TesterPage(props: {
   }
 
   function copyRequest() {
-    copyText(requestBody || buildExample(endpoint, props.config?.settings.defaultModel || "gpt-5.4"))
-      .then((ok) => props.setStatus(ok ? "请求体已复制。" : "请求体复制失败。"))
-      .catch(() => props.setStatus("请求体复制失败。"));
+    copyText(requestBody || buildExample(endpoint, props.config?.settings.defaultModel || "gpt-5.4", t))
+      .then((ok) => props.setStatus(ok ? t("tester.copyRequestDone") : t("tester.copyRequestFailed")))
+      .catch(() => props.setStatus(t("tester.copyRequestFailed")));
   }
 
   function copyResponse() {
     copyText(responseBody)
-      .then((ok) => props.setStatus(ok ? "响应内容已复制。" : "响应内容复制失败。"))
-      .catch(() => props.setStatus("响应内容复制失败。"));
+      .then((ok) => props.setStatus(ok ? t("tester.copyResponseDone") : t("tester.copyResponseFailed")))
+      .catch(() => props.setStatus(t("tester.copyResponseFailed")));
   }
 
   function copyTiming() {
     copyText(timingBody)
-      .then((ok) => props.setStatus(ok ? "耗时日志已复制。" : "耗时日志复制失败。"))
-      .catch(() => props.setStatus("耗时日志复制失败。"));
+      .then((ok) => props.setStatus(ok ? t("tester.copyTimingDone") : t("tester.copyTimingFailed")))
+      .catch(() => props.setStatus(t("tester.copyTimingFailed")));
   }
 
   async function runTest() {
@@ -92,8 +94,8 @@ export function TesterPage(props: {
     const phases: string[] = [];
     props.setBusy("test");
     setResultTab("response");
-    setResponseBody("请求发送中...");
-    setTimingBody("请求发送中...");
+    setResponseBody(t("tester.sending"));
+    setTimingBody(t("tester.sending"));
     setPreviewImages([]);
     try {
       let payload: unknown = null;
@@ -101,16 +103,16 @@ export function TesterPage(props: {
       if (meta.method !== "GET") {
         const parseStarted = performance.now();
         payload = requestBody.trim() ? JSON.parse(requestBody) : {};
-        phases.push(`解析请求体: ${formatDuration(performance.now() - parseStarted)}`);
+        phases.push(t("tester.phaseParseRequest", { duration: formatDuration(performance.now() - parseStarted) }));
         (options.headers as Record<string, string>)["Content-Type"] = "application/json";
         options.body = formatJson(payload);
       }
       const fetchStarted = performance.now();
       const response = await fetch(meta.path, options);
-      phases.push(`等待响应头: ${formatDuration(performance.now() - fetchStarted)}`);
+      phases.push(t("tester.phaseWaitHeaders", { duration: formatDuration(performance.now() - fetchStarted) }));
       const readStarted = performance.now();
       const text = await response.text();
-      phases.push(`读取响应体: ${formatDuration(performance.now() - readStarted)}`);
+      phases.push(t("tester.phaseReadResponse", { duration: formatDuration(performance.now() - readStarted) }));
       const parseResponseStarted = performance.now();
       let parsed: unknown = text;
       try {
@@ -118,15 +120,15 @@ export function TesterPage(props: {
       } catch {
         parsed = text;
       }
-      phases.push(`解析响应体: ${formatDuration(performance.now() - parseResponseStarted)}`);
+      phases.push(t("tester.phaseParseResponse", { duration: formatDuration(performance.now() - parseResponseStarted) }));
       const images = extractPreviewImages(parsed);
       setPreviewImages(images);
       if (images.length > 0) {
         setResultTab("preview");
       }
       setResponseBody(typeof parsed === "string" ? parsed : formatJson(summarizeJson(parsed)));
-      setTimingBody([`${meta.method} ${meta.path}`, `HTTP 状态: ${response.status} ${response.statusText}`, ...phases].join("\n"));
-      props.setStatus(`${response.ok ? "成功" : "失败"}: HTTP ${response.status} ${meta.method} ${meta.path}`);
+      setTimingBody([`${meta.method} ${meta.path}`, t("tester.httpStatus", { status: response.status, statusText: response.statusText }), ...phases].join("\n"));
+      props.setStatus(t("tester.requestResult", { result: response.ok ? t("tester.success") : t("tester.failure"), status: response.status, method: meta.method, path: meta.path }));
       props.setRequestLogs((items) => [
         {
           id: crypto.randomUUID(),
@@ -140,7 +142,7 @@ export function TesterPage(props: {
               : props.config?.settings.defaultModel || "-",
           statusCode: response.status,
           durationMs: performance.now() - startedAt,
-          source: "管理台",
+          source: t("tester.source"),
         },
         ...items,
       ].slice(0, 20));
@@ -150,8 +152,8 @@ export function TesterPage(props: {
     } catch (error) {
       const message = errorMessage(error);
       setResponseBody(message);
-      setTimingBody([`${meta.method} ${meta.path}（失败）`, ...phases, `错误: ${message}`].join("\n"));
-      props.setStatus("请求失败。");
+      setTimingBody([`${meta.method} ${meta.path} (${t("tester.failedSuffix")})`, ...phases, t("tester.errorLine", { error: message })].join("\n"));
+      props.setStatus(t("tester.requestFailed"));
     } finally {
       props.setBusy(null);
     }
@@ -159,7 +161,7 @@ export function TesterPage(props: {
 
   async function uploadEditImage(file: File, mode: EditImageUploadMode) {
     if (!file.type.startsWith("image/")) {
-      props.setStatus("请选择图片文件。");
+      props.setStatus(t("tester.selectImage"));
       return;
     }
     try {
@@ -175,15 +177,15 @@ export function TesterPage(props: {
           }),
         });
         setRequestBody(insertEditImageIntoBody(requestBody, uploaded.url, props.config?.settings.defaultModel || "gpt-image-2"));
-        props.setStatus(`已上传到图床并写入公网链接（${file.name}，${formatFileSize(file.size)}）。`);
+        props.setStatus(t("tester.imageBedInserted", { name: file.name, size: formatFileSize(file.size) }));
         return;
       }
 
       const dataUrl = await readFileAsDataUrl(file);
       setRequestBody(insertEditImageIntoBody(requestBody, dataUrl, props.config?.settings.defaultModel || "gpt-image-2"));
-      props.setStatus(`已将 ${file.name} 转成 base64 data URL，并写入请求体 images[0].image_url（${formatFileSize(file.size)}）。`);
+      props.setStatus(t("tester.base64Inserted", { name: file.name, size: formatFileSize(file.size) }));
     } catch (error) {
-      props.setStatus(`图片写入失败: ${errorMessage(error)}`);
+      props.setStatus(t("tester.imageInsertFailed", { error: errorMessage(error) }));
     } finally {
       if (mode === "image-bed") {
         props.setBusy(null);

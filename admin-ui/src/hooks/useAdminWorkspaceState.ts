@@ -4,6 +4,7 @@ import type { AdminConfig, RequestLog } from "@/shared/types";
 import type { BusyAction } from "@/shared/lib/app-types";
 import { errorMessage } from "@/shared/lib/app-utils";
 import { readRouteFromHash, type AppRoute } from "@/routes/routes";
+import { useT } from "@/i18n";
 
 export type ModalImage = { src: string; meta: string; filename?: string };
 export type ManualLoginState = {
@@ -48,9 +49,10 @@ function readStoredShowEmails(): boolean {
 }
 
 export function useAdminWorkspaceState(): WorkspaceState {
+  const t = useT();
   const [config, setConfig] = useState<AdminConfig | null>(null);
   const [busy, setBusy] = useState<BusyAction>("initial");
-  const [status, setStatus] = useState("正在读取本地网关状态...");
+  const [status, setStatus] = useState(() => t("workspace.loadingStatus"));
   const [showEmails, setShowEmails] = useState(readStoredShowEmails);
   const [accountModalOpen, setAccountModalOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -76,23 +78,32 @@ export function useAdminWorkspaceState(): WorkspaceState {
       );
       setConfig(next);
       const sync = next.quotaSync;
-      setStatus(
-        options?.runtime && sync
-          ? `状态和额度已刷新：${sync.synced}/${sync.total} 个账号成功${sync.failed ? `，${sync.failed} 个失败` : ""}${sync.skipped ? `，${sync.skipped} 个跳过` : ""}。`
-          : options?.runtime
-            ? "状态和额度已刷新。"
-            : "网关状态已同步。",
-      );
+      if (!options?.silent) {
+        setStatus(
+          options?.runtime && sync
+            ? t("workspace.refreshSummary", {
+                synced: sync.synced,
+                total: sync.total,
+                failed: sync.failed ? t("workspace.refreshFailedSuffix", { count: sync.failed }) : "",
+                skipped: sync.skipped ? t("workspace.refreshSkippedSuffix", { count: sync.skipped }) : "",
+              })
+            : options?.runtime
+              ? t("workspace.refreshed")
+              : t("workspace.synced"),
+        );
+      }
       return next;
     } catch (error) {
-      setStatus(errorMessage(error));
+      if (!options?.silent) {
+        setStatus(errorMessage(error));
+      }
       throw error;
     } finally {
       if (!options?.silent) {
         setBusy(null);
       }
     }
-  }, []);
+  }, [t]);
 
   const refreshRequestLogs = useCallback(async () => {
     try {

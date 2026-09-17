@@ -6,11 +6,18 @@ export function formatJson(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-export function formatTime(value?: number): string {
+export type FormatLocale = string | undefined;
+
+function localeTag(locale: FormatLocale): string | undefined {
+  if (!locale) return undefined;
+  return locale === "en" ? "en-US" : "zh-CN";
+}
+
+export function formatTime(value?: number, locale?: FormatLocale): string {
   if (!value) {
     return "-";
   }
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(localeTag(locale), {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -25,11 +32,11 @@ export function timestampToMillis(value?: number): number | undefined {
   return value < 1_000_000_000_000 ? value * 1000 : value;
 }
 
-export function formatFullTime(value?: number): string {
+export function formatFullTime(value?: number, locale?: FormatLocale): string {
   if (!value) {
     return "-";
   }
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(localeTag(locale), {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

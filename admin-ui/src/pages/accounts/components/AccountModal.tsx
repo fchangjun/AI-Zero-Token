@@ -8,6 +8,7 @@ import { errorMessage } from "@/shared/lib/app-utils";
 import { formatJson } from "@/shared/lib/format";
 import { Modal } from "@/shared/components/Modal";
 import type { ManualLoginState } from "@/hooks/useAdminWorkspaceState";
+import { useT } from "@/i18n";
 
 type ZipImportPreview = {
   fileName: string;
@@ -23,7 +24,7 @@ function isImportableJsonPath(path: string) {
   return normalized.toLowerCase().endsWith(".json") && !normalized.includes("__MACOSX/") && !filename.startsWith("._");
 }
 
-async function readZipProfiles(file: File): Promise<ZipImportPreview> {
+async function readZipProfiles(file: File, noJsonMessage: string): Promise<ZipImportPreview> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const entries = unzipSync(bytes);
   const profiles: unknown[] = [];
@@ -44,7 +45,7 @@ async function readZipProfiles(file: File): Promise<ZipImportPreview> {
   }
 
   if (jsonCount === 0) {
-    errors.push("压缩包里没有找到可导入的 .json 文件。");
+    errors.push(noJsonMessage);
   }
 
   return {
@@ -67,6 +68,7 @@ export function AccountModal(props: {
   setStatus: Dispatch<SetStateAction<string>>;
   setAccountModalOpen: Dispatch<SetStateAction<boolean>>;
 }) {
+  const t = useT();
   const [importText, setImportText] = useState("");
   const [manualInput, setManualInput] = useState("");
   const [zipPreview, setZipPreview] = useState<ZipImportPreview | null>(null);
@@ -91,7 +93,7 @@ export function AccountModal(props: {
 
   async function importProfile(profileInput?: unknown, successMessage?: (count: number) => string) {
     props.setBusy("import");
-    props.setStatus("正在导入账号...");
+    props.setStatus(t("accountModal.statusImporting"));
     try {
       const profile = profileInput ?? JSON.parse(importText);
       const result = await fetchJson<AdminConfig & { importedProfileCount?: number }>("/_gateway/admin/profiles/import", {
@@ -104,7 +106,7 @@ export function AccountModal(props: {
       setZipPreview(null);
       props.setAccountModalOpen(false);
       const importedCount = result.importedProfileCount || 1;
-      props.setStatus(successMessage ? successMessage(importedCount) : `已导入 ${importedCount} 个账号。`);
+      props.setStatus(successMessage ? successMessage(importedCount) : t("accountModal.importedCount", { count: importedCount }));
     } catch (error) {
       props.setStatus(errorMessage(error));
     } finally {
@@ -117,7 +119,7 @@ export function AccountModal(props: {
     try {
       const result = await fetchJson<{ profile: unknown }>("/_gateway/admin/profiles/import-template");
       setImportText(formatJson(result.profile));
-      props.setStatus("已填入参考格式。");
+      props.setStatus(t("accountModal.templateLoaded"));
     } catch (error) {
       props.setStatus(errorMessage(error));
     } finally {
@@ -134,35 +136,36 @@ export function AccountModal(props: {
     }
 
     if (!file.name.toLowerCase().endsWith(".zip")) {
-      props.setStatus("请上传 .zip 压缩包；RAR 暂不支持直接导入。");
+      props.setStatus(t("accountModal.zipNotSupported"));
       return;
     }
 
     props.setBusy("import");
-    props.setStatus("正在检查压缩包内的 JSON...");
+    props.setStatus(t("accountModal.statusCheckingZip"));
     let preview: ZipImportPreview | null = null;
     try {
-      preview = await readZipProfiles(file);
+      preview = await readZipProfiles(file, t("accountModal.zipNoJson"));
       if (preview.errors.length > 0) {
         setZipPreview(preview);
-        props.setStatus(`压缩包校验失败: ${preview.errors[0]}`);
+        props.setStatus(t("accountModal.zipCheckFailedWithReason", { reason: preview.errors[0] }));
         return;
       }
 
-      const result = await fetchJson<{ valid: true; profileCount: number }>("/_gateway/admin/profiles/import/validate", {
+      props.setStatus(t("accountModal.statusValidatingZip"));
+      const result = await fetchJson<{ profileCount: number }>("/_gateway/admin/profiles/import-zip", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: formatJson({ profile: { profiles: preview.profiles } }),
+        body: formatJson({ profiles: preview.profiles }),
       });
       const validatedPreview = { ...preview, profileCount: result.profileCount };
       setZipPreview(validatedPreview);
-      props.setStatus(`压缩包校验通过，发现 ${preview.jsonCount} 个 JSON 文件，可导入 ${result.profileCount} 个账号。`);
+      props.setStatus(t("accountModal.zipCheckPassed", { jsonCount: preview.jsonCount, profileCount: result.profileCount }));
     } catch (error) {
       const message = errorMessage(error);
       if (preview) {
         setZipPreview({ ...preview, errors: [message] });
       }
-      props.setStatus(`压缩包校验失败: ${message}`);
+      props.setStatus(t("accountModal.zipCheckFailedWithReason", { reason: message }));
     } finally {
       props.setBusy(null);
     }
@@ -170,69 +173,69 @@ export function AccountModal(props: {
 
   function importZipProfiles() {
     if (!zipPreview || zipPreview.errors.length > 0 || zipPreview.profiles.length === 0) {
-      props.setStatus("请先选择并通过校验一个 ZIP 压缩包。");
+      props.setStatus(t("accountModal.zipPleaseValidateFirst"));
       return;
     }
 
-    importProfile({ profiles: zipPreview.profiles }, (count) => `已从 ${zipPreview.fileName} 批量导入 ${count} 个账号。`).catch((error) => props.setStatus(errorMessage(error)));
+    importProfile({ profiles: zipPreview.profiles }, (count) => t("accountModal.zipImported", { fileName: zipPreview.fileName, count })).catch((error) => props.setStatus(errorMessage(error)));
   }
 
   return (
-    <Modal title="新增账号" onClose={closeModal}>
+    <Modal title={t("accountModal.title")} onClose={closeModal}>
       <div className="modal-grid">
         <section className="modal-section">
-          <h4>OAuth 登录</h4>
-          <p>使用浏览器完成 Codex OAuth 授权，完成后会自动写入本地账号池。</p>
+          <h4>{t("accountModal.oauthTitle")}</h4>
+          <p>{t("accountModal.oauthDescription")}</p>
           <button className="btn-primary" type="button" onClick={props.login} disabled={props.busy === "login"}>
             {props.busy === "login" ? <Loader2 className="spin" size={16} /> : <LogIn size={16} />}
-            登录
+            {t("accountModal.login")}
           </button>
           {props.manualLogin ? (
             <form className="manual-login-panel" onSubmit={handleManualSubmit}>
               <div>
-                <strong>需要手动完成授权</strong>
+                <strong>{t("accountModal.manualTitle")}</strong>
                 <p>{props.manualLogin.message}</p>
               </div>
               <textarea
                 className="textarea manual-login-textarea"
                 value={manualInput}
                 onChange={(event) => setManualInput(event.target.value)}
-                placeholder="粘贴完整回调 URL 或 authorization code"
+                placeholder={t("accountModal.manualPlaceholder")}
                 autoFocus
                 spellCheck={false}
               />
               <div className="button-row">
                 <button className="btn-secondary" type="button" onClick={props.cancelManualLogin} disabled={props.busy === "login-manual"}>
-                  取消本次登录
+                  {t("accountModal.manualCancel")}
                 </button>
                 <button className="btn-primary" type="submit" disabled={props.busy === "login-manual" || !manualInput.trim()}>
                   {props.busy === "login-manual" ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
-                  提交授权结果
+                  {t("accountModal.manualSubmit")}
                 </button>
               </div>
             </form>
           ) : null}
         </section>
         <section className="modal-section">
-          <h4>导入账号 JSON</h4>
-          <p>支持粘贴单个对象、对象数组、profiles 对象，也支持上传包含多个 JSON 的 ZIP 压缩包。导入前会先校验格式。</p>
+          <h4>{t("accountModal.importTitle")}</h4>
+          <p>{t("accountModal.importDescription")}</p>
           <div className="button-row">
             <button className="btn-secondary" type="button" onClick={loadImportTemplate} disabled={props.busy === "template"}>
-              填入参考格式
+              {t("accountModal.loadTemplate")}
             </button>
             <button className="btn-primary" type="button" onClick={() => importProfile()} disabled={props.busy === "import" || !importText.trim()}>
-              导入
+              {t("accountModal.import")}
             </button>
           </div>
-          <textarea className="textarea import-textarea" value={importText} onChange={(event) => setImportText(event.target.value)} placeholder='粘贴账号 JSON，支持 { "profiles": [...] } 批量导入' spellCheck={false} />
+          <textarea className="textarea import-textarea" value={importText} onChange={(event) => setImportText(event.target.value)} placeholder={t("accountModal.importPlaceholder")} spellCheck={false} />
           <div className="zip-import-box">
             <div>
-              <strong>批量导入 ZIP</strong>
-              <p>自动忽略目录、__MACOSX 和 ._ 元数据文件，只读取压缩包内的 .json 文件。</p>
+              <strong>{t("accountModal.zipBoxTitle")}</strong>
+              <p>{t("accountModal.zipBoxDescription")}</p>
             </div>
             <label className="btn-secondary zip-import-trigger">
               <FileArchive size={16} />
-              选择 ZIP 校验
+              {t("accountModal.zipChoose")}
               <input type="file" accept=".zip,application/zip" onChange={validateZipImport} disabled={props.busy === "import"} />
             </label>
           </div>
@@ -240,11 +243,13 @@ export function AccountModal(props: {
             <div className={`zip-import-preview ${zipPreview.errors.length > 0 ? "error" : "ready"}`}>
               <strong>{zipPreview.fileName}</strong>
               <span>
-                识别到 {zipPreview.jsonCount} 个 JSON，{zipPreview.errors.length > 0 ? `${zipPreview.errors.length} 个错误` : "校验通过"}
+                {zipPreview.errors.length > 0
+                  ? t("accountModal.zipPreviewWithErrors", { jsonCount: zipPreview.jsonCount, errorCount: zipPreview.errors.length })
+                  : t("accountModal.zipPreviewOk", { jsonCount: zipPreview.jsonCount })}
               </span>
-              {zipPreview.errors.length > 0 ? <p>{zipPreview.errors.slice(0, 3).join("；")}</p> : null}
+              {zipPreview.errors.length > 0 ? <p>{zipPreview.errors.slice(0, 3).join(t("accountModal.listSeparator"))}</p> : null}
               <button className="btn-primary" type="button" onClick={importZipProfiles} disabled={props.busy === "import" || zipPreview.errors.length > 0 || zipPreview.profiles.length === 0}>
-                批量导入 {zipPreview.profileCount} 个账号
+                {t("accountModal.zipImportButton", { count: zipPreview.profileCount })}
               </button>
             </div>
           ) : null}

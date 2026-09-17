@@ -63,6 +63,8 @@ OpenClaw requests are visible in the management console request log when the cli
 
 Codex CLI/Desktop can route model traffic through AI Zero Token by using a custom Responses provider in `~/.codex/config.toml`. The management console Settings page can write this automatically with "接管 Codex 请求" after you choose the history mode first. The default `openai` mode keeps the native Codex history view; the `AI Zero Token` mode creates a separate provider/history bucket.
 
+The Settings page also supports one-click takeover for an external OpenAI-compatible API. Enter the Base URL and bearer token under `外部 API`, then click `自动检测并接管`. The local-only inspection endpoint reads `/models` and marks a model ready only after two streamed Responses requests complete: a forced function call followed by its `function_call_output`. A verified default is written together with the custom provider, while every verified model is projected into a managed `model_catalog_json` for Codex's native model picker. Disabling takeover restores the previous root `model`, `model_provider`, and model catalog path. The inactive `ai-zero-token` provider definition and its credentials are retained so existing conversations that reference that provider remain loadable; continuing those conversations still sends their context to the original endpoint. The last verified catalog and selected model are also retained, so the exact same normalized Base URL can reconnect without probing again; a different origin, port, or path cannot reuse its token or cache. A separate explicit purge removes the compatibility definition and makes those conversations unavailable until the provider is restored.
+
 Default history-preserving mode:
 
 ```toml

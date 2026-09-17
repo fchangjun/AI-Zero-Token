@@ -149,7 +149,9 @@ Tools / function calling: enabled
 
 Codex CLI/Desktop 也可以把本工具配置成自定义 Responses provider：
 
-管理页“系统设置”里可以先选择历史记录模式，再点击“接管 Codex 请求”。默认的 `openai` 模式会把历史继续留在 Codex 原生视图里；`AI Zero Token` 模式会创建单独的 provider 历史分组。点击“解除接管”会移除 AI Zero Token 管理的 provider 配置。也可以手动写入 `~/.codex/config.toml`：
+管理页“系统设置”里可以先选择历史记录模式，再点击“接管 Codex 请求”。默认的 `openai` 模式会把历史继续留在 Codex 原生视图里；`AI Zero Token` 模式会创建单独的 provider 历史分组。点击“解除接管”会恢复原来的默认配置，同时保留一个非激活的兼容 provider，避免已有对话因找不到 provider 而无法打开；继续旧对话时仍会访问原来的服务地址。也可以手动写入 `~/.codex/config.toml`：
+
+如果使用公司中转或其他 OpenAI 兼容 API，切到“外部 API”，只需填写 Base URL 和 Token，再点击“自动检测并接管”。系统会读取 `/models`，逐个验证 Responses SSE、function call 和 `function_call_output` 闭环，自动选择默认模型，并把全部验证通过的模型写入受管 `model_catalog_json`；重启后即可在 Codex 原生模型选择器中切换。检测会产生少量真实模型请求。解除接管后会在本机保留最近一次的 Base URL、Token、验证通过的模型和所选模型；下次使用完全相同的规范化地址时可直接接入，不再重复检测。地址的域名、端口或路径不同，都不会复用 Token 或模型缓存。
 
 ```toml
 model = "gpt-5.4"

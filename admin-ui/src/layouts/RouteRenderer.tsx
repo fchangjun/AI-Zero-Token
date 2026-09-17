@@ -1,5 +1,6 @@
 import { Suspense, lazy } from "react";
 import type { UseAdminWorkspaceResult } from "@/hooks/useAdminWorkspace";
+import { useT } from "@/i18n";
 
 const LaunchPage = lazy(() => import("@/pages/launch").then((module) => ({ default: module.LaunchPage })));
 const OverviewPage = lazy(() => import("@/pages/overview").then((module) => ({ default: module.OverviewPage })));
@@ -13,13 +14,14 @@ const SettingsPage = lazy(() => import("@/pages/settings").then((module) => ({ d
 const LogsPage = lazy(() => import("@/pages/logs").then((module) => ({ default: module.LogsPage })));
 
 function RouteLoading() {
+  const t = useT();
   return (
     <section className="route-loading">
       <div className="route-loading-card">
         <div className="route-loading-bar" />
         <div>
-          <strong>正在加载页面</strong>
-          <p>请稍候。</p>
+          <strong>{t("common.loadingPage")}</strong>
+          <p>{t("common.loadingPageHint")}</p>
         </div>
       </div>
     </section>

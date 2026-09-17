@@ -3,12 +3,14 @@ import { AppTopbar } from "./AppTopbar";
 import { AppOverlays } from "./AppOverlays";
 import { RouteRenderer } from "./RouteRenderer";
 import type { UseAdminWorkspaceResult } from "@/hooks/useAdminWorkspace";
+import { useT } from "@/i18n";
 import { Download, Package, Sparkles } from "lucide-react";
 
 const DESKTOP_RELEASES_URL = "https://github.com/fchangjun/AI-Zero-Token/releases";
 const NPM_UPDATE_COMMAND = "npm install -g ai-zero-token";
 
 export function AppShell({ workspace }: { workspace: UseAdminWorkspaceResult }) {
+  const t = useT();
   const versionStatus = workspace.config?.versionStatus;
 
   return (
@@ -23,30 +25,30 @@ export function AppShell({ workspace }: { workspace: UseAdminWorkspaceResult }) 
             </div>
             <div className="update-copy">
               <div className="update-title-row">
-                <strong>发现新版本</strong>
+                <strong>{t("update.title")}</strong>
                 <span>{versionStatus.currentVersion} → {versionStatus.latestVersion}</span>
               </div>
               <p>
-                桌面端下载 GitHub Release；npm 用户执行 <code>{NPM_UPDATE_COMMAND}</code>
+                {t("update.body", { command: NPM_UPDATE_COMMAND })}
               </p>
             </div>
             <div className="update-actions">
               <a className="btn-primary" href={DESKTOP_RELEASES_URL} target="_blank" rel="noreferrer">
                 <Download size={15} />
-                桌面端更新
+                {t("update.desktopUpdate")}
               </a>
               <button
                 className="btn-secondary"
                 type="button"
                 onClick={() => {
                   navigator.clipboard.writeText(NPM_UPDATE_COMMAND).then(
-                    () => workspace.setStatus("npm 更新命令已复制。"),
+                    () => workspace.setStatus(t("update.copiedStatus")),
                     () => workspace.setStatus(NPM_UPDATE_COMMAND),
                   );
                 }}
               >
                 <Package size={15} />
-                复制 npm 更新命令
+                {t("update.copyNpmCommand")}
               </button>
             </div>
           </section>

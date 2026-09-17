@@ -215,9 +215,33 @@ export type AdminConfig = {
       exists: boolean;
       active: boolean;
       baseUrl?: string;
+      model?: string;
+      modelCatalogPath?: string;
       modelProvider?: string;
       authType?: "none" | "bearer_token" | "env_key";
       envKey?: string;
+      catalogModels?: Array<{
+        id: string;
+        displayName?: string;
+        reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+      }>;
+    };
+    savedExternalProvider?: {
+      path: string;
+      providerId: string;
+      exists: boolean;
+      active: boolean;
+      baseUrl?: string;
+      model?: string;
+      modelCatalogPath?: string;
+      modelProvider?: string;
+      authType?: "none" | "bearer_token" | "env_key";
+      envKey?: string;
+      catalogModels?: Array<{
+        id: string;
+        displayName?: string;
+        reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+      }>;
     };
   };
   usage?: UsageSummary;

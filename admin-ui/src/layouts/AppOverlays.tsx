@@ -3,14 +3,16 @@ import { ContactModal } from "@/shared/components/ContactModal";
 import { ImagePreviewModal } from "@/shared/components/ImagePreviewModal";
 import { AccountModal } from "@/pages/accounts/components/AccountModal";
 import type { UseAdminWorkspaceResult } from "@/hooks/useAdminWorkspace";
+import { useT } from "@/i18n";
 
 export function AppOverlays({ workspace }: { workspace: UseAdminWorkspaceResult }) {
+  const t = useT();
   return (
     <>
       {workspace.isLoading && (
         <div className="loading-cover">
           <Loader2 className="spin" size={28} />
-          <span>正在加载本地网关...</span>
+          <span>{t("common.loading")}</span>
         </div>
       )}
 

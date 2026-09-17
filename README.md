@@ -149,7 +149,9 @@ Tools / function calling: enabled
 
 Codex CLI/Desktop can also use the gateway as a custom Responses provider:
 
-Use the management console Settings page and choose the history mode before clicking "接管 Codex 请求". The default `openai` mode keeps Codex history in the native provider view; the `AI Zero Token` mode creates a separate provider/history bucket. Click "解除接管" to remove the managed provider config, or add it manually to `~/.codex/config.toml`:
+Use the management console Settings page and choose the history mode before clicking "接管 Codex 请求". The default `openai` mode keeps Codex history in the native provider view; the `AI Zero Token` mode creates a separate provider/history bucket. "解除接管" restores the previous defaults but retains an inactive compatibility provider so existing conversations remain loadable; continuing an old conversation still contacts its original endpoint. You can also add the provider manually to `~/.codex/config.toml`:
+
+For a company relay or another OpenAI-compatible API, choose `外部 API`, enter its Base URL and token, then click `自动检测并接管`. The app reads `/models`, verifies each candidate with Responses SSE plus a function-call/function-output round trip, selects a verified default, and writes every verified model to a managed `model_catalog_json` so Codex can show them in its native model picker after restart. Discovery makes a small number of real model requests. Disconnecting keeps the last Base URL, token, verified catalog, and selected model locally; reconnecting to that exact normalized URL can use the saved result directly without another scan. Tokens and model caches are never reused for a different URL path, origin, or port.
 
 ```toml
 model = "gpt-5.4"

@@ -67,6 +67,10 @@ export function getCodexRequestDiagnosticsDir(): string {
   return path.join(getDiagnosticsDir(), "codex-requests");
 }
 
+export function getExternalProviderInspectionHistoryPath(): string {
+  return path.join(getDiagnosticsDir(), "external-provider-inspections.json");
+}
+
 export async function ensureStateMigrated(): Promise<void> {
   if (!migrationPromise) {
     migrationPromise = (async () => {

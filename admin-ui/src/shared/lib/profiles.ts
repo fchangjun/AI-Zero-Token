@@ -1,6 +1,8 @@
 import type { ProfileSummary } from "@/shared/types";
 import { formatFullTime, formatTime, timestampToMillis } from "./format";
 
+export type Translator = (key: string, values?: Record<string, string | number>) => string;
+
 export function clampPercent(value?: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return 0;
@@ -41,13 +43,13 @@ export function maskEmail(email: string): string {
 }
 
 export function maskIdentifier(value?: string): string {
-  if (!value) return "未提供";
+  if (!value) return "-";
   if (value.length <= 10) return value;
   return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
 export function profileLabel(profile: ProfileSummary | null | undefined, showEmails: boolean): string {
-  if (!profile) return "未登录";
+  if (!profile) return "-";
   if (profile.email) return showEmails ? profile.email : maskEmail(profile.email);
   return showEmails ? profile.accountId || profile.profileId : maskIdentifier(profile.accountId || profile.profileId);
 }
@@ -75,10 +77,10 @@ export function quotaBarTone(value: number): "blue" | "orange" | "red" {
   return "blue";
 }
 
-export function usageCorner(profile: ProfileSummary, codexActive: boolean): { className: string; label: string } | null {
-  if (profile.isActive && codexActive) return { className: "dual", label: "API + Codex" };
-  if (profile.isActive) return { className: "api-only", label: "API" };
-  if (codexActive) return { className: "codex-only", label: "Codex" };
+export function usageCorner(profile: ProfileSummary, codexActive: boolean, t: Translator): { className: string; label: string } | null {
+  if (profile.isActive && codexActive) return { className: "dual", label: t("accountsPanel.usageCornerDual") };
+  if (profile.isActive) return { className: "api-only", label: t("accountsPanel.usageCornerApi") };
+  if (codexActive) return { className: "codex-only", label: t("accountsPanel.usageCornerCodex") };
   return null;
 }
 
@@ -103,16 +105,16 @@ export function isProfileInvalid(profile: ProfileSummary): boolean {
   return isAuthInvalid(profile) || Boolean(profile.expiresAt && profile.expiresAt <= Date.now());
 }
 
-export function autoSwitchEligibility(profile: ProfileSummary): { key: "ready" | "auth-invalid" | "quota-exhausted"; label: string; tone: "green" | "orange" | "red" } {
+export function autoSwitchEligibility(profile: ProfileSummary, t: Translator): { key: "ready" | "auth-invalid" | "quota-exhausted"; label: string; tone: "green" | "orange" | "red" } {
   if (isAuthInvalid(profile)) {
-    return { key: "auth-invalid", label: "登录不可用", tone: "red" };
+    return { key: "auth-invalid", label: t("accountsPanel.autoSwitchAuthInvalid"), tone: "red" };
   }
 
   if (isQuotaExhausted(profile)) {
-    return { key: "quota-exhausted", label: "额度耗尽", tone: "orange" };
+    return { key: "quota-exhausted", label: t("accountsPanel.autoSwitchQuotaExhausted"), tone: "orange" };
   }
 
-  return { key: "ready", label: "可自动轮换", tone: "green" };
+  return { key: "ready", label: t("accountsPanel.autoSwitchReady"), tone: "green" };
 }
 
 export function profileSortGroup(profile: ProfileSummary, codexAccountId?: string): number {
@@ -122,32 +124,32 @@ export function profileSortGroup(profile: ProfileSummary, codexAccountId?: strin
   return 1;
 }
 
-export function authStatusText(profile: ProfileSummary): string {
+export function authStatusText(profile: ProfileSummary, t: Translator, locale?: string): string {
   const authStatus = profile.authStatus;
   if (!authStatus || authStatus.state === "ok") {
-    return authStatus?.checkedAt ? `正常 · ${formatFullTime(authStatus.checkedAt)}` : "正常";
+    return authStatus?.checkedAt ? t("accountsPanel.authStatusOkAt", { time: formatFullTime(authStatus.checkedAt, locale) }) : t("accountsPanel.authStatusOk");
   }
-  const prefix = authStatus.state === "token_invalidated" ? "登录失效" : "认证异常";
+  const prefix = authStatus.state === "token_invalidated" ? t("accountsPanel.authStatusInvalidated") : t("accountsPanel.authStatusError");
   const detail = authStatus.code || authStatus.httpStatus ? ` (${authStatus.code || authStatus.httpStatus})` : "";
-  return `${prefix}${detail} · ${formatFullTime(authStatus.checkedAt)}`;
+  return `${prefix}${detail} · ${formatFullTime(authStatus.checkedAt, locale)}`;
 }
 
-export function profileHealth(profile: ProfileSummary): { key: "healthy" | "warning" | "unknown" | "expired" | "exhausted" | "invalid"; label: string; tone: string } {
-  if (profile.authStatus?.state === "token_invalidated") return { key: "invalid", label: "登录失效", tone: "red" };
-  if (profile.authStatus?.state === "auth_error") return { key: "invalid", label: "认证异常", tone: "red" };
-  if (profile.expiresAt && profile.expiresAt <= Date.now()) return { key: "expired", label: "已过期", tone: "red" };
-  if (!profile.quota?.capturedAt) return { key: "unknown", label: "待请求验证", tone: "blue" };
-  if (isQuotaExhausted(profile)) return { key: "exhausted", label: "额度耗尽", tone: "orange" };
-  if (primaryUsage(profile) >= 75 || secondaryUsage(profile) >= 75) return { key: "warning", label: "即将耗尽", tone: "orange" };
-  return { key: "healthy", label: "健康", tone: "green" };
+export function profileHealth(profile: ProfileSummary, t: Translator): { key: "healthy" | "warning" | "unknown" | "expired" | "exhausted" | "invalid"; label: string; tone: string } {
+  if (profile.authStatus?.state === "token_invalidated") return { key: "invalid", label: t("accountsPanel.healthInvalidLogin"), tone: "red" };
+  if (profile.authStatus?.state === "auth_error") return { key: "invalid", label: t("accountsPanel.healthAuthError"), tone: "red" };
+  if (profile.expiresAt && profile.expiresAt <= Date.now()) return { key: "expired", label: t("accountsPanel.healthExpired"), tone: "red" };
+  if (!profile.quota?.capturedAt) return { key: "unknown", label: t("accountsPanel.healthUnknown"), tone: "blue" };
+  if (isQuotaExhausted(profile)) return { key: "exhausted", label: t("accountsPanel.healthExhausted"), tone: "orange" };
+  if (primaryUsage(profile) >= 75 || secondaryUsage(profile) >= 75) return { key: "warning", label: t("accountsPanel.healthWarning"), tone: "orange" };
+  return { key: "healthy", label: t("accountsPanel.healthHealthy"), tone: "green" };
 }
 
-export function resetLabel(profile: ProfileSummary, slot: "primary" | "secondary"): string {
+export function resetLabel(profile: ProfileSummary, slot: "primary" | "secondary", t: Translator): string {
   const minutes = slot === "primary" ? profile.quota?.primaryWindowMinutes : profile.quota?.secondaryWindowMinutes;
-  if (!minutes) return slot === "primary" ? "主额度重置" : "周重置";
-  if (minutes < 60) return `${minutes} 分钟重置`;
-  if (minutes < 60 * 24) return `${Math.round(minutes / 60)} 小时重置`;
-  return `${Math.round(minutes / 60 / 24)} 天重置`;
+  if (!minutes) return slot === "primary" ? t("accountsPanel.resetPrimary") : t("accountsPanel.resetWeekly");
+  if (minutes < 60) return t("accountsPanel.resetMinutes", { count: minutes });
+  if (minutes < 60 * 24) return t("accountsPanel.resetHours", { count: Math.round(minutes / 60) });
+  return t("accountsPanel.resetDays", { count: Math.round(minutes / 60 / 24) });
 }
 
 export function resetTime(profile: ProfileSummary, slot: "primary" | "secondary"): string {
@@ -162,11 +164,11 @@ export function resetTime(profile: ProfileSummary, slot: "primary" | "secondary"
   return "-";
 }
 
-export function imageCapability(profile: ProfileSummary | null | undefined): { ok: boolean; detail: string } {
-  if (!profile) return { ok: false, detail: "登录后可测试图片接口。" };
+export function imageCapability(profile: ProfileSummary | null | undefined, t: Translator): { ok: boolean; detail: string } {
+  if (!profile) return { ok: false, detail: t("accountsPanel.imageCapabilityNeedLogin") };
   if (profile.authStatus?.state === "token_invalidated" || profile.authStatus?.state === "auth_error") {
-    return { ok: false, detail: "账号认证已失效，请重新登录后再测试图片接口。" };
+    return { ok: false, detail: t("accountsPanel.imageCapabilityAuthInvalid") };
   }
-  if (isQuotaExhausted(profile)) return { ok: true, detail: "账号额度可能不足，实际以接口返回为准。" };
-  return { ok: true, detail: "当前账号可使用图片生成接口。" };
+  if (isQuotaExhausted(profile)) return { ok: true, detail: t("accountsPanel.imageCapabilityLowQuota") };
+  return { ok: true, detail: t("accountsPanel.imageCapabilityReady") };
 }

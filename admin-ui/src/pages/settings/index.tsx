@@ -4,8 +4,20 @@ import { fetchJson } from "@/shared/api";
 import type { AdminConfig, GatewayShareInfo, ProfileSummary } from "@/shared/types";
 import type { BusyAction, SettingDraft } from "@/shared/lib/app-types";
 import { copyText, errorMessage } from "@/shared/lib/app-utils";
+import { useLocaleValue, useT } from "@/i18n";
 import { formatJson } from "@/shared/lib/format";
-import { autoSwitchEligibility, getPlanType, isCodexActiveProfile, profileHealth, profileLabel } from "@/shared/lib/profiles";
+import { autoSwitchEligibility, getPlanType, isCodexActiveProfile, profileHealth, profileLabel, type Translator } from "@/shared/lib/profiles";
+import {
+  mergeReadyExternalCatalogModels,
+  resolveExternalConnectAction,
+  restoreExternalProviderCache,
+  selectCachedExternalModel,
+  type CodexCatalogModel,
+  type ExternalInspectionHistoryEntry,
+  type ExternalModelInspectionResult,
+  type ExternalModelStatus,
+  type ExternalProviderInspection,
+} from "./external-provider-cache";
 
 type CodexGatewayMode = "local" | "remote" | "external";
 type CodexProviderMode = "openai" | "ai-zero-token";
@@ -18,46 +30,72 @@ type ShareGatewayFeedback = {
   apiKey?: string;
 };
 
+const externalModelStatusClassName: Record<ExternalModelStatus, string> = {
+  ready: "is-ready",
+  busy: "is-busy",
+  unavailable: "is-unavailable",
+  incompatible: "is-incompatible",
+  auth_error: "is-auth-error",
+  transport_error: "is-transport-error",
+  skipped: "is-skipped",
+};
+
+function externalModelStatusMeta(t: Translator): Record<ExternalModelStatus, { label: string; className: string }> {
+  return {
+    ready: { label: t("settings.externalModelStatus.ready"), className: externalModelStatusClassName.ready },
+    busy: { label: t("settings.externalModelStatus.busy"), className: externalModelStatusClassName.busy },
+    unavailable: { label: t("settings.externalModelStatus.unavailable"), className: externalModelStatusClassName.unavailable },
+    incompatible: { label: t("settings.externalModelStatus.incompatible"), className: externalModelStatusClassName.incompatible },
+    auth_error: { label: t("settings.externalModelStatus.auth_error"), className: externalModelStatusClassName.auth_error },
+    transport_error: { label: t("settings.externalModelStatus.transport_error"), className: externalModelStatusClassName.transport_error },
+    skipped: { label: t("settings.externalModelStatus.skipped"), className: externalModelStatusClassName.skipped },
+  };
+}
+
 function normalizeCodexProviderMode(value?: string | null): CodexProviderMode {
   return value === "ai-zero-token" ? "ai-zero-token" : "openai";
 }
 
-function codexProviderModeLabel(mode: CodexProviderMode): string {
-  return mode === "openai" ? "openai" : "AI Zero Token";
+function codexProviderModeLabel(mode: CodexProviderMode, t: Translator): string {
+  return mode === "openai" ? t("settings.providerMode.openai.label") : t("settings.providerMode.aiZeroToken.label");
 }
 
-function codexProviderModeDescription(mode: CodexProviderMode): string {
-  return mode === "openai" ? "保留 Codex 原生历史" : "新的 provider 历史";
+function codexProviderModeDescription(mode: CodexProviderMode, t: Translator): string {
+  return mode === "openai" ? t("settings.providerMode.openai.description") : t("settings.providerMode.aiZeroToken.description");
 }
 
-function codexProviderWriteTarget(mode: CodexProviderMode): string {
-  return mode === "openai" ? "openai_base_url" : "[model_providers.ai-zero-token]";
+function codexProviderWriteTarget(mode: CodexProviderMode, t: Translator): string {
+  return mode === "openai" ? t("settings.providerMode.openai.writeTarget") : t("settings.providerMode.aiZeroToken.writeTarget");
 }
 
-function normalizeHttpProviderUrl(value: string, defaultPath: "/codex/v1" | "/v1"): string {
+function normalizeHttpProviderUrl(value: string, defaultPath: "/codex/v1" | "/v1", t: Translator): string {
   let normalized = value.trim();
   if (!normalized) {
-    throw new Error(defaultPath === "/codex/v1" ? "请填写 Codex 网关 URL。" : "请填写外部 API Base URL。");
+    throw new Error(defaultPath === "/codex/v1" ? t("settings.urlError.codex.empty") : t("settings.urlError.external.empty"));
   }
 
   if (!/^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(normalized)) {
-    normalized = `http://${normalized}`;
+    normalized = `${defaultPath === "/v1" ? "https" : "http"}://${normalized}`;
   }
 
   let url: URL;
   try {
     url = new URL(normalized);
   } catch {
-    throw new Error(defaultPath === "/codex/v1" ? "Codex 网关 URL 格式错误，请填写 http(s) 地址或 IP:端口。" : "外部 API Base URL 格式错误，请填写完整的 http(s) 地址。");
+    throw new Error(defaultPath === "/codex/v1" ? t("settings.urlError.codex.format") : t("settings.urlError.external.format"));
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(defaultPath === "/codex/v1" ? "Codex 网关 URL 只支持 http 或 https。" : "外部 API Base URL 只支持 http 或 https。");
+    throw new Error(defaultPath === "/codex/v1" ? t("settings.urlError.codex.scheme") : t("settings.urlError.external.scheme"));
+  }
+  if (url.username || url.password) {
+    throw new Error(defaultPath === "/codex/v1" ? t("settings.urlError.codex.credentials") : t("settings.urlError.external.credentials"));
   }
 
   url.hash = "";
   url.search = "";
-  const path = url.pathname.replace(/\/+$/g, "");
+  let path = url.pathname.replace(/\/+$/g, "");
   if (defaultPath === "/v1") {
+    path = path.replace(/\/(?:models|responses)$/i, "");
     url.pathname = !path || path === "/" ? "/v1" : path;
   } else if (!path || path === "/") {
     url.pathname = "/codex/v1";
@@ -72,25 +110,25 @@ function normalizeHttpProviderUrl(value: string, defaultPath: "/codex/v1" | "/v1
   return url.toString().replace(/\/+$/g, "");
 }
 
-function normalizeCodexGatewayUrl(value: string): string {
-  return normalizeHttpProviderUrl(value, "/codex/v1");
+function normalizeCodexGatewayUrl(value: string, t: Translator): string {
+  return normalizeHttpProviderUrl(value, "/codex/v1", t);
 }
 
-function normalizeExternalApiBaseUrl(value: string): string {
-  return normalizeHttpProviderUrl(value, "/v1");
+function normalizeExternalApiBaseUrl(value: string, t: Translator): string {
+  return normalizeHttpProviderUrl(value, "/v1", t);
 }
 
-function normalizeCodexGatewayUrlSafe(value: string): string {
+function normalizeCodexGatewayUrlSafe(value: string, t: Translator): string {
   try {
-    return normalizeCodexGatewayUrl(value);
+    return normalizeCodexGatewayUrl(value, t);
   } catch {
     return value.trim().replace(/\/+$/g, "");
   }
 }
 
-function normalizeExternalApiBaseUrlSafe(value: string): string {
+function normalizeExternalApiBaseUrlSafe(value: string, t: Translator): string {
   try {
-    return normalizeExternalApiBaseUrl(value);
+    return normalizeExternalApiBaseUrl(value, t);
   } catch {
     return value.trim().replace(/\/+$/g, "");
   }
@@ -134,6 +172,13 @@ export function SettingsPage(props: {
   setStatus: Dispatch<SetStateAction<string>>;
   refreshConfig: (options?: { runtime?: boolean; silent?: boolean }) => Promise<AdminConfig>;
 }) {
+
+  const t = useT();
+  const locale = useLocaleValue();
+  const intlLocale = locale === "en" ? "en-US" : "zh-CN";
+  const gatewayProvider = props.config?.codex.gatewayProvider;
+  const savedExternalProvider = props.config?.codex.savedExternalProvider
+    ?? (gatewayProvider?.providerId === "ai-zero-token" ? gatewayProvider : undefined);
   const [settingsDraft, setSettingsDraft] = useState<SettingDraft>({
     defaultModel: "",
     proxyEnabled: false,
@@ -152,8 +197,18 @@ export function SettingsPage(props: {
   });
   const [codexGatewayMode, setCodexGatewayMode] = useState<CodexGatewayMode>("local");
   const [codexGatewayUrl, setCodexGatewayUrl] = useState("http://127.0.0.1:8787/codex/v1");
-  const [externalApiBaseUrl, setExternalApiBaseUrl] = useState("https://api.openai.com/v1");
+  const [externalApiBaseUrl, setExternalApiBaseUrl] = useState("");
   const [externalApiToken, setExternalApiToken] = useState("");
+  const [externalModelOverride, setExternalModelOverride] = useState("");
+  const [externalSelectedModel, setExternalSelectedModel] = useState("");
+  const [externalInspection, setExternalInspection] = useState<ExternalProviderInspection | null>(null);
+  const [externalInspectionExpanded, setExternalInspectionExpanded] = useState(true);
+  const [externalCatalogModels, setExternalCatalogModels] = useState<CodexCatalogModel[]>([]);
+  const [externalCatalogBaseUrl, setExternalCatalogBaseUrl] = useState("");
+  const [externalInspectionHistory, setExternalInspectionHistory] = useState<ExternalInspectionHistoryEntry[]>([]);
+  const [externalInspectionHistoryLoaded, setExternalInspectionHistoryLoaded] = useState(false);
+  const [externalInspectionFromHistory, setExternalInspectionFromHistory] = useState(false);
+  const [externalInspectionRunning, setExternalInspectionRunning] = useState(false);
   const [codexGatewayTouched, setCodexGatewayTouched] = useState(false);
   const [settingsDirtyFields, setSettingsDirtyFields] = useState<Set<keyof SettingDraft>>(() => new Set());
   const [autoSwitchSearch, setAutoSwitchSearch] = useState("");
@@ -191,9 +246,16 @@ export function SettingsPage(props: {
       setCodexGatewayMode("external");
     } else {
       setCodexGatewayUrl(nextUrl);
-      setCodexGatewayMode(activeUrl && normalizeCodexGatewayUrlSafe(activeUrl) !== normalizeCodexGatewayUrlSafe(localUrl) ? "remote" : "local");
+      setCodexGatewayMode(activeUrl && normalizeCodexGatewayUrlSafe(activeUrl, t) !== normalizeCodexGatewayUrlSafe(localUrl, t) ? "remote" : "local");
     }
   }, [props.config, codexGatewayTouched]);
+
+  useEffect(() => {
+    if (codexGatewayTouched || !savedExternalProvider?.baseUrl) {
+      return;
+    }
+    setExternalApiBaseUrl(savedExternalProvider.baseUrl);
+  }, [codexGatewayTouched, savedExternalProvider?.baseUrl]);
 
   useEffect(() => {
     if (!props.config || codexProviderModeTouched) {
@@ -202,6 +264,58 @@ export function SettingsPage(props: {
 
     setCodexProviderMode(normalizeCodexProviderMode(props.config.codex.gatewayProvider?.providerId));
   }, [props.config, codexProviderModeTouched]);
+
+  useEffect(() => {
+    const saved = props.config?.codex.gatewayProvider?.catalogModels;
+    const savedBaseUrl = props.config?.codex.gatewayProvider?.baseUrl;
+    if (saved?.length && savedBaseUrl) {
+      setExternalCatalogModels(saved);
+      setExternalCatalogBaseUrl(normalizeExternalApiBaseUrlSafe(savedBaseUrl, t));
+    }
+  }, [props.config?.codex.gatewayProvider?.baseUrl, props.config?.codex.gatewayProvider?.catalogModels, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 5_000);
+    fetchJson<{ data: ExternalInspectionHistoryEntry[] }>("/_gateway/admin/codex/inspection-history", {
+      signal: controller.signal,
+    })
+      .then((result) => {
+        if (!cancelled) {
+          setExternalInspectionHistory(result.data || []);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        window.clearTimeout(timeout);
+        if (!cancelled) {
+          setExternalInspectionHistoryLoaded(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (externalInspection || !externalApiBaseUrl.trim()) return;
+    const normalized = normalizeExternalApiBaseUrlSafe(externalApiBaseUrl, t);
+    const latest = externalInspectionHistory.find((entry) => (
+      (!entry.providerId || entry.providerId === "ai-zero-token")
+      && normalizeExternalApiBaseUrlSafe(entry.baseUrl, t) === normalized
+    ));
+    if (!latest) return;
+    const restored = restoreExternalProviderCache(latest);
+    setExternalInspection({ ...latest.inspection, inspectionId: latest.id });
+    setExternalInspectionFromHistory(true);
+    setExternalInspectionExpanded(true);
+    setExternalCatalogModels(restored.catalogModels);
+    setExternalCatalogBaseUrl(normalized);
+    setExternalSelectedModel(restored.selectedModel);
+  }, [externalApiBaseUrl, externalInspection, externalInspectionHistory, t]);
 
   function markSettingsDirty(next: Partial<SettingDraft>) {
     setSettingsDraft((draft) => ({ ...draft, ...next }));
@@ -236,10 +350,35 @@ export function SettingsPage(props: {
     if (mode === "external") {
       setCodexProviderModeTouched(true);
       setCodexProviderMode("ai-zero-token");
-      if (!externalApiBaseUrl.trim()) {
-        setExternalApiBaseUrl("https://api.openai.com/v1");
-      }
     }
+  }
+
+  function clearExternalInspection() {
+    setExternalInspection(null);
+    setExternalInspectionFromHistory(false);
+    setExternalSelectedModel("");
+  }
+
+  function externalCatalogForBaseUrl(baseUrl: string): CodexCatalogModel[] {
+    const normalized = normalizeExternalApiBaseUrlSafe(baseUrl, t);
+    if (externalCatalogBaseUrl === normalized) {
+      return externalCatalogModels;
+    }
+    const latest = externalInspectionHistory.find((entry) => (
+      (!entry.providerId || entry.providerId === "ai-zero-token")
+      && normalizeExternalApiBaseUrlSafe(entry.baseUrl, t) === normalized
+    ));
+    return latest ? restoreExternalProviderCache(latest).catalogModels : [];
+  }
+
+  function mergeExternalCatalogModels(models: ExternalModelInspectionResult[], baseUrl: string): CodexCatalogModel[] {
+    return mergeReadyExternalCatalogModels(externalCatalogForBaseUrl(baseUrl), models);
+  }
+
+  function clearExternalProviderDraft() {
+    clearExternalInspection();
+    setExternalModelOverride("");
+    setExternalApiToken("");
   }
 
   function getSelectedCodexGatewayUrl(): string {
@@ -250,16 +389,16 @@ export function SettingsPage(props: {
   }
 
   function normalizeSelectedCodexProviderUrl(value: string): string {
-    return codexGatewayMode === "external" ? normalizeExternalApiBaseUrl(value) : normalizeCodexGatewayUrl(value);
+    return codexGatewayMode === "external" ? normalizeExternalApiBaseUrl(value, t) : normalizeCodexGatewayUrl(value, t);
   }
 
   function normalizeSelectedCodexProviderUrlSafe(value: string): string {
-    return codexGatewayMode === "external" ? normalizeExternalApiBaseUrlSafe(value) : normalizeCodexGatewayUrlSafe(value);
+    return codexGatewayMode === "external" ? normalizeExternalApiBaseUrlSafe(value, t) : normalizeCodexGatewayUrlSafe(value, t);
   }
 
   function selectCodexProviderMode(mode: CodexProviderMode) {
     if (codexGatewayMode === "external" && mode === "openai") {
-      props.setStatus("外部 API Token 需要使用独立 provider 历史模式。");
+      props.setStatus(t("settings.providerMode.externalRequireProvider"));
       return;
     }
     setCodexProviderModeTouched(true);
@@ -274,7 +413,7 @@ export function SettingsPage(props: {
   const autoSwitchTotalCount = props.config?.profiles.length || 0;
   const autoSwitchExcludedCount = (props.config?.profiles || []).filter((profile) => excludedProfileIds.has(profile.profileId)).length;
   const autoSwitchRuntimeReadyCount = (props.config?.profiles || []).filter(
-    (profile) => !excludedProfileIds.has(profile.profileId) && autoSwitchEligibility(profile).key === "ready",
+    (profile) => !excludedProfileIds.has(profile.profileId) && autoSwitchEligibility(profile, t).key === "ready",
   ).length;
   const autoSwitchBlockedCount = Math.max(0, autoSwitchTotalCount - autoSwitchExcludedCount - autoSwitchRuntimeReadyCount);
 
@@ -282,22 +421,22 @@ export function SettingsPage(props: {
     const hasDirtyField = (...fields: Array<keyof SettingDraft>) => fields.some((field) => settingsDirtyFields.has(field));
     const serverPort = Number.parseInt(settingsDraft.serverPort, 10);
     if (hasDirtyField("serverPort") && (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65535)) {
-      props.setStatus("端口必须是 1 到 65535 之间的整数。");
+      props.setStatus(t("settings.validation.port"));
       return;
     }
     const quotaSyncConcurrency = Number.parseInt(settingsDraft.quotaSyncConcurrency, 10);
     if (hasDirtyField("quotaSyncConcurrency") && (!Number.isInteger(quotaSyncConcurrency) || quotaSyncConcurrency < 1 || quotaSyncConcurrency > 32)) {
-      props.setStatus("全局额度刷新并发数必须是 1 到 32 之间的整数。");
+      props.setStatus(t("settings.validation.quotaConcurrency"));
       return;
     }
     const codexRequestMinDelayMs = Number.parseInt(settingsDraft.codexRequestMinDelayMs, 10);
     if (hasDirtyField("codexRequestMinDelayMs") && (!Number.isInteger(codexRequestMinDelayMs) || codexRequestMinDelayMs < 0 || codexRequestMinDelayMs > 60_000)) {
-      props.setStatus("Codex 请求最小间隔必须是 0 到 60000 毫秒之间的整数。");
+      props.setStatus(t("settings.validation.codexRequestMinDelayMs"));
       return;
     }
     const codexRequestJitterMs = Number.parseInt(settingsDraft.codexRequestJitterMs, 10);
     if (hasDirtyField("codexRequestJitterMs") && (!Number.isInteger(codexRequestJitterMs) || codexRequestJitterMs < 0 || codexRequestJitterMs > 60_000)) {
-      props.setStatus("Codex 请求随机抖动必须是 0 到 60000 毫秒之间的整数。");
+      props.setStatus(t("settings.validation.codexRequestJitterMs"));
       return;
     }
 
@@ -379,11 +518,11 @@ export function SettingsPage(props: {
       props.setConfig(next);
       setSettingsDirtyFields(new Set());
       if (options?.restart) {
-        props.setStatus("设置已保存，正在重启本地网关...");
+        props.setStatus(t("settings.save.restartSaved"));
         await fetchJson<{ ok: boolean; restarting?: boolean }>("/_gateway/admin/restart", { method: "POST" });
-        props.setStatus("本地网关正在重启，页面会自动恢复。");
+        props.setStatus(t("settings.save.restartDone"));
       } else {
-        props.setStatus("设置已保存。");
+        props.setStatus(t("settings.save.settingsSaved"));
       }
     } catch (error) {
       props.setStatus(errorMessage(error));
@@ -406,9 +545,9 @@ export function SettingsPage(props: {
           },
         }),
       });
-      props.setStatus(`代理测试通过: HTTP ${result.status}，耗时 ${result.elapsedMs} ms。`);
+      props.setStatus(t("settings.proxy.testSuccess", { status: result.status, elapsedMs: result.elapsedMs }));
     } catch (error) {
-      props.setStatus(`代理测试失败: ${errorMessage(error)}`);
+      props.setStatus(t("settings.proxy.testFailure", { error: errorMessage(error) }));
     } finally {
       props.setBusy(null);
     }
@@ -422,7 +561,7 @@ export function SettingsPage(props: {
       }>("/_gateway/models/refresh", { method: "POST" });
       await props.refreshConfig({ silent: true });
       const count = result.catalog?.modelCount ?? 0;
-      props.setStatus(count > 0 ? `Codex 模型列表已从网络同步，共 ${count} 个。` : "Codex 模型列表已从网络同步。");
+      props.setStatus(count > 0 ? t("settings.modelSync.refreshed", { count }) : t("settings.modelSync.refreshedEmpty"));
     } catch (error) {
       props.setStatus(errorMessage(error));
     } finally {
@@ -442,11 +581,11 @@ export function SettingsPage(props: {
       const share = await fetchJson<GatewayShareInfo>("/_gateway/admin/share");
       if (!share.primary) {
         const message = share.lanReachable
-          ? "没有检测到可分享的局域网地址。请确认设备已连接 Wi-Fi 或局域网。"
-          : `当前网关只允许本机访问，不能分享给局域网设备。请把网关监听地址从 ${share.serverHost} 改为 0.0.0.0 后重启。`;
+          ? t("settings.shareGateway.noAddress")
+          : t("settings.shareGateway.localOnly", { host: share.serverHost });
         setShareGatewayFeedback({
           tone: "warning",
-          title: "不能分享代理配置",
+          title: t("settings.shareGateway.cannotShareTitle"),
           detail: message,
         });
         props.setStatus(message);
@@ -455,23 +594,23 @@ export function SettingsPage(props: {
 
       const alternatives = share.addresses
         .slice(1)
-        .map((item) => `备用 Codex 远程网关 URL:\n${item.codexBaseUrl}`)
+        .map((item) => t("settings.shareGateway.altLine", { codexBaseUrl: item.codexBaseUrl }))
         .join("\n\n");
       const shareText = [
-        "AI Zero Token 代理配置",
+        t("settings.shareGateway.configTitle"),
         "",
-        "Codex 远程网关 URL:",
+        t("settings.shareGateway.codexLine"),
         share.primary.codexBaseUrl,
         "",
-        "OpenAI 兼容 Base URL:",
+        t("settings.shareGateway.openaiLine"),
         share.primary.baseUrl,
         "",
-        "API Key:",
-        "任意值，例如 local",
+        t("settings.shareGateway.apiKeyLabel"),
+        t("settings.shareGateway.apiKeyValue"),
         "",
-        "说明:",
-        "远程请求会消耗这台网关机器上保存的账号额度。",
-        "请确认两台设备在同一局域网，且防火墙允许访问该端口。",
+        t("settings.shareGateway.notesLabel"),
+        t("settings.shareGateway.noteLine1"),
+        t("settings.shareGateway.noteLine2"),
         ...(alternatives ? ["", alternatives] : []),
       ].join("\n");
 
@@ -485,20 +624,20 @@ export function SettingsPage(props: {
       }
       setShareGatewayFeedback({
         tone: copied ? "success" : "warning",
-        title: copied ? "代理配置已复制" : "复制失败，请手动复制",
+        title: copied ? t("settings.shareGateway.copiedTitle") : t("settings.shareGateway.copyFailedTitle"),
         detail: copied
-          ? "把这段配置发给对方。对方在 AI Zero Token 的「远程网关」里填 Codex 地址，OpenAI 兼容客户端填 Base URL。"
-          : "浏览器未允许写入剪贴板，请手动复制下面的代理配置。",
+          ? t("settings.shareGateway.shareSuccessDetail")
+          : t("settings.shareGateway.shareFailDetail"),
         codexUrl: share.primary.codexBaseUrl,
         baseUrl: share.primary.baseUrl,
-        apiKey: "任意值，例如 local",
+        apiKey: t("settings.shareGateway.apiKeyValue"),
       });
-      props.setStatus(copied ? `代理配置已复制：${share.primary.codexBaseUrl}` : shareText);
+      props.setStatus(copied ? t("settings.shareGateway.copiedStatus", { url: share.primary.codexBaseUrl }) : shareText);
     } catch (error) {
       const message = errorMessage(error);
       setShareGatewayFeedback({
         tone: "warning",
-        title: "代理配置生成失败",
+        title: t("settings.shareGateway.generateFailedTitle"),
         detail: message,
       });
       props.setStatus(message);
@@ -529,13 +668,20 @@ export function SettingsPage(props: {
     props.setStatus(options.deferStatus);
   }
 
-  async function toggleCodexProvider() {
+  async function toggleCodexProvider(options?: { externalAction?: "connect" | "rescan" | "remove" }) {
     props.setBusy("codex-provider");
     try {
       const selectedProviderMode = codexGatewayMode === "external" ? "ai-zero-token" : codexProviderMode;
-      const selectedProviderLabel = codexProviderModeLabel(selectedProviderMode);
-      const selectedTakeoverLabel = codexGatewayMode === "external" ? "外部 API" : selectedProviderLabel;
+      const selectedProviderLabel = codexProviderModeLabel(selectedProviderMode, t);
+      const selectedTakeoverLabel = codexGatewayMode === "external" ? t("settings.providerStatus.external") : selectedProviderLabel;
       const selectedBaseUrl = normalizeSelectedCodexProviderUrl(getSelectedCodexGatewayUrl());
+      const cachedExternalCatalogModels = codexGatewayMode === "external"
+        ? externalCatalogForBaseUrl(selectedBaseUrl)
+        : [];
+      const resolvedExternalAction = resolveExternalConnectAction(
+        options?.externalAction === "rescan" ? "rescan" : "connect",
+        cachedExternalCatalogModels,
+      );
       const activeBaseUrl = props.config?.codex.gatewayProvider?.baseUrl;
       const activeAuthType = props.config?.codex.gatewayProvider?.authType;
       const currentProviderMode = normalizeCodexProviderMode(props.config?.codex.gatewayProvider?.providerId);
@@ -552,45 +698,151 @@ export function SettingsPage(props: {
       const externalTokenUpdating = codexGatewayMode === "external" && externalToken.length > 0;
       const externalTokenAlreadySaved = Boolean(
         codexGatewayMode === "external" &&
-        props.config?.codex.gatewayProvider?.active &&
-        currentProviderMode === selectedProviderMode &&
-        activeAuthType === "bearer_token",
+        savedExternalProvider?.exists &&
+        savedExternalProvider.providerId === selectedProviderMode &&
+        savedExternalProvider.authType === "bearer_token" &&
+        savedExternalProvider.baseUrl &&
+        normalizeExternalApiBaseUrlSafe(savedExternalProvider.baseUrl, t) === selectedBaseUrl,
       );
-      if (codexGatewayMode === "external" && !externalToken && !externalTokenAlreadySaved) {
-        props.setStatus("请填写外部 API Token。");
-        return;
-      }
 
-      if (props.config?.codex.gatewayProvider?.active && !activeBaseUrlChanged && !providerChanged && !externalTokenUpdating) {
+      const removeRequested = options?.externalAction === "remove" || (
+        codexGatewayMode !== "external" &&
+        props.config?.codex.gatewayProvider?.active &&
+        !activeBaseUrlChanged &&
+        !providerChanged &&
+        !externalTokenUpdating
+      );
+      if (removeRequested) {
         const result = await fetchJson<{
           codexProvider: {
             path: string;
             backupPath?: string;
             providerId: string;
             removed: boolean;
+            providerDefinitionRetained?: boolean;
+            credentialsRetained?: boolean;
           };
           config?: AdminConfig;
         }>("/_gateway/admin/codex/remove-provider", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: formatJson({ providerId: selectedProviderMode }),
+          body: formatJson({ providerId: currentProviderMode }),
         });
         if (result.config) {
           props.setConfig(result.config);
         }
         if (result.codexProvider.removed) {
+          if (activeAuthType === "bearer_token") {
+            clearExternalProviderDraft();
+          }
           await promptCodexRestart({
             config: result.config ?? props.config,
-            confirmMessage: `Codex ${selectedTakeoverLabel} 接管已解除，是否现在重启 Codex 客户端？\n\nCodex 通常在启动时读取本机 config.toml，重启后会回到原本的 Codex 配置。`,
-            deferStatus: `已解除 ${selectedTakeoverLabel} 接管。重启 Codex 后会回到原本的 Codex 配置。`,
-            restartingStatus: "正在重启 Codex 客户端...",
-            restartedStatus: `已解除 ${selectedTakeoverLabel} 接管，并已重启 Codex 客户端。`,
-            failedStatusPrefix: `已解除 ${selectedTakeoverLabel} 接管，但重启 Codex 失败`,
+            confirmMessage: result.codexProvider.providerDefinitionRetained
+              ? t("settings.providerTakeover.confirmDeactivateCompatible", { target: selectedTakeoverLabel })
+              : t("settings.providerTakeover.confirmRemove", { target: selectedTakeoverLabel }),
+            deferStatus: result.codexProvider.providerDefinitionRetained
+              ? t("settings.providerTakeover.deferDeactivateCompatible", { target: selectedTakeoverLabel })
+              : t("settings.providerTakeover.deferRemove", { target: selectedTakeoverLabel }),
+            restartingStatus: t("settings.providerTakeover.restarting"),
+            restartedStatus: result.codexProvider.providerDefinitionRetained
+              ? t("settings.providerTakeover.deactivatedCompatibleAndRestarted", { target: selectedTakeoverLabel })
+              : t("settings.providerTakeover.removedAndRestarted", { target: selectedTakeoverLabel }),
+            failedStatusPrefix: t("settings.providerTakeover.removedButRestartFailed", { target: selectedTakeoverLabel }),
           });
         } else {
-          props.setStatus("未发现当前受管的 Codex provider 配置。");
+          props.setStatus(t("settings.providerTakeover.unmanaged"));
         }
         return;
+      }
+
+      if (codexGatewayMode === "external" && !externalToken && !externalTokenAlreadySaved) {
+        props.setStatus(activeBaseUrlChanged ? t("settings.providerTakeover.externalAddressChanged") : t("settings.providerTakeover.externalTokenMissing"));
+        return;
+      }
+
+      let configuredBaseUrl = selectedBaseUrl;
+      let selectedExternalModel = "";
+      const matchingCachedInspection = externalInspection
+        && normalizeExternalApiBaseUrlSafe(externalInspection.baseUrl, t) === selectedBaseUrl
+        ? externalInspection
+        : null;
+      let inspectionForConfigure = resolvedExternalAction === "apply-cached" ? matchingCachedInspection : null;
+      let catalogModelsForConfigure = cachedExternalCatalogModels;
+      if (codexGatewayMode === "external" && resolvedExternalAction === "inspect-and-configure") {
+        clearExternalInspection();
+        props.setStatus(t("settings.providerTakeover.inspecting"));
+        setExternalInspectionRunning(true);
+        let inspection: ExternalProviderInspection;
+        try {
+          inspection = await fetchJson<ExternalProviderInspection>("/_gateway/admin/codex/inspect-provider", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: formatJson({
+              baseUrl: selectedBaseUrl,
+              providerId: "ai-zero-token",
+              ...(externalToken ? { bearerToken: externalToken } : {}),
+            }),
+          });
+        } finally {
+          setExternalInspectionRunning(false);
+        }
+        setExternalInspection(inspection);
+        setExternalInspectionFromHistory(false);
+        setExternalInspectionHistory((current) => [{
+          id: inspection.inspectionId || crypto.randomUUID(),
+          createdAt: Date.now(),
+          providerId: "ai-zero-token",
+          baseUrl: inspection.baseUrl,
+          inspection,
+        }, ...current]);
+        const inspectedCatalogModels = mergeExternalCatalogModels(inspection.results, inspection.baseUrl || selectedBaseUrl);
+        inspectionForConfigure = inspection;
+        catalogModelsForConfigure = inspectedCatalogModels;
+        setExternalCatalogModels(inspectedCatalogModels);
+        setExternalCatalogBaseUrl(normalizeExternalApiBaseUrlSafe(inspection.baseUrl || selectedBaseUrl, t));
+        setExternalInspectionExpanded(true);
+        configuredBaseUrl = inspection.baseUrl || selectedBaseUrl;
+        const readyResults = inspection.results.filter((item) => item.status === "ready");
+        const modelOverride = externalModelOverride.trim();
+        if (modelOverride) {
+          const overrideResult = inspection.results.find((item) => item.id === modelOverride);
+          if (overrideResult?.status !== "ready") {
+            setExternalSelectedModel("");
+            const detail = overrideResult
+              ? t("settings.providerTakeover.inspectStatus", { status: externalModelStatusMeta(t)[overrideResult.status].label })
+              : t("settings.providerTakeover.inspectMissing");
+            props.setStatus(t("settings.providerTakeover.inspectInvalidModel", { id: modelOverride, detail }));
+            return;
+          }
+          selectedExternalModel = overrideResult.id;
+        } else {
+          selectedExternalModel = readyResults.find((item) => item.id === inspection.recommendedModel)?.id
+            || readyResults[0]?.id
+            || "";
+        }
+        setExternalSelectedModel(selectedExternalModel);
+        if (!selectedExternalModel) {
+          props.setStatus(t("settings.providerTakeover.noReadyModels", { count: inspection.modelCount }));
+          return;
+        }
+        props.setStatus(t("settings.providerTakeover.selectedWriting", { id: selectedExternalModel }));
+      }
+
+      if (codexGatewayMode === "external" && resolvedExternalAction === "apply-cached") {
+        const cachedCatalogModels = cachedExternalCatalogModels;
+        catalogModelsForConfigure = cachedCatalogModels;
+        selectedExternalModel = selectCachedExternalModel(
+          cachedCatalogModels,
+          externalSelectedModel,
+          currentProviderIsExternal ? currentCodexProviderModel : undefined,
+          matchingCachedInspection?.recommendedModel,
+        );
+        if (!selectedExternalModel || cachedCatalogModels.length === 0) {
+          props.setStatus(t("settings.externalInspect.noCachedModels"));
+          return;
+        }
+        setExternalSelectedModel(selectedExternalModel);
+        props.setStatus(t("settings.providerTakeover.cachedWriting", { id: selectedExternalModel }));
       }
 
       const wasUpdating = Boolean(props.config?.codex.gatewayProvider?.active);
@@ -600,6 +852,9 @@ export function SettingsPage(props: {
           backupPath?: string;
           providerId: string;
           baseUrl: string;
+          model?: string;
+          modelCatalogPath?: string;
+          modelCatalogCount?: number;
           kind?: "codex_gateway" | "openai_compatible";
           authType?: "none" | "bearer_token" | "env_key";
           historyMigration?: {
@@ -617,10 +872,15 @@ export function SettingsPage(props: {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: formatJson({
-          baseUrl: selectedBaseUrl,
+          baseUrl: configuredBaseUrl,
           providerId: selectedProviderMode,
           kind: codexGatewayMode === "external" ? "openai_compatible" : "codex_gateway",
           ...(codexGatewayMode === "external" && externalToken ? { bearerToken: externalToken } : {}),
+          ...(codexGatewayMode === "external" && selectedExternalModel ? { model: selectedExternalModel } : {}),
+          ...(codexGatewayMode === "external" ? {
+            catalogModels: catalogModelsForConfigure,
+            ...(inspectionForConfigure?.inspectionId ? { inspectionId: inspectionForConfigure.inspectionId } : {}),
+          } : {}),
         }),
       });
       if (result.config) {
@@ -632,19 +892,45 @@ export function SettingsPage(props: {
       const migratedCount = result.codexProvider.historyMigration?.migratedCount || 0;
       const rolloutPatchedCount = result.codexProvider.historyMigration?.rolloutPatchedCount || 0;
       const migrationSuffix = migratedCount > 0
-        ? `，已迁移 ${migratedCount} 条历史记录${rolloutPatchedCount > 0 ? `，已修复 ${rolloutPatchedCount} 个会话索引` : ""}`
+        ? t("settings.providerTakeover.migratedSuffix", { count: migratedCount })
+          + (rolloutPatchedCount > 0 ? t("settings.providerTakeover.rolloutPatchedSuffix", { count: rolloutPatchedCount }) : "")
         : "";
+      const defaultModelSuffix = selectedExternalModel
+        ? t("settings.providerTakeover.defaultModelSuffix", { model: selectedExternalModel })
+        : "";
+      const catalogSuffix = result.codexProvider.modelCatalogCount
+        ? t("settings.providerTakeover.catalogSuffix", { count: result.codexProvider.modelCatalogCount })
+        : "";
+      const takeoverAction = wasUpdating ? t("settings.providerTakeover.actionUpdated") : t("settings.providerTakeover.actionWrote");
       await promptCodexRestart({
         config: result.config ?? props.config,
         confirmMessage: codexGatewayMode === "external"
-          ? "Codex 接管将直接使用外部 API Base URL 和保存的 token，是否现在重启 Codex 客户端？\n\n重启后请求会绕过 AI Zero Token 网关账号池，历史记录会归在 AI Zero Token provider 下。"
+          ? t(resolvedExternalAction === "apply-cached"
+            ? "settings.providerTakeover.confirmExternalCached"
+            : "settings.providerTakeover.confirmExternal", {
+              count: result.codexProvider.modelCatalogCount || 1,
+              model: selectedExternalModel,
+            })
           : selectedProviderMode === "openai"
-            ? "Codex 接管将使用 openai 历史记录模式，是否现在重启 Codex 客户端？\n\n重启后请求仍会走 AI Zero Token 网关，历史记录会继续归在 Codex 原生 openai provider 下。"
-            : "Codex 接管将切换到 AI Zero Token 新 provider，是否现在重启 Codex 客户端？\n\n重启后请求仍会走 AI Zero Token 网关，历史记录会归在新的 AI Zero Token provider 下。",
-        deferStatus: `${wasUpdating ? "已更新" : "已写入"} ${selectedTakeoverLabel} 接管配置：${result.codexProvider.baseUrl}${migrationSuffix}。重启 Codex 后生效。`,
-        restartingStatus: "正在重启 Codex 客户端...",
-        restartedStatus: `${wasUpdating ? "已更新" : "已接管"} ${selectedTakeoverLabel} 请求，并已重启 Codex 客户端。`,
-        failedStatusPrefix: `${wasUpdating ? "已更新" : "已接管"} ${selectedTakeoverLabel} 请求，但重启 Codex 失败`,
+            ? t("settings.providerTakeover.confirmOpenai")
+            : t("settings.providerTakeover.confirmAzt"),
+        deferStatus: t("settings.providerTakeover.deferStatus", {
+          action: takeoverAction,
+          target: selectedTakeoverLabel,
+          url: result.codexProvider.baseUrl,
+          model: defaultModelSuffix,
+          catalog: catalogSuffix,
+          migration: migrationSuffix,
+        }),
+        restartingStatus: t("settings.providerTakeover.restarting"),
+        restartedStatus: t("settings.providerTakeover.restartedStatus", {
+          action: wasUpdating ? t("settings.providerTakeover.actionUpdated") : t("settings.providerTakeover.actionTookover"),
+          target: selectedTakeoverLabel,
+        }),
+        failedStatusPrefix: t("settings.providerTakeover.restartFailed", {
+          action: wasUpdating ? t("settings.providerTakeover.actionUpdated") : t("settings.providerTakeover.actionTookover"),
+          target: selectedTakeoverLabel,
+        }),
       });
     } catch (error) {
       props.setStatus(errorMessage(error));
@@ -654,9 +940,9 @@ export function SettingsPage(props: {
   }
 
   const currentProviderMode = normalizeCodexProviderMode(props.config?.codex.gatewayProvider?.providerId);
-  const currentProviderLabel = codexProviderModeLabel(currentProviderMode);
+  const currentProviderLabel = codexProviderModeLabel(currentProviderMode, t);
   const selectedEffectiveProviderMode: CodexProviderMode = codexGatewayMode === "external" ? "ai-zero-token" : codexProviderMode;
-  const selectedProviderWriteTarget = codexProviderWriteTarget(selectedEffectiveProviderMode);
+  const selectedProviderWriteTarget = codexProviderWriteTarget(selectedEffectiveProviderMode, t);
   const codexProviderActive = Boolean(props.config?.codex.gatewayProvider?.active);
   const codexProviderBusy = props.busy === "codex-provider";
   const codexShareBusy = props.busy === "codex-share";
@@ -664,8 +950,10 @@ export function SettingsPage(props: {
   const selectedCodexGatewayUrl = getSelectedCodexGatewayUrl();
   const normalizedSelectedCodexGatewayUrl = normalizeSelectedCodexProviderUrlSafe(selectedCodexGatewayUrl);
   const currentCodexProviderUrl = props.config?.codex.gatewayProvider?.baseUrl || "";
+  const currentCodexProviderModel = props.config?.codex.gatewayProvider?.model || "";
   const currentAuthType = props.config?.codex.gatewayProvider?.authType;
   const externalModeTokenUpdating = codexGatewayMode === "external" && externalApiToken.trim().length > 0;
+  const selectedExternalCatalogModels = externalCatalogForBaseUrl(externalApiBaseUrl);
   const codexProviderUrlChanged = Boolean(
     codexProviderActive &&
     currentCodexProviderUrl &&
@@ -675,32 +963,53 @@ export function SettingsPage(props: {
     codexProviderActive &&
     currentProviderMode !== selectedEffectiveProviderMode,
   );
+  const currentProviderIsExternal = codexProviderActive && currentAuthType === "bearer_token";
+  const externalSavedTokenReusable = Boolean(
+    savedExternalProvider?.exists &&
+    savedExternalProvider.authType === "bearer_token" &&
+    savedExternalProvider.providerId === "ai-zero-token" &&
+    savedExternalProvider.baseUrl &&
+    normalizeExternalApiBaseUrlSafe(savedExternalProvider.baseUrl, t) === normalizeExternalApiBaseUrlSafe(externalApiBaseUrl, t),
+  );
   const codexProviderButtonClass = [
     "btn-secondary",
     "codex-provider-button",
     codexProviderBusy
       ? "is-busy"
-      : codexProviderActive && !codexProviderUrlChanged && !codexProviderModeChanged && !externalModeTokenUpdating
+      : codexGatewayMode === "external"
+        ? "is-inactive"
+        : codexProviderActive && !codexProviderUrlChanged && !codexProviderModeChanged && !externalModeTokenUpdating
         ? "is-active"
         : "is-inactive",
   ].join(" ");
   const codexProviderButtonLabel = codexProviderBusy
-    ? "处理中"
-    : codexProviderActive && !codexProviderUrlChanged && !codexProviderModeChanged && !externalModeTokenUpdating
-      ? "解除 Codex 接管"
-      : codexProviderActive
-        ? "更新接管配置"
-        : "写入并接管";
-  const codexProviderStatusLabel = codexProviderActive ? (currentAuthType === "bearer_token" ? "外部 API" : currentProviderLabel) : "未接管";
+    ? (codexGatewayMode === "external" ? t("settings.providerButton.detecting") : t("settings.providerButton.processing"))
+    : codexGatewayMode === "external"
+      ? t("settings.providerButton.inspectAndTakeover")
+      : codexProviderActive && !codexProviderUrlChanged && !codexProviderModeChanged && !externalModeTokenUpdating
+        ? t("settings.providerButton.disconnect")
+        : codexProviderActive
+          ? t("settings.providerButton.update")
+          : t("settings.providerButton.write");
+  const codexProviderStatusLabel = codexProviderActive ? (currentAuthType === "bearer_token" ? t("settings.providerStatus.external") : currentProviderLabel) : t("settings.providerStatus.unmanaged");
   const codexProviderStatusClass = codexProviderActive ? "is-included" : "is-excluded";
   const currentProviderAuthLabel = !codexProviderActive
-    ? "未配置"
+    ? t("settings.providerStatus.unconfigured")
     : currentAuthType === "bearer_token"
-      ? "Token 已保存"
+      ? t("settings.providerStatus.tokenSaved")
       : currentAuthType === "env_key"
-        ? `环境变量 ${props.config?.codex.gatewayProvider?.envKey || "-"}`
-        : "使用 Codex/OpenAI 登录";
-  const externalApiTokenPlaceholder = currentAuthType === "bearer_token" && codexProviderActive ? "已保存，留空沿用现有 token" : "sk-...";
+        ? t("settings.providerStatus.envKey", { key: props.config?.codex.gatewayProvider?.envKey || "-" })
+        : t("settings.providerStatus.codexLogin");
+  const externalApiTokenPlaceholder = externalSavedTokenReusable ? t("settings.field.tokenPlaceholderSaved") : "sk-...";
+  const externalReadyCount = externalInspection?.results.filter((item) => item.status === "ready").length || 0;
+  const externalProviderFeedbackTone = codexProviderBusy
+    ? "is-loading"
+    : new RegExp(t("settings.takeover.errorTerms"), "i").test(props.status)
+      ? "is-error"
+      : "is-info";
+  const displayedExternalModel = externalInspection
+    ? externalSelectedModel
+    : currentProviderIsExternal ? currentCodexProviderModel : "";
 
   return (
     <section className="settings-page">
@@ -708,61 +1017,74 @@ export function SettingsPage(props: {
         <div className="settings-page-actions">
           <button className="btn-secondary" type="button" onClick={refreshModels} disabled={props.busy === "models"}>
             {props.busy === "models" ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />}
-            同步 Codex 模型
+            {props.busy === "models" ? t("settings.syncButton.busy") : t("settings.syncButton.label")}
           </button>
         </div>
       </div>
 
       <div className="settings-grid">
+        {externalInspectionRunning ? (
+          <div className="external-inspection-overlay" role="dialog" aria-modal="true" aria-labelledby="external-inspection-progress-title">
+            <div className="external-inspection-progress-card">
+              <Loader2 className="spin" size={30} />
+              <div>
+                <h3 id="external-inspection-progress-title">{t("settings.externalInspect.progressTitle")}</h3>
+                <p>{t("settings.externalInspect.progressBody")}</p>
+                <p className="external-inspection-progress-cost">{t("settings.externalInspect.progressCost")}</p>
+                <span>{t("settings.externalInspect.progressModels")}</span>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <section className="settings-section codex-provider-section">
           <div className="codex-provider-head">
             <div>
-              <h4>Codex 请求接管</h4>
-              <p className="hint">默认使用 openai 保留 Codex 原生历史；也可以切到 AI Zero Token，写入新的 provider 历史分组。接管地址可以是本机网关、远程网关或外部 OpenAI 兼容 API。</p>
+              <h4>{t("settings.takeover.heading")}</h4>
+              <p className="hint">{t("settings.takeover.description")}</p>
             </div>
             <span className={`count-pill ${codexProviderStatusClass}`}>{codexProviderStatusLabel}</span>
           </div>
 
           <div className="codex-provider-mode-row">
             <div className="codex-provider-mode-copy">
-              <div className="codex-provider-mode-title">历史记录模式</div>
-              <p className="hint">{codexProviderModeLabel(codexProviderMode)} · {codexProviderModeDescription(codexProviderMode)}</p>
+              <div className="codex-provider-mode-title">{t("settings.takeover.historyMode")}</div>
+              <p className="hint">{codexProviderModeLabel(codexProviderMode, t)} · {codexProviderModeDescription(codexProviderMode, t)}</p>
             </div>
-            <div className="codex-provider-mode-toggle" role="group" aria-label="历史记录模式">
+            <div className="codex-provider-mode-toggle" role="group" aria-label={t("settings.field.historyModeAria")}>
               <button
                 className={`codex-provider-mode-option ${codexProviderMode === "openai" ? "is-active" : ""}`}
                 type="button"
                 onClick={() => selectCodexProviderMode("openai")}
-                disabled={codexGatewayMode === "external"}
-                title={codexGatewayMode === "external" ? "外部 API Token 需要使用独立 provider 历史模式" : undefined}
+                disabled={codexGatewayMode === "external" || codexProviderBusy}
+                title={codexGatewayMode === "external" ? t("settings.field.externalTokenTitle") : undefined}
               >
-                openai
+                {t("settings.providerMode.openai.label")}
               </button>
-              <button className={`codex-provider-mode-option ${codexProviderMode === "ai-zero-token" ? "is-active" : ""}`} type="button" onClick={() => selectCodexProviderMode("ai-zero-token")}>
-                AI Zero Token
+              <button className={`codex-provider-mode-option ${codexProviderMode === "ai-zero-token" ? "is-active" : ""}`} type="button" onClick={() => selectCodexProviderMode("ai-zero-token")} disabled={codexProviderBusy}>
+                {t("settings.providerMode.aiZeroToken.label")}
               </button>
             </div>
           </div>
 
           <div className="codex-provider-controls">
-            <div className="codex-mode-toggle" role="group" aria-label="Codex 网关模式">
-              <button className={`codex-mode-option ${codexGatewayMode === "local" ? "is-active" : ""}`} type="button" onClick={() => selectCodexGatewayMode("local")}>
+            <div className="codex-mode-toggle" role="group" aria-label={t("settings.field.codexGatewayModeAria")}>
+              <button className={`codex-mode-option ${codexGatewayMode === "local" ? "is-active" : ""}`} type="button" onClick={() => selectCodexGatewayMode("local")} disabled={codexProviderBusy}>
                 <MonitorCog size={16} />
-                本机网关
+                {t("settings.field.localGateway")}
               </button>
-              <button className={`codex-mode-option ${codexGatewayMode === "remote" ? "is-active" : ""}`} type="button" onClick={() => selectCodexGatewayMode("remote")}>
+              <button className={`codex-mode-option ${codexGatewayMode === "remote" ? "is-active" : ""}`} type="button" onClick={() => selectCodexGatewayMode("remote")} disabled={codexProviderBusy}>
                 <Globe2 size={16} />
-                远程网关
+                {t("settings.field.remoteGateway")}
               </button>
-              <button className={`codex-mode-option ${codexGatewayMode === "external" ? "is-active" : ""}`} type="button" onClick={() => selectCodexGatewayMode("external")}>
+              <button className={`codex-mode-option ${codexGatewayMode === "external" ? "is-active" : ""}`} type="button" onClick={() => selectCodexGatewayMode("external")} disabled={codexProviderBusy}>
                 <KeyRound size={16} />
-                外部 API
+                {t("settings.providerStatus.external")}
               </button>
             </div>
 
             <div className={`codex-provider-fields ${codexGatewayMode === "external" ? "has-token-field" : ""}`}>
               <label className="field codex-url-field">
-                <span>{codexGatewayMode === "external" ? "外部 API Base URL" : "Codex 网关 URL"}</span>
+                <span>{codexGatewayMode === "external" ? t("settings.field.codexUrl.external") : t("settings.field.codexUrl.codex")}</span>
                 <input
                   className="input codex-url-input"
                   value={codexGatewayMode === "local" ? localCodexGatewayUrl : codexGatewayMode === "external" ? externalApiBaseUrl : codexGatewayUrl}
@@ -770,73 +1092,147 @@ export function SettingsPage(props: {
                     setCodexGatewayTouched(true);
                     if (codexGatewayMode === "external") {
                       setExternalApiBaseUrl(event.target.value);
+                      clearExternalInspection();
+                      setExternalCatalogModels([]);
+                      setExternalCatalogBaseUrl("");
+                      setExternalModelOverride("");
                     } else {
                       setCodexGatewayMode("remote");
                       setCodexGatewayUrl(event.target.value);
                     }
                   }}
-                  placeholder={codexGatewayMode === "external" ? "https://api.openai.com/v1" : "http://192.168.1.10:8787/codex/v1"}
+                  placeholder={codexGatewayMode === "external" ? t("settings.field.codexUrlPlaceholderExternal") : t("settings.field.codexUrlPlaceholderRemote")}
                   readOnly={codexGatewayMode === "local"}
+                  disabled={codexProviderBusy}
                 />
               </label>
 
               {codexGatewayMode === "external" ? (
                 <label className="field codex-token-field">
-                  <span>外部 API Token</span>
+                  <span>{t("settings.field.externalToken")}</span>
                   <input
                     className="input codex-url-input"
                     type="password"
                     value={externalApiToken}
-                    onChange={(event) => setExternalApiToken(event.target.value)}
-                    placeholder={externalApiTokenPlaceholder}
+                    onChange={(event) => {
+                      setExternalApiToken(event.target.value);
+                      clearExternalInspection();
+                    }}
+                    placeholder={externalSavedTokenReusable ? t("settings.field.tokenPlaceholderSaved") : t("settings.field.tokenPlaceholderNew")}
                     autoComplete="off"
+                    disabled={codexProviderBusy}
                   />
                 </label>
               ) : null}
             </div>
 
             <div className="codex-provider-actions">
-              <button className="btn-secondary share-gateway-button" type="button" onClick={shareGateway} disabled={codexShareBusy}>
-                {codexShareBusy ? <Loader2 className="spin" size={16} /> : <Share2 size={16} />}
-                {codexShareBusy ? "生成中" : shareGatewayCopied ? "已复制" : "复制代理配置"}
-              </button>
-              <button className="btn-secondary" type="button" onClick={() => selectCodexGatewayMode("local")}>
-                <MonitorCog size={16} />
-                使用本机地址
-              </button>
-              <button className={codexProviderButtonClass} type="button" onClick={toggleCodexProvider} disabled={codexProviderBusy}>
-                {codexProviderBusy ? (
-                  <Loader2 className="spin" size={16} />
-                ) : codexProviderActive && !codexProviderUrlChanged && !codexProviderModeChanged && !externalModeTokenUpdating ? (
-                  <Unplug size={16} />
-                ) : (
-                  <PlugZap size={16} />
-                )}
-                {codexProviderButtonLabel}
-              </button>
+              {codexGatewayMode === "external" ? (
+                <>
+                  {currentProviderIsExternal ? (
+                    <button className="btn-secondary codex-provider-button is-active" type="button" onClick={() => void toggleCodexProvider({ externalAction: "remove" })} disabled={codexProviderBusy}>
+                      <Unplug size={16} />
+                      {t("settings.providerButton.disconnectCurrent")}
+                    </button>
+                  ) : null}
+                  <button className={codexProviderButtonClass} type="button" onClick={() => void toggleCodexProvider({ externalAction: "connect" })} disabled={codexProviderBusy || (!externalInspectionHistoryLoaded && selectedExternalCatalogModels.length === 0)}>
+                    {codexProviderBusy
+                      ? <Loader2 className="spin" size={16} />
+                      : selectedExternalCatalogModels.length > 0
+                        ? <PlugZap size={16} />
+                        : <Search size={16} />}
+                    {selectedExternalCatalogModels.length > 0 ? t("settings.externalInspect.useCached") : codexProviderButtonLabel}
+                  </button>
+                  {selectedExternalCatalogModels.length > 0 ? (
+                    <button className="btn-secondary codex-provider-button is-inactive" type="button" onClick={() => void toggleCodexProvider({ externalAction: "rescan" })} disabled={codexProviderBusy}>
+                      <Search size={16} />
+                      {t("settings.externalInspect.rescan")}
+                    </button>
+                  ) : null}
+                </>
+              ) : (
+                <>
+                  <button className="btn-secondary share-gateway-button" type="button" onClick={shareGateway} disabled={codexShareBusy || codexProviderBusy}>
+                    {codexShareBusy ? <Loader2 className="spin" size={16} /> : <Share2 size={16} />}
+                    {codexShareBusy ? t("settings.shareGateway.generating") : shareGatewayCopied ? t("settings.shareGateway.copySuccess") : t("settings.shareGateway.copyButton")}
+                  </button>
+                  <button className="btn-secondary" type="button" onClick={() => selectCodexGatewayMode("local")} disabled={codexProviderBusy}>
+                    <MonitorCog size={16} />
+                    {t("settings.providerButton.useLocal")}
+                  </button>
+                  <button className={codexProviderButtonClass} type="button" onClick={() => void toggleCodexProvider()} disabled={codexProviderBusy}>
+                    {codexProviderBusy ? (
+                      <Loader2 className="spin" size={16} />
+                    ) : codexProviderActive && !codexProviderUrlChanged && !codexProviderModeChanged && !externalModeTokenUpdating ? (
+                      <Unplug size={16} />
+                    ) : (
+                      <PlugZap size={16} />
+                    )}
+                    {codexProviderButtonLabel}
+                  </button>
+                </>
+              )}
             </div>
+
+            {codexGatewayMode === "external" && selectedExternalCatalogModels.length > 0 ? (
+              <p className="hint">{t("settings.externalInspect.cachedHint", { count: selectedExternalCatalogModels.length })}</p>
+            ) : null}
+
+            {codexGatewayMode === "external" ? (
+              <div className={`external-provider-feedback ${externalProviderFeedbackTone}`} role="status" aria-live="polite" aria-atomic="true">
+                {codexProviderBusy ? <Loader2 className="spin" size={15} /> : null}
+                <span>{props.status || t("settings.externalInspect.feedbackPlaceholder")}</span>
+              </div>
+            ) : null}
           </div>
 
-          {shareGatewayFeedback ? (
+          {codexGatewayMode === "external" ? (
+            <details className="external-provider-advanced">
+              <summary>{t("settings.externalInspect.advancedTitle")}</summary>
+              <div className="external-provider-advanced-body">
+                <label className="field">
+                  <span>{t("settings.externalInspect.modelIdLabel")}</span>
+                  <input
+                    className="input codex-url-input"
+                    value={externalModelOverride}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setExternalModelOverride(value);
+                      const readyResults = externalInspection?.results.filter((item) => item.status === "ready") || [];
+                      const modelId = value.trim();
+                      setExternalSelectedModel(modelId
+                        ? readyResults.find((item) => item.id === modelId)?.id || ""
+                        : readyResults.find((item) => item.id === externalInspection?.recommendedModel)?.id || readyResults[0]?.id || "");
+                    }}
+                    placeholder={currentCodexProviderModel || t("settings.externalInspect.modelOverridePlaceholder")}
+                    disabled={codexProviderBusy}
+                  />
+                </label>
+                <p className="hint">{t("settings.externalInspect.modelOverrideHint")}</p>
+              </div>
+            </details>
+          ) : null}
+
+          {shareGatewayFeedback && codexGatewayMode !== "external" ? (
             <div className={`share-gateway-feedback ${shareGatewayFeedback.tone === "success" ? "is-success" : "is-warning"}`} role="status" aria-live="polite">
               <strong>{shareGatewayFeedback.title}</strong>
               <span>{shareGatewayFeedback.detail}</span>
               <div className="share-gateway-config-list">
                 {shareGatewayFeedback.codexUrl ? (
                   <div>
-                    <span>Codex 远程网关 URL</span>
+                    <span>{t("settings.shareGateway.codexField")}</span>
                     <code>{shareGatewayFeedback.codexUrl}</code>
                   </div>
                 ) : null}
                 {shareGatewayFeedback.baseUrl ? (
                   <div>
-                    <span>OpenAI 兼容 Base URL</span>
+                    <span>{t("settings.shareGateway.openaiField")}</span>
                     <code>{shareGatewayFeedback.baseUrl}</code>
                   </div>
                 ) : null}
                 {shareGatewayFeedback.apiKey ? (
                   <div>
-                    <span>API Key</span>
+                    <span>{t("settings.shareGateway.apiKeyLabel")}</span>
                     <code>{shareGatewayFeedback.apiKey}</code>
                   </div>
                 ) : null}
@@ -844,45 +1240,105 @@ export function SettingsPage(props: {
             </div>
           ) : null}
 
+          {codexGatewayMode === "external" && externalInspection ? (
+            <details
+              className="external-provider-inspection"
+              open={externalInspectionExpanded}
+              onToggle={(event) => setExternalInspectionExpanded(event.currentTarget.open)}
+            >
+              <summary>
+                <span>
+                  {t("settings.externalInspect.title", { count: externalInspection.modelCount, ready: externalReadyCount })}
+                </span>
+                {displayedExternalModel ? <code>{t("settings.externalInspect.selectedPrefix", { model: displayedExternalModel })}</code> : null}
+              </summary>
+              <div className="external-provider-inspection-body">
+                {externalInspectionFromHistory ? (
+                  <div className="external-provider-history-banner">
+                    <strong>{t("settings.externalInspect.lastResult")}</strong>
+                    <span>{t("settings.externalInspect.lastResultHint")}</span>
+                  </div>
+                ) : null}
+                <div className="external-provider-inspection-meta">
+                  <span>{t("settings.externalInspect.modelsEndpoint")}</span>
+                  <code>{externalInspection.modelsUrl}</code>
+                  <span>{t("settings.externalInspect.candidateCount", { count: externalInspection.candidateCount })}</span>
+                </div>
+                <div className="external-provider-model-list">
+                  <div className="external-provider-model-list-title">{t("settings.externalInspect.candidateLabel")}</div>
+                  {externalInspection.results.length > 0 ? externalInspection.results.map((item, index) => {
+                    const status = externalModelStatusMeta(t)[item.status];
+                    const selected = displayedExternalModel === item.id;
+                    return (
+                      <div className={`external-provider-model-row ${selected ? "is-selected" : ""}`} key={`${item.id}-${index}`}>
+                        <div className="external-provider-model-copy">
+                          <strong>{item.name || item.id}</strong>
+                          {item.name && item.name !== item.id ? <code>{item.id}</code> : null}
+                          {item.message ? <span>{item.message}</span> : null}
+                        </div>
+                        <div className="external-provider-model-state">
+                          {selected ? <span className="external-provider-model-badge is-selected">{t("settings.externalInspect.selectedBadge")}</span> : null}
+                          {item.status === "ready" && externalInspection.recommendedModel === item.id ? <span className="external-provider-model-badge is-recommended">{t("settings.externalInspect.recommendedBadge")}</span> : null}
+                          <span className={`external-provider-model-badge ${status.className}`}>{status.label}</span>
+                          <span className={`external-provider-model-badge ${item.capabilities?.responsesStreaming ? "is-ready" : "is-failed"}`}>{item.capabilities?.responsesStreaming ? t("settings.externalInspect.responsesPass") : t("settings.externalInspect.responsesFail")}</span>
+                          <span className={`external-provider-model-badge ${item.capabilities?.functionCalling ? "is-ready" : "is-failed"}`}>{item.capabilities?.functionCalling ? t("settings.externalInspect.toolsPass") : t("settings.externalInspect.toolsFail")}</span>
+                          <span className={`external-provider-model-badge ${item.capabilities?.functionCallOutput ? "is-ready" : "is-failed"}`}>{item.capabilities?.functionCallOutput ? t("settings.externalInspect.toolOutputPass") : t("settings.externalInspect.toolOutputFail")}</span>
+                          <span className={`external-provider-model-badge ${item.capabilities?.reasoningEfforts?.length ? "is-ready" : "is-failed"}`}>{item.capabilities?.reasoningEfforts?.length ? t("settings.externalInspect.reasoningPass", { levels: item.capabilities.reasoningEfforts.join(", ") }) : t("settings.externalInspect.reasoningFail")}</span>
+                          {typeof item.latencyMs === "number" ? <small>{item.latencyMs} ms</small> : null}
+                        </div>
+                      </div>
+                    );
+                  }) : (
+                    <div className="external-provider-model-empty">{t("settings.externalInspect.empty")}</div>
+                  )}
+                </div>
+              </div>
+            </details>
+          ) : null}
+
           <p className="hint">
             {codexGatewayMode === "external"
-              ? "外部 API 可填写 OpenAI 兼容根地址，系统会自动补全为 /v1；token 会保存到 Codex provider 配置。"
-              : "可直接输入 IP:端口，系统会自动补全为 http://IP:端口/codex/v1。"}
-            当前将写入 <code>{selectedProviderWriteTarget}</code>：<code>{normalizedSelectedCodexGatewayUrl || "-"}</code>
+              ? t("settings.hint.codexModeExternal")
+              : t("settings.hint.codexModeRemote")}
+            {" "}{t("settings.hint.codexWriteTarget", { target: selectedProviderWriteTarget, url: normalizedSelectedCodexGatewayUrl || "-" })}
           </p>
 
           <div className="codex-provider-meta-strip">
             <div>
-              <span>配置文件</span>
-              <code>{props.config?.codex.gatewayProvider.path || "~/.codex/config.toml"}</code>
+              <span>{t("settings.meta.configFile")}</span>
+              <code>{props.config?.codex.gatewayProvider.path || t("settings.meta.configFileDefault")}</code>
             </div>
             <div>
-              <span>当前状态</span>
-              <code>{codexProviderActive ? `${currentAuthType === "bearer_token" ? "外部 API" : currentProviderLabel} · ${codexProviderModeDescription(currentProviderMode)}` : "未接管"}</code>
+              <span>{t("settings.meta.currentState")}</span>
+              <code>{codexProviderActive ? `${currentAuthType === "bearer_token" ? t("settings.providerStatus.external") : currentProviderLabel} · ${codexProviderModeDescription(currentProviderMode, t)}` : t("settings.providerStatus.unmanaged")}</code>
             </div>
             <div>
-              <span>写入目标</span>
+              <span>{t("settings.meta.writeTarget")}</span>
               <code>{selectedProviderWriteTarget}</code>
             </div>
             <div>
-              <span>接管地址</span>
-              <code>{currentCodexProviderUrl || "未写入受管配置"}</code>
+              <span>{t("settings.meta.takeoverAddress")}</span>
+              <code>{currentCodexProviderUrl || t("settings.meta.noTakeoverUrl")}</code>
             </div>
             <div>
-              <span>认证</span>
+              <span>{t("settings.meta.currentModel")}</span>
+              <code>{currentCodexProviderModel || t("settings.meta.modelFromCodex")}</code>
+            </div>
+            <div>
+              <span>{t("settings.meta.auth")}</span>
               <code>{currentProviderAuthLabel}</code>
             </div>
             <div className="is-warning">
-              <span>{codexGatewayMode === "external" || currentAuthType === "bearer_token" ? "外部 API 提示" : "远程网关提示"}</span>
-              <strong>{codexGatewayMode === "external" || currentAuthType === "bearer_token" ? "外部 API 会绕过 AI Zero Token 账号池，直接消耗对应 token 的额度。" : "远程请求会消耗对方网关机器上保存的账号额度。"}</strong>
+              <span>{codexGatewayMode === "external" || currentAuthType === "bearer_token" ? t("settings.meta.externalHintTitle") : t("settings.meta.remoteHintTitle")}</span>
+              <strong>{codexGatewayMode === "external" || currentAuthType === "bearer_token" ? t("settings.meta.externalHintBody") : t("settings.meta.remoteHintBody")}</strong>
             </div>
           </div>
         </section>
 
         <section className="settings-section">
-          <h4>模型</h4>
+          <h4>{t("settings.section.model.heading")}</h4>
           <label className="field">
-            <span>默认文本模型</span>
+            <span>{t("settings.section.model.defaultLabel")}</span>
             <select className="control" value={settingsDraft.defaultModel} onChange={(event) => markSettingsDirty({ defaultModel: event.target.value })}>
               {(props.config?.models || []).map((model) => (
                 <option key={model.id} value={model.id}>
@@ -891,61 +1347,61 @@ export function SettingsPage(props: {
               ))}
             </select>
           </label>
-          <p className="hint">模型列表来源：{props.config?.modelCatalog.source || "-"}，共 {props.config?.modelCatalog.modelCount || 0} 个。</p>
+          <p className="hint">{t("settings.section.model.hint", { source: props.config?.modelCatalog.source || "-", count: props.config?.modelCatalog.modelCount || 0 })}</p>
         </section>
 
         <section className="settings-section free-image-section">
-          <h4>Free 账号生图</h4>
+          <h4>{t("settings.section.freeImage.heading")}</h4>
           <label className="switch-line">
             <input
               type="checkbox"
               checked={settingsDraft.freeAccountWebGenerationEnabled}
               onChange={(event) => markSettingsDirty({ freeAccountWebGenerationEnabled: event.target.checked })}
             />
-            <span>允许 Free 账号使用 ChatGPT 网页链路生图</span>
+            <span>{t("settings.section.freeImage.label")}</span>
           </label>
-          <p className="hint">关闭时，Free 账号生图会继续走原先 Codex Responses 图片工具链路，由上游决定是否可用。</p>
+          <p className="hint">{t("settings.section.freeImage.hint")}</p>
           <p className="free-image-warning">
-            <strong>封号风险：</strong>该能力不是官方 API 标准流程，使用 Free 账号生图存在账号风控或封号风险。<strong>额度较少：</strong>Free 额度通常较少，当前经验值大约 8 张，实际以上游账号为准。
+            <strong>{t("settings.section.freeImage.banRisk")}</strong>{t("settings.section.freeImage.banRiskBody")}<strong>{t("settings.section.freeImage.limitedQuota")}</strong>{t("settings.section.freeImage.limitedQuotaBody")}
           </p>
         </section>
 
         <section className="settings-section">
-          <h4>上游代理</h4>
+          <h4>{t("settings.section.proxy.heading")}</h4>
           <label className="switch-line">
             <input type="checkbox" checked={settingsDraft.proxyEnabled} onChange={(event) => markSettingsDirty({ proxyEnabled: event.target.checked })} />
-            <span>启用 OAuth、模型刷新和接口转发代理</span>
+            <span>{t("settings.section.proxy.enableLabel")}</span>
           </label>
           <label className="field">
-            <span>代理地址</span>
+            <span>{t("settings.section.proxy.urlLabel")}</span>
             <input className="input" value={settingsDraft.proxyUrl} onChange={(event) => markSettingsDirty({ proxyUrl: event.target.value })} placeholder="http://127.0.0.1:7890" />
           </label>
           <label className="field">
-            <span>No Proxy</span>
+            <span>{t("settings.section.proxy.noProxyLabel")}</span>
             <input className="input" value={settingsDraft.proxyNoProxy} onChange={(event) => markSettingsDirty({ proxyNoProxy: event.target.value })} />
           </label>
           <button className="btn-secondary" type="button" onClick={testProxy} disabled={props.busy === "proxy"}>
-            测试代理
+            {t("settings.section.proxy.testButton")}
           </button>
         </section>
 
         <section className="settings-section">
-          <h4>端口</h4>
+          <h4>{t("settings.section.port.heading")}</h4>
           <label className="field">
-            <span>网关端口</span>
+            <span>{t("settings.section.port.label")}</span>
             <input className="input" inputMode="numeric" type="number" min={1} max={65535} value={settingsDraft.serverPort} onChange={(event) => markSettingsDirty({ serverPort: event.target.value })} />
           </label>
-          <p className="hint">修改后重启本地网关生效，桌面窗口不会退出。若端口被占用，启动时会自动顺延到下一个可用端口。</p>
+          <p className="hint">{t("settings.section.port.hint")}</p>
         </section>
 
         <section className="settings-section">
-          <h4>账号运行策略</h4>
+          <h4>{t("settings.section.policy.heading")}</h4>
           <label className="switch-line">
             <input type="checkbox" checked={settingsDraft.autoSwitchEnabled} onChange={(event) => markSettingsDirty({ autoSwitchEnabled: event.target.checked })} />
-            <span>当前 API 账号额度耗尽后自动切换到下一个仍有额度的账号</span>
+            <span>{t("settings.section.policy.autoSwitchLabel")}</span>
           </label>
           <label className="field">
-            <span>全局额度刷新并发数</span>
+            <span>{t("settings.section.policy.quotaConcurrencyLabel")}</span>
             <input
               className="input"
               inputMode="numeric"
@@ -956,14 +1412,14 @@ export function SettingsPage(props: {
               onChange={(event) => markSettingsDirty({ quotaSyncConcurrency: event.target.value })}
             />
           </label>
-          <p className="hint">手动刷新全部账号额度时使用，默认 3。账号很多可以调高，遇到限流或失败增多时调低。</p>
+          <p className="hint">{t("settings.section.policy.quotaConcurrencyHint")}</p>
           <label className="switch-line">
             <input type="checkbox" checked={settingsDraft.codexRequestSerializationEnabled} onChange={(event) => markSettingsDirty({ codexRequestSerializationEnabled: event.target.checked })} />
-            <span>启用 Codex 请求串行保护</span>
+            <span>{t("settings.section.policy.serializationLabel")}</span>
           </label>
           <div className="settings-inline-fields">
             <label className="field">
-              <span>最小间隔 ms</span>
+              <span>{t("settings.section.policy.minDelayLabel")}</span>
               <input
                 className="input"
                 inputMode="numeric"
@@ -975,7 +1431,7 @@ export function SettingsPage(props: {
               />
             </label>
             <label className="field">
-              <span>随机抖动 ms</span>
+              <span>{t("settings.section.policy.jitterLabel")}</span>
               <input
                 className="input"
                 inputMode="numeric"
@@ -987,7 +1443,7 @@ export function SettingsPage(props: {
               />
             </label>
           </div>
-          <p className="hint">降低数值可以减少每轮转发等待；完全关闭或设为 0 会更快，但更容易形成上游突发请求。</p>
+          <p className="hint">{t("settings.section.policy.delayHint")}</p>
           <label className="switch-line">
             <input
               type="checkbox"
@@ -997,9 +1453,9 @@ export function SettingsPage(props: {
                 ...(!event.target.checked ? { captureResponseProtocolEnabled: false } : {}),
               })}
             />
-            <span>将 Codex 请求内容写入独立诊断文件</span>
+            <span>{t("settings.section.policy.captureRequestLabel")}</span>
           </label>
-          <p className="hint">默认关闭。开启后新请求会把截断后的 input、instructions、tools、reasoning 和精简返回摘要写入单独诊断文件；普通日志只保存引用，可在请求日志页查看和清理。</p>
+          <p className="hint">{t("settings.section.policy.captureRequestHint")}</p>
           <label className="switch-line">
             <input
               type="checkbox"
@@ -1007,42 +1463,42 @@ export function SettingsPage(props: {
               onChange={(event) => markSettingsDirty({ captureResponseProtocolEnabled: event.target.checked })}
               disabled={!settingsDraft.captureRequestContentEnabled}
             />
-            <span>同时保存完整返回 SSE 协议</span>
+            <span>{t("settings.section.policy.captureResponseLabel")}</span>
           </label>
-          <p className="hint">默认关闭。只有排查重复事件、上游协议或流式异常时再开启；它会保存完整 events 和 rawSse，单个诊断文件可能明显变大。</p>
+          <p className="hint">{t("settings.section.policy.captureResponseHint")}</p>
           <p className="hint">{props.status}</p>
         </section>
 
         <section className="settings-section auto-switch-exclusion-section">
           <div className="auto-switch-exclusion-head">
             <div>
-              <h4>不参与自动轮换名单</h4>
-              <p className="hint">勾选表示手动排除。登录不可用或额度耗尽的账号即使未勾选，也不会被实际自动轮换选中。</p>
+              <h4>{t("settings.section.autoSwitch.heading")}</h4>
+              <p className="hint">{t("settings.section.autoSwitch.description")}</p>
             </div>
-            <div className="auto-switch-counts" aria-label="自动轮换账号统计">
-              <span className="count-pill is-included">可轮换 {autoSwitchRuntimeReadyCount} 个</span>
-              <span className="count-pill is-blocked">不可用 {autoSwitchBlockedCount} 个</span>
-              <span className="count-pill is-excluded">手动排除 {autoSwitchExcludedCount} 个</span>
+            <div className="auto-switch-counts" aria-label={t("settings.section.autoSwitch.countsAria")}>
+              <span className="count-pill is-included">{t("settings.section.autoSwitch.countsIncluded", { count: autoSwitchRuntimeReadyCount })}</span>
+              <span className="count-pill is-blocked">{t("settings.section.autoSwitch.countsBlocked", { count: autoSwitchBlockedCount })}</span>
+              <span className="count-pill is-excluded">{t("settings.section.autoSwitch.countsExcluded", { count: autoSwitchExcludedCount })}</span>
             </div>
           </div>
 
           <label className="auto-switch-search">
             <Search size={16} />
-            <input value={autoSwitchSearch} onChange={(event) => setAutoSwitchSearch(event.target.value)} placeholder="搜索邮箱、账号 ID 或 Profile ID" />
+            <input value={autoSwitchSearch} onChange={(event) => setAutoSwitchSearch(event.target.value)} placeholder={t("settings.section.autoSwitch.searchPlaceholder")} />
           </label>
 
           <div className="auto-switch-profile-list">
             {autoSwitchProfiles.length === 0 ? (
-              <div className="auto-switch-empty">还没有匹配的账号。</div>
+              <div className="auto-switch-empty">{t("settings.section.autoSwitch.empty")}</div>
             ) : (
               autoSwitchProfiles.map((profile) => {
                 const excluded = excludedProfileIds.has(profile.profileId);
-                const eligibility = autoSwitchEligibility(profile);
-                const health = profileHealth(profile);
+                const eligibility = autoSwitchEligibility(profile, t);
+                const health = profileHealth(profile, t);
                 const codexActive = isCodexActiveProfile(profile, props.config?.codex.accountId);
                 const disabledReason = eligibility.key === "ready" ? "" : eligibility.label;
                 const stateClass = excluded ? "is-excluded" : eligibility.key === "ready" ? "is-included" : "is-blocked";
-                const stateLabel = excluded ? "手动排除" : eligibility.label;
+                const stateLabel = excluded ? t("settings.section.autoSwitch.manualExcluded") : eligibility.label;
                 return (
                   <label className={`auto-switch-profile-row ${excluded ? "is-excluded" : ""}`} key={profile.profileId}>
                     <input type="checkbox" checked={excluded} onChange={(event) => toggleAutoSwitchExcludedProfile(profile.profileId, event.target.checked)} />
@@ -1050,8 +1506,8 @@ export function SettingsPage(props: {
                       <strong>{profileLabel(profile, props.showEmails)}</strong>
                       <span>
                         {getPlanType(profile)} · {health.label}
-                        {profile.isActive ? " · 当前 API 使用中" : ""}
-                        {codexActive ? " · Codex 使用中" : ""}
+                        {profile.isActive ? t("settings.section.autoSwitch.activeApiSuffix") : ""}
+                        {codexActive ? t("settings.section.autoSwitch.codexActiveSuffix") : ""}
                         {disabledReason ? ` · ${disabledReason}` : ""}
                       </span>
                     </span>
@@ -1064,21 +1520,21 @@ export function SettingsPage(props: {
         </section>
 
         <section className="settings-section">
-          <h4>显示</h4>
+          <h4>{t("settings.section.display.heading")}</h4>
           <label className="switch-line">
             <input type="checkbox" checked={props.showEmails} onChange={(event) => props.setShowEmails(event.target.checked)} />
-            <span>脱敏模式</span>
+            <span>{t("settings.section.display.maskLabel")}</span>
           </label>
-          <p className="hint">开启后账号邮箱将以脱敏形式展示。</p>
+          <p className="hint">{t("settings.section.display.maskHint")}</p>
         </section>
       </div>
 
       <div className="settings-page-actions settings-page-footer-actions">
         <button className="btn-secondary" type="button" onClick={() => void saveSettings()} disabled={props.busy === "settings" || props.busy === "restart" || !settingsDirty}>
-          保存设置
+          {t("settings.footer.save")}
         </button>
         <button className="btn-primary" type="button" onClick={() => void saveSettings({ restart: true })} disabled={props.busy === "settings" || props.busy === "restart" || !settingsDirty || !props.config?.restartSupported}>
-          保存并重启网关
+          {t("settings.footer.saveRestart")}
         </button>
       </div>
     </section>

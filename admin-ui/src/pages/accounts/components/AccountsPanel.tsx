@@ -4,6 +4,7 @@ import { profileHealth, profileInitial, profileLabel, getPlanKey, isAuthInvalid,
 import type { AccountStatItem, BusyAction, ProfileFilter } from "@/shared/lib/app-types";
 import { InfoRow } from "@/shared/components/InfoRow";
 import { formatFullTime } from "@/shared/lib/format";
+import { useLocaleValue, useT } from "@/i18n";
 
 export function AccountsPanel(props: {
   config: AdminConfig | null;
@@ -29,6 +30,9 @@ export function AccountsPanel(props: {
   onRefreshStatus: () => void;
   onClearAccounts: () => void;
 }) {
+  const t = useT();
+  const locale = useLocaleValue();
+  const intlLocale = locale === "en" ? "en-US" : "zh-CN";
   const codexAccountId = props.config?.codex?.accountId;
   const gridCountClass =
     props.profiles.length <= 0 ? "" : props.profiles.length === 1 ? "profile-count-1" : props.profiles.length === 2 ? "profile-count-2" : props.profiles.length === 3 ? "profile-count-3" : "profile-count-many";
@@ -37,38 +41,38 @@ export function AccountsPanel(props: {
     <section className="card" id="accounts">
       <div className="section-head">
         <div>
-          <h2>账号额度预览</h2>
-          <p>账号信息采用卡片式布局展示，支持搜索、状态筛选和额度排序。</p>
+          <h2>{t("accountsPanel.title")}</h2>
+          <p>{t("accountsPanel.description")}</p>
         </div>
         <div className="section-actions">
           <button className="btn-secondary" type="button" onClick={props.onLocate}>
-            定位当前账号
+            {t("accountsPanel.locateCurrent")}
           </button>
           <button className="btn-secondary" type="button" onClick={props.onExportSelected}>
-            导出所选
+            {t("accountsPanel.exportSelected")}
           </button>
           <button className="btn-secondary" type="button" onClick={props.onSelectVisible} disabled={props.visibleCount === 0}>
-            全选筛选结果
+            {t("accountsPanel.selectAllVisible")}
           </button>
           <button className="btn-secondary" type="button" onClick={props.onClearSelected} disabled={props.selectedCount === 0}>
-            取消选择
+            {t("accountsPanel.clearSelection")}
           </button>
           <button className="btn-danger" type="button" onClick={props.onRemoveSelected} disabled={props.selectedCount === 0 || props.busy === "bulk-remove"}>
-            删除所选
+            {t("accountsPanel.removeSelected")}
           </button>
           <button className="btn-primary" type="button" onClick={props.onAddAccount}>
-            新增账号
+            {t("accountsPanel.addAccount")}
           </button>
           <button className="btn-secondary" type="button" onClick={props.onRefreshStatus}>
-            刷新状态
+            {t("accountsPanel.refreshStatus")}
           </button>
           <button className="btn-danger" type="button" onClick={props.onClearAccounts}>
-            清空账号
+            {t("accountsPanel.clearAccounts")}
           </button>
         </div>
       </div>
 
-      <div className="account-stat-strip" aria-label="账号池统计">
+      <div className="account-stat-strip" aria-label={t("accountsPanel.statAriaLabel")}>
         {props.accountStats.map((item) => (
           <button
             className={`account-stat-pill tone-${item.tone} ${props.filter.status === item.key ? "is-active" : ""}`}
@@ -85,65 +89,65 @@ export function AccountsPanel(props: {
       <div className="filter-row">
         <label className="search-box">
           <Search size={16} />
-          <input value={props.filter.search} onChange={(event) => props.onFilter({ ...props.filter, search: event.target.value })} placeholder="搜索邮箱、账号 ID 或 Profile ID" />
+          <input value={props.filter.search} onChange={(event) => props.onFilter({ ...props.filter, search: event.target.value })} placeholder={t("accountsPanel.searchPlaceholder")} />
         </label>
         <select className="control" value={props.filter.status} onChange={(event) => props.onFilter({ ...props.filter, status: event.target.value as ProfileFilter["status"] })}>
-          <option value="all">全部状态</option>
-          <option value="available">可用</option>
-          <option value="unavailable">不可用</option>
-          <option value="active">使用中</option>
-          <option value="api-active">API 使用中</option>
-          <option value="codex-active">Codex 使用中</option>
-          <option value="healthy">健康</option>
-          <option value="warning">即将耗尽</option>
-          <option value="unknown">待请求验证</option>
-          <option value="exhausted">额度耗尽</option>
-          <option value="invalid">登录/认证异常</option>
-          <option value="login-invalid">登录失效</option>
-          <option value="auth-error">认证异常</option>
-          <option value="expired">已过期</option>
-          <option value="free">Free</option>
-          <option value="plus">Plus</option>
-          <option value="pro-team">Pro/Team</option>
-          <option value="auto-included">配置参与</option>
-          <option value="auto-excluded">手动排除</option>
+          <option value="all">{t("accountsPanel.filterStatusAll")}</option>
+          <option value="available">{t("accountsPanel.filterStatusAvailable")}</option>
+          <option value="unavailable">{t("accountsPanel.filterStatusUnavailable")}</option>
+          <option value="active">{t("accountsPanel.filterStatusActive")}</option>
+          <option value="api-active">{t("accountsPanel.filterStatusApiActive")}</option>
+          <option value="codex-active">{t("accountsPanel.filterStatusCodexActive")}</option>
+          <option value="healthy">{t("accountsPanel.filterStatusHealthy")}</option>
+          <option value="warning">{t("accountsPanel.filterStatusWarning")}</option>
+          <option value="unknown">{t("accountsPanel.filterStatusUnknown")}</option>
+          <option value="exhausted">{t("accountsPanel.filterStatusExhausted")}</option>
+          <option value="invalid">{t("accountsPanel.filterStatusInvalid")}</option>
+          <option value="login-invalid">{t("accountsPanel.filterStatusLoginInvalid")}</option>
+          <option value="auth-error">{t("accountsPanel.filterStatusAuthError")}</option>
+          <option value="expired">{t("accountsPanel.filterStatusExpired")}</option>
+          <option value="free">{t("accountsPanel.filterStatusFree")}</option>
+          <option value="plus">{t("accountsPanel.filterStatusPlus")}</option>
+          <option value="pro-team">{t("accountsPanel.filterStatusProTeam")}</option>
+          <option value="auto-included">{t("accountsPanel.filterStatusAutoIncluded")}</option>
+          <option value="auto-excluded">{t("accountsPanel.filterStatusAutoExcluded")}</option>
         </select>
         <select className="control" value={props.filter.sort} onChange={(event) => props.onFilter({ ...props.filter, sort: event.target.value as ProfileFilter["sort"] })}>
-          <option value="quota-desc">默认排序</option>
-          <option value="latency-asc">按额度更新时间</option>
-          <option value="expiry-asc">按过期时间</option>
-          <option value="name-asc">按名称排序</option>
-          <option value="quota-asc">按剩余额度升序</option>
-          <option value="plan-desc">按套餐排序</option>
-          <option value="email-asc">按邮箱排序</option>
+          <option value="quota-desc">{t("accountsPanel.sortDefault")}</option>
+          <option value="latency-asc">{t("accountsPanel.sortQuotaUpdated")}</option>
+          <option value="expiry-asc">{t("accountsPanel.sortExpiry")}</option>
+          <option value="name-asc">{t("accountsPanel.sortName")}</option>
+          <option value="quota-asc">{t("accountsPanel.sortQuotaAsc")}</option>
+          <option value="plan-desc">{t("accountsPanel.sortPlan")}</option>
+          <option value="email-asc">{t("accountsPanel.sortEmail")}</option>
         </select>
-        <span className="account-selected-count">已选择 {props.selectedCount} 个</span>
+        <span className="account-selected-count">{t("accountsPanel.selectedCount", { count: props.selectedCount })}</span>
       </div>
 
       <div className={`account-grid ${gridCountClass}`}>
         {props.profiles.length === 0 ? (
-          <div className="empty-state">还没有匹配的账号。可以新增账号或调整筛选条件。</div>
+          <div className="empty-state">{t("accountsPanel.emptyState")}</div>
         ) : (
           props.profiles.map((profile) => {
-            const health = profileHealth(profile);
+            const health = profileHealth(profile, t);
             const primary = primaryUsage(profile);
             const secondary = secondaryUsage(profile);
             const expanded = Boolean(props.expandedProfiles[profile.profileId]);
             const codexActive = isCodexActiveProfile(profile, codexAccountId);
-            const corner = usageCorner(profile, codexActive);
+            const corner = usageCorner(profile, codexActive, t);
             const authInvalid = isAuthInvalid(profile);
             const busyPrefix = `profile:` as const;
             const isBusy = typeof props.busy === "string" && props.busy.startsWith(`${busyPrefix}`) && props.busy.endsWith(profile.profileId);
             const refreshBusy = props.busy === `profile:sync-quota:${profile.profileId}`;
             const codexApplyUnsupported = profile.codexApplySupported === false;
-            const codexApplyReason = profile.codexApplyReason || "该账号缺少真实 chatgpt_account_id，不能应用到本机 Codex。";
+            const codexApplyReason = profile.codexApplyReason || t("accountsPanel.codexApplyReasonDefault");
             const codexButtonDisabled = codexActive || isBusy || authInvalid || codexApplyUnsupported;
-            const codexButtonLabel = authInvalid ? "Codex 不可用" : codexActive ? "Codex 使用中" : codexApplyUnsupported ? "仅网关可用" : "应用 Codex";
-            const imageAbility = imageCapability(profile);
+            const codexButtonLabel = authInvalid ? t("accountsPanel.codexButtonUnavailable") : codexActive ? t("accountsPanel.codexButtonActive") : codexApplyUnsupported ? t("accountsPanel.codexButtonGatewayOnly") : t("accountsPanel.codexButtonApply");
+            const imageAbility = imageCapability(profile, t);
             const exportAudit = profile.exportAudit;
-            const exportAuditLabel = exportAudit?.exported ? `已导出 ${exportAudit.count} 次` : "未导出";
+            const exportAuditLabel = exportAudit?.exported ? t("accountsPanel.exportedCount", { count: exportAudit.count }) : t("accountsPanel.notExported");
             return (
-              <article className={`account-card plan-${getPlanKey(profile)} ${authInvalid ? "is-auth-invalid" : ""}`} data-profile-card={profile.profileId} key={profile.profileId} title={authInvalid ? authStatusText(profile) : undefined}>
+              <article className={`account-card plan-${getPlanKey(profile)} ${authInvalid ? "is-auth-invalid" : ""}`} data-profile-card={profile.profileId} key={profile.profileId} title={authInvalid ? authStatusText(profile, t, locale) : undefined}>
                 {corner && (
                   <span className={`usage-corner ${corner.className}`}>
                     <span>{corner.label}</span>
@@ -154,7 +158,7 @@ export function AccountsPanel(props: {
                     <div className="account-name">
                       <span className="avatar">{profileInitial(profile)}</span>
                       <strong>{profileLabel(profile, props.showEmails)}</strong>
-                      <button aria-label="刷新额度" className="account-icon-btn" disabled={isBusy} onClick={() => props.onAction("sync-quota", profile)} title="刷新额度" type="button">
+                      <button aria-label={t("accountsPanel.refreshQuotaAria")} className="account-icon-btn" disabled={isBusy} onClick={() => props.onAction("sync-quota", profile)} title={t("accountsPanel.refreshQuota")} type="button">
                         {refreshBusy ? <Loader2 className="spin" size={14} /> : <RefreshCw size={14} />}
                       </button>
                     </div>
@@ -167,13 +171,13 @@ export function AccountsPanel(props: {
                   </div>
                   <label className="account-select">
                     <input type="checkbox" checked={Boolean(props.selectedProfiles[profile.profileId])} onChange={(event) => props.onSelect(profile.profileId, event.target.checked)} />
-                    <span>选择</span>
+                    <span>{t("accountsPanel.select")}</span>
                   </label>
                 </div>
 
                 <div className="account-metrics">
-                  <QuotaBar label={resetLabel(profile, "primary")} value={primary} tone={quotaBarTone(primary)} />
-                  <QuotaBar label={resetLabel(profile, "secondary")} value={secondary} tone={quotaBarTone(secondary)} />
+                  <QuotaBar label={resetLabel(profile, "primary", t)} value={primary} tone={quotaBarTone(primary)} usedLabel={t("accountsPanel.quotaUsed")} remainingLabel={t("accountsPanel.quotaRemaining")} remainingStrongLabel={t("accountsPanel.quotaRemainingStrong")} />
+                  <QuotaBar label={resetLabel(profile, "secondary", t)} value={secondary} tone={quotaBarTone(secondary)} usedLabel={t("accountsPanel.quotaUsed")} remainingLabel={t("accountsPanel.quotaRemaining")} remainingStrongLabel={t("accountsPanel.quotaRemainingStrong")} />
                 </div>
 
                 <div className="usage-status-row">
@@ -181,30 +185,30 @@ export function AccountsPanel(props: {
                     <Globe2 size={14} />
                     <span>API</span>
                     <span className={`usage-dot ${profile.isActive ? "active" : ""}`} />
-                    <span className="usage-state-text">{profile.isActive ? "使用中" : "未使用"}</span>
+                    <span className="usage-state-text">{profile.isActive ? t("accountsPanel.usageInUse") : t("accountsPanel.usageIdle")}</span>
                   </span>
                   <span className={`usage-status ${codexActive ? "is-active" : ""}`}>
                     <Code2 size={14} />
                     <span>Codex</span>
                     <span className={`usage-dot ${codexActive ? "active" : ""}`} />
-                    <span className="usage-state-text">{codexActive ? "使用中" : "未使用"}</span>
+                    <span className="usage-state-text">{codexActive ? t("accountsPanel.usageInUse") : t("accountsPanel.usageIdle")}</span>
                   </span>
                 </div>
 
                 <div className="compact-meta-row">
                   <div className="compact-reset-list">
                     <div className="compact-meta-item">
-                      <label>{resetLabel(profile, "primary")}</label>
+                      <label>{resetLabel(profile, "primary", t)}</label>
                       <strong>{resetTime(profile, "primary")}</strong>
                     </div>
                     <div className="compact-meta-item">
-                      <label>{resetLabel(profile, "secondary")}</label>
+                      <label>{resetLabel(profile, "secondary", t)}</label>
                       <strong>{resetTime(profile, "secondary")}</strong>
                     </div>
                   </div>
                   <div className="compact-meta-actions">
                     <button className={`details-toggle ${expanded ? "is-expanded" : ""}`} type="button" onClick={() => props.onToggle(profile.profileId)}>
-                      <span>{expanded ? "收起详情" : "查看详情"}</span>
+                      <span>{expanded ? t("accountsPanel.collapseDetails") : t("accountsPanel.expandDetails")}</span>
                       <ChevronIcon />
                     </button>
                   </div>
@@ -212,21 +216,21 @@ export function AccountsPanel(props: {
 
                 {expanded && (
                   <div className="meta-grid">
-                    <InfoRow label="套餐" value={getPlanType(profile)} />
+                    <InfoRow label={t("accountsPanel.plan")} value={getPlanType(profile)} />
                     <InfoRow label="Account ID" value={props.showEmails ? profile.accountId : profile.accountId} code />
-                    <InfoRow label="Codex 应用" value={codexApplyUnsupported ? codexApplyReason : "可应用到本机 Codex"} />
+                    <InfoRow label={t("accountsPanel.codexApp")} value={codexApplyUnsupported ? codexApplyReason : t("accountsPanel.codexApplyOk")} />
                     <InfoRow label="Profile ID" value={props.showEmails ? profile.profileId : profile.profileId} code />
-                    <InfoRow label="认证状态" value={authStatusText(profile)} />
-                    <InfoRow label="生图能力" value={imageAbility.ok ? "gpt-image-2 可用" : imageAbility.detail} />
-                    <InfoRow label="导出记录" value={formatExportAudit(exportAudit)} />
-                    <InfoRow label="过期时间" value={profile.expiresAt ? new Date(profile.expiresAt).toLocaleString("zh-CN") : "-"} />
-                    <InfoRow label="额度快照" value={profile.quota?.capturedAt ? new Date(profile.quota.capturedAt).toLocaleString("zh-CN") : "-"} />
+                    <InfoRow label={t("accountsPanel.authStatus")} value={authStatusText(profile, t, locale)} />
+                    <InfoRow label={t("accountsPanel.imageCapability")} value={imageAbility.ok ? t("accountsPanel.imageOk") : imageAbility.detail} />
+                    <InfoRow label={t("accountsPanel.exportRecord")} value={formatExportAudit(exportAudit, t, intlLocale)} />
+                    <InfoRow label={t("accountsPanel.expiresAt")} value={profile.expiresAt ? new Date(profile.expiresAt).toLocaleString(intlLocale) : "-"} />
+                    <InfoRow label={t("accountsPanel.quotaSnapshot")} value={profile.quota?.capturedAt ? new Date(profile.quota.capturedAt).toLocaleString(intlLocale) : "-"} />
                   </div>
                 )}
 
                 <div className="account-actions">
                   <button className={`btn-secondary ${profile.isActive ? "is-current" : ""}`} type="button" onClick={() => props.onAction("activate", profile)} disabled={profile.isActive || isBusy || authInvalid}>
-                    {authInvalid ? "网关不可用" : profile.isActive ? "网关使用中" : "应用网关"}
+                    {authInvalid ? t("accountsPanel.gatewayUnavailable") : profile.isActive ? t("accountsPanel.gatewayActive") : t("accountsPanel.applyGateway")}
                   </button>
                   <span className={`codex-action-wrap ${codexApplyUnsupported ? "is-unsupported" : ""}`} title={codexApplyUnsupported ? codexApplyReason : undefined}>
                     <button className={`btn-secondary ${codexActive ? "is-current codex" : ""}`} type="button" onClick={() => props.onAction("apply-codex", profile)} disabled={codexButtonDisabled}>
@@ -235,10 +239,10 @@ export function AccountsPanel(props: {
                     </button>
                   </span>
                   <button className="btn-secondary" type="button" onClick={() => props.onAction("export", profile)} disabled={isBusy}>
-                    导出
+                    {t("accountsPanel.export")}
                   </button>
                   <button className="btn-danger" type="button" onClick={() => props.onAction("remove", profile)} disabled={isBusy}>
-                    删除
+                    {t("accountsPanel.remove")}
                   </button>
                 </div>
               </article>
@@ -250,13 +254,13 @@ export function AccountsPanel(props: {
   );
 }
 
-function formatExportAudit(audit: ProfileSummary["exportAudit"]): string {
+function formatExportAudit(audit: ProfileSummary["exportAudit"], t: (key: string, values?: Record<string, string | number>) => string, locale: string): string {
   if (!audit?.exported) {
-    return "未导出";
+    return t("accountsPanel.exportNotExported");
   }
 
-  const kindLabel = audit.lastExportKind === "single" ? "单账号导出" : audit.lastExportKind === "batch" ? "批量导出" : "全部导出";
-  return `${audit.count} 次，最近 ${formatFullTime(audit.lastExportedAt)}，方式 ${kindLabel}`;
+  const kindLabel = audit.lastExportKind === "single" ? t("accountsPanel.exportKindSingle") : audit.lastExportKind === "batch" ? t("accountsPanel.exportKindBatch") : t("accountsPanel.exportKindAll");
+  return t("accountsPanel.exportAuditDetail", { count: audit.count, time: formatFullTime(audit.lastExportedAt, locale), kind: kindLabel });
 }
 
 function ChevronIcon() {
@@ -267,12 +271,12 @@ function ChevronIcon() {
   );
 }
 
-function QuotaBar(props: { label: string; value: number; tone: "blue" | "orange" | "red" }) {
+function QuotaBar(props: { label: string; value: number; tone: "blue" | "orange" | "red"; usedLabel: string; remainingLabel: string; remainingStrongLabel: string }) {
   return (
     <div className="quota-row">
       <div className="quota-line">
-        <span>{props.label} · 已用 {props.value}% / 剩余 {100 - props.value}%</span>
-        <strong>剩余 {100 - props.value}%</strong>
+        <span>{props.label} · {props.usedLabel} {props.value}% / {props.remainingLabel} {100 - props.value}%</span>
+        <strong>{props.remainingStrongLabel} {100 - props.value}%</strong>
       </div>
       <div className="progress-track">
         <div className={`progress-bar ${props.tone}`} style={{ width: `${props.value}%` }} />

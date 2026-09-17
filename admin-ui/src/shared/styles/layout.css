@@ -333,3 +333,44 @@
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
 }
+
+.sidebar-language {
+  gap: 10px;
+}
+
+.sidebar-language .service-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sidebar-language-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.sidebar-language-option {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.sidebar-language-option:hover {
+  color: var(--brand);
+  border-color: rgba(99, 91, 255, 0.3);
+}
+
+.sidebar-language-option.is-active {
+  color: var(--brand);
+  border-color: rgba(99, 91, 255, 0.45);
+  background: rgba(99, 91, 255, 0.1);
+}

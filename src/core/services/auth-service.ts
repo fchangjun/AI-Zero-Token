@@ -23,17 +23,29 @@ import {
 } from "../providers/openai-codex/oauth.js";
 import { askOpenAICodex } from "../providers/openai-codex/chat.js";
 import { isTransientHttpError } from "../providers/http-client.js";
+import {
+  inspectExternalProvider,
+  normalizeOpenAICompatibleBaseUrl,
+  type ExternalProviderInspection,
+} from "../providers/openai-compatible/inspect.js";
 import { ConfigService } from "./config-service.js";
 import {
   applyGatewayToCodexProviderConfig,
   applyProfileToCodexAuth,
   getCodexAuthStatus,
+  getReusableCodexProviderBearerToken,
   removeGatewayFromCodexProviderConfig,
   type ApplyCodexGatewayProviderResult,
   type ApplyCodexAuthResult,
   type CodexAuthStatus,
   type RemoveCodexGatewayProviderResult,
 } from "../store/codex-auth-store.js";
+import {
+  appendExternalProviderInspectionHistory,
+  updateExternalProviderInspectionHistory,
+  listExternalProviderInspectionHistory,
+  type ExternalProviderInspectionHistoryEntry,
+} from "../store/external-provider-inspection-history.js";
 import {
   exportProfilesToJson,
   exportProfileToJson,
@@ -653,12 +665,59 @@ export class AuthService {
     providerId?: string;
     kind?: "codex_gateway" | "openai_compatible";
     bearerToken?: string;
+    model?: string;
+    catalogModels?: Array<{
+      id: string;
+      displayName?: string;
+      contextWindow?: number;
+      reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+    }>;
+    inspectionId?: string;
   }): Promise<ApplyCodexGatewayProviderResult> {
-    return applyGatewayToCodexProviderConfig(params);
+    if (params.inspectionId) {
+      await updateExternalProviderInspectionHistory(params.inspectionId, {
+        submittedCatalogModelIds: params.catalogModels?.map((item) => item.id) ?? [],
+        configuredModelId: params.model,
+      });
+    }
+    const result = await applyGatewayToCodexProviderConfig(params);
+    if (params.inspectionId) {
+      const status = await getCodexAuthStatus();
+      await updateExternalProviderInspectionHistory(params.inspectionId, { writtenCatalogModelIds: status.gatewayProvider.catalogModels?.map((item) => item.id) ?? [] });
+    }
+    return result;
+  }
+
+  async inspectCodexProvider(params: {
+    baseUrl: string;
+    providerId?: string;
+    bearerToken?: string;
+  }): Promise<ExternalProviderInspection> {
+    const providerId = params.providerId?.trim() || "ai-zero-token";
+    const baseUrl = normalizeOpenAICompatibleBaseUrl(params.baseUrl);
+    const providedToken = params.bearerToken?.trim() || undefined;
+    const storedToken = providedToken
+      ? undefined
+      : await getReusableCodexProviderBearerToken({ baseUrl, providerId });
+    const inspectionId = crypto.randomUUID();
+    const inspection = await inspectExternalProvider({
+      baseUrl,
+      providerId,
+      bearerToken: providedToken ?? storedToken,
+      tokenSource: providedToken ? "provided" : storedToken ? "stored" : "none",
+    });
+    const report = { ...inspection, inspectionId };
+    await appendExternalProviderInspectionHistory({ id: inspectionId, createdAt: Date.now(), providerId, baseUrl, inspection: report });
+    return report;
+  }
+
+  async listCodexProviderInspectionHistory(): Promise<ExternalProviderInspectionHistoryEntry[]> {
+    return listExternalProviderInspectionHistory();
   }
 
   async removeGatewayFromCodexProvider(params?: {
     providerId?: string;
+    purgeProviderDefinition?: boolean;
   }): Promise<RemoveCodexGatewayProviderResult> {
     return removeGatewayFromCodexProviderConfig(params);
   }

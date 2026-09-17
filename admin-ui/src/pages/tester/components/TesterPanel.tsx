@@ -4,6 +4,7 @@ import type { AdminConfig, SupportedEndpoint } from "@/shared/types";
 import type { BusyAction, PreviewImage, ResultTab } from "@/shared/lib/app-types";
 import { endpointOrder, tabLabels } from "@/shared/lib/endpoints";
 import type { EditImageUploadMode } from "../index";
+import { useT } from "@/i18n";
 
 export function TesterPanel(props: {
   config: AdminConfig | null;
@@ -31,6 +32,7 @@ export function TesterPanel(props: {
   onPreview: (value: { src: string; meta: string; filename?: string }) => void;
   onImageUpload: (file: File, mode: EditImageUploadMode) => Promise<void>;
 }) {
+  const t = useT();
   const isImageEndpoint = props.endpoint.startsWith("/v1/images/");
   function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
@@ -43,10 +45,10 @@ export function TesterPanel(props: {
     <section className="card tester-card" id="tester">
       <div className="section-head compact">
         <div>
-          <h2>快速测试</h2>
-          <p>页面直接调用当前网关暴露的 OpenAI 风格接口。</p>
+          <h2>{t("testerPanel.title")}</h2>
+          <p>{t("testerPanel.description")}</p>
         </div>
-        <span className="badge brand">{props.busy === "test" ? "请求中" : "准备就绪"}</span>
+        <span className="badge brand">{props.busy === "test" ? t("testerPanel.badgeBusy") : t("testerPanel.badgeReady")}</span>
       </div>
 
       <div className="tester-tabs">
@@ -60,7 +62,7 @@ export function TesterPanel(props: {
       <div className="tester-workbench">
         <div className="tester-pane tester-request-pane">
           <label className="field">
-            <span>接口</span>
+            <span>{t("testerPanel.endpointLabel")}</span>
             <select className="control" value={props.endpoint} onChange={(event) => props.onEndpoint(event.target.value)}>
               {props.endpoints.map((item) => (
                 <option key={item.path} value={item.path}>
@@ -73,62 +75,62 @@ export function TesterPanel(props: {
           <div className="tester-copy-row tester-copy-row-top">
             <button className="btn-secondary" type="button" onClick={props.onCopyRequest}>
               <Copy size={16} />
-              复制请求
+              {t("testerPanel.copyRequest")}
             </button>
             <button className="btn-secondary" type="button" onClick={props.onCopyResponse}>
               <Copy size={16} />
-              复制响应
+              {t("testerPanel.copyResponse")}
             </button>
             <button className="btn-secondary" type="button" onClick={props.onCopyTiming}>
               <Copy size={16} />
-              复制日志
+              {t("testerPanel.copyTiming")}
             </button>
             <button className="btn-secondary" type="button" onClick={props.onResetExample}>
               <RotateCcw size={16} />
-              重置示例
+              {t("testerPanel.resetExample")}
             </button>
           </div>
 
           <label className="field tester-body-field">
-            <span>请求体 JSON</span>
+            <span>{t("testerPanel.requestBodyLabel")}</span>
             <textarea className="textarea tester-textarea" value={props.requestBody} onChange={(event) => props.onRequestBody(event.target.value)} disabled={props.activeEndpoint.method === "GET"} spellCheck={false} />
           </label>
           {props.endpoint === "/v1/images/edits" && (
             <div className="edit-upload-row">
-              <div className="edit-upload-mode" role="group" aria-label="图片写入方式">
-                <span>写入方式</span>
+              <div className="edit-upload-mode" role="group" aria-label={t("testerPanel.uploadModeAria")}>
+                <span>{t("testerPanel.uploadModeLabel")}</span>
                 <div className="edit-upload-toggle">
                   <button className={`tab-btn ${props.imageUploadMode === "base64" ? "is-active" : ""}`} type="button" onClick={() => props.onImageUploadMode("base64")}>
                     Base64
                   </button>
                   <button className={`tab-btn ${props.imageUploadMode === "image-bed" ? "is-active" : ""}`} type="button" onClick={() => props.onImageUploadMode("image-bed")}>
-                    图床
+                    {t("testerPanel.uploadModeImageBed")}
                   </button>
                 </div>
               </div>
-              <label className="btn-secondary upload-btn" title={props.imageUploadMode === "base64" ? "上传图片并写入 base64 data URL" : "上传图片到图床并写入公网链接"}>
+              <label className="btn-secondary upload-btn" title={props.imageUploadMode === "base64" ? t("testerPanel.uploadBase64Title") : t("testerPanel.uploadImageBedTitle")}>
                 {props.imageUploadMode === "image-bed" && props.busy === "image-bed-upload" ? <Loader2 className="spin" size={16} /> : <Upload size={16} />}
-                {props.imageUploadMode === "base64" ? "上传并写入 Base64" : "上传并写入图床链接"}
+                {props.imageUploadMode === "base64" ? t("testerPanel.uploadBase64") : t("testerPanel.uploadImageBed")}
                 <input type="file" accept="image/*" onChange={handleImageUpload} />
               </label>
-              <span>目标字段：images[0].image_url · {props.imageUploadMode === "base64" ? "直接写入 data URL" : "先上传图床再写入公网链接"}</span>
+              <span>{t("testerPanel.targetField")} · {props.imageUploadMode === "base64" ? t("testerPanel.targetBase64") : t("testerPanel.targetImageBed")}</span>
             </div>
           )}
-          <p className="hint">{isImageEndpoint ? props.capability.detail : props.activeEndpoint.description || "GET /v1/models 无需请求体。"}</p>
+          <p className="hint">{isImageEndpoint ? props.capability.detail : props.activeEndpoint.description || t("testerPanel.getModelsNoBody")}</p>
 
           <div className="tester-actions-bar">
             <div className="tester-actions-group">
               <div className="example-row">
                 {endpointOrder.map((path) => (
                   <button className="btn-secondary" key={path} type="button" onClick={() => props.onEndpoint(path)} disabled={!props.endpoints.some((item) => item.path === path)}>
-                    示例 {tabLabels[path] || path}
+                    {t("testerPanel.examplePrefix")} {tabLabels[path] || path}
                   </button>
                 ))}
               </div>
             </div>
             <button className="btn-primary" type="button" onClick={props.onRun} disabled={props.busy === "test" || (isImageEndpoint && !props.config?.profile)}>
               {props.busy === "test" ? <Loader2 className="spin" size={16} /> : <Zap size={16} />}
-              发送请求
+              {t("testerPanel.run")}
             </button>
           </div>
         </div>
@@ -137,13 +139,13 @@ export function TesterPanel(props: {
           <div className="tester-result-head">
             <div className="tester-result-tabs">
               <button className={`tab-btn ${props.resultTab === "response" ? "is-active" : ""}`} type="button" onClick={() => props.onResultTab("response")}>
-                响应 JSON
+                {t("testerPanel.tabResponse")}
               </button>
               <button className={`tab-btn ${props.resultTab === "timing" ? "is-active" : ""}`} type="button" onClick={() => props.onResultTab("timing")}>
-                耗时日志
+                {t("testerPanel.tabTiming")}
               </button>
               <button className={`tab-btn ${props.resultTab === "preview" ? "is-active" : ""}`} type="button" onClick={() => props.onResultTab("preview")}>
-                图片预览
+                {t("testerPanel.tabPreview")}
               </button>
             </div>
             <p className="status-inline">{props.status}</p>
@@ -154,7 +156,7 @@ export function TesterPanel(props: {
           {props.resultTab === "preview" && (
             <div className="preview-panel">
               {props.previewImages.length === 0 ? (
-                <div className="preview-empty">图片结果会显示在这里。点击缩略图可查看大图。</div>
+                <div className="preview-empty">{t("testerPanel.previewEmpty")}</div>
               ) : (
                 <div className="preview-grid">
                   {props.previewImages.map((image) => (
@@ -165,7 +167,7 @@ export function TesterPanel(props: {
                       <figcaption>{image.meta}</figcaption>
                       <div className="preview-actions">
                         <a href={image.src} download={image.filename}>
-                          下载
+                          {t("testerPanel.previewDownload")}
                         </a>
                       </div>
                     </figure>
