@@ -48,6 +48,8 @@ For a normal release:
    npm run dist:win
    ```
 
+   `dist:win` must explicitly build Windows x64, including when invoked on an Apple Silicon Mac. Do not upload host-inferred Windows ARM64 artifacts.
+
    If disk space is low, clean only ignored/rebuildable `release/` old-version artifacts and unpacked intermediate directories, never source files or user data.
 13. Rename or stage the generated desktop assets so the GitHub Release has the standard user-facing artifacts:
 

@@ -53,7 +53,7 @@
     "dist:mac": "npm run dist:mac:arm64 && npm run dist:mac:x64",
     "dist:mac:arm64": "npm run build && electron-builder --mac --arm64 --dir && node scripts/package-mac-dmg.mjs arm64",
     "dist:mac:x64": "npm run build && electron-builder --mac --x64 --dir && node scripts/package-mac-dmg.mjs x64",
-    "dist:win": "npm run build && electron-builder --win",
+    "dist:win": "npm run build && electron-builder --win --x64",
     "typecheck": "npm run typecheck:server && npm run typecheck:ui",
     "typecheck:server": "bunx tsc -p tsconfig.json --noEmit",
     "typecheck:ui": "tsc -p admin-ui/tsconfig.json --noEmit",

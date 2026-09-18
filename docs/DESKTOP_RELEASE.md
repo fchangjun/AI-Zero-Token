@@ -128,7 +128,7 @@ npm run dist:mac
 npm run dist:win
 ```
 
-Creates macOS and Windows distributables. macOS builds should be produced on macOS. Windows builds are best produced on Windows CI or a runner with a complete Windows packaging environment.
+Creates macOS and Windows distributables. macOS builds should be produced on macOS. `npm run dist:win` explicitly targets Windows x64 so Apple Silicon hosts do not accidentally create Windows ARM64 release files. Windows builds are best produced on Windows CI or a runner with a complete Windows packaging environment.
 
 `npm run dist:mac` is the fixed macOS packaging entry point and must build both Apple Silicon and Intel packages. The npm scripts first ask `electron-builder` for unpacked `.app` directories, then `scripts/package-mac-dmg.mjs` re-signs each app ad hoc and creates an HFS+ DMG.
 
