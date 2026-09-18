@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.0.14 - 2026-09-18
+
+- Disabled Hardened Runtime throughout the ad-hoc macOS packaging pipeline and added signature guards so builds fail if it is reintroduced, preventing Electron Framework launch failures on SIP-enabled Macs.
+
 ## 2.0.13 - 2026-09-17
 
 - Added Simplified Chinese and English localization across the desktop management console, including a persistent language switcher and locale-aware number and time formatting.

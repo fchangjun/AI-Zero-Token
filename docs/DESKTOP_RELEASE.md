@@ -2,6 +2,14 @@
 
 This project ships the desktop app with Electron. The desktop main process starts the existing local Fastify gateway and loads the React management UI served by that gateway.
 
+## 2.0.14 Release Notes
+
+Version `2.0.14` fixes macOS startup on standard SIP-enabled Macs:
+
+- Hardened Runtime is disabled throughout the ad-hoc macOS packaging pipeline so `dyld` does not reject Electron Framework for lacking a Developer ID Team ID.
+- The packaging script now verifies both the main app and Electron Framework and fails if Hardened Runtime is accidentally reintroduced.
+- Apple Silicon and Intel packages continue to use verified ad-hoc signatures and HFS+ DMG images.
+
 ## 2.0.13 Release Notes
 
 Version `2.0.13` adds a bilingual management experience and a safer external-provider workflow for Codex:
@@ -122,7 +130,9 @@ npm run dist:win
 
 Creates macOS and Windows distributables. macOS builds should be produced on macOS. Windows builds are best produced on Windows CI or a runner with a complete Windows packaging environment.
 
-`npm run dist:mac` must build both Apple Silicon and Intel macOS packages. The macOS scripts first ask `electron-builder` for unpacked `.app` directories, then `scripts/package-mac-dmg.mjs` re-signs each app with ad-hoc hardened runtime and creates an HFS+ DMG. This avoids APFS DMGs and ad-hoc signatures that omit hardened runtime.
+`npm run dist:mac` is the fixed macOS packaging entry point and must build both Apple Silicon and Intel packages. The npm scripts first ask `electron-builder` for unpacked `.app` directories, then `scripts/package-mac-dmg.mjs` re-signs each app ad hoc and creates an HFS+ DMG.
+
+Hardened Runtime must remain disabled in both `build.mac.hardenedRuntime` and the ad-hoc re-signing step. Ad-hoc Hardened Runtime builds can fail at launch on SIP-enabled Macs when `dyld` applies library validation to Electron Framework without a Developer ID Team ID. Do not enable Hardened Runtime again until the release flow uses a Developer ID Application certificate, consistent Team IDs for all nested components, and Apple notarization.
 
 ```bash
 npm run dist:mac:arm64
@@ -162,7 +172,7 @@ codesign -dv --verbose=4 "release/mac-arm64/AI Zero Token.app"
 hdiutil imageinfo "release/AI Zero Token-X.Y.Z-mac-arm64.dmg" | grep "partition-hint: Apple_HFS"
 ```
 
-The `codesign` output for unsigned internal builds must include `Signature=adhoc` and `runtime`, for example `flags=0x10002(adhoc,runtime)`. The DMG image info must report `partition-hint: Apple_HFS`.
+The `codesign` output for unsigned internal builds must include `Signature=adhoc` and must not include `runtime`; the expected flag is normally `flags=0x2(adhoc)`. `scripts/package-mac-dmg.mjs` checks both the main app and Electron Framework and fails packaging if Hardened Runtime is present. The DMG image info must report `partition-hint: Apple_HFS`.
 
 Unsigned or ad-hoc signed macOS builds can still be blocked after browser download with a misleading “damaged and cannot be opened” DMG dialog. This is expected for internal testing builds but is not acceptable for normal public distribution. Until macOS Developer ID signing and notarization are configured, each macOS DMG must include `build/mac-install-guide.txt`, and the GitHub Release notes should mention the quarantine workaround:
 

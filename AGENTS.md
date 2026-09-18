@@ -1,5 +1,16 @@
 # AI Zero Token Agent Notes
 
+## macOS Packaging Policy
+
+Use `npm run dist:mac` as the fixed entry point for every macOS desktop build. It builds both architectures through `dist:mac:arm64` and `dist:mac:x64`, then runs `scripts/package-mac-dmg.mjs` to apply the final ad-hoc signatures and create HFS+ DMGs.
+
+Keep Hardened Runtime disabled for ad-hoc macOS builds in both places:
+
+- `build.mac.hardenedRuntime` in `package.json` must remain `false`.
+- `scripts/package-mac-dmg.mjs` must pass `hardenedRuntime: false` for every signed file and must fail if the final app or Electron Framework signature contains `runtime`.
+
+Do not re-enable Hardened Runtime unless the user explicitly switches the release flow to Apple Developer ID Application signing and notarization with consistent Team IDs for all nested Electron components. Ad-hoc Hardened Runtime builds can crash at launch on SIP-enabled Macs because `dyld` rejects Electron Framework during library validation.
+
 ## Release Defaults
 
 When the user asks to publish, release, or ship a new version, treat it as the full npm plus desktop GitHub Release flow unless they explicitly narrow the request.

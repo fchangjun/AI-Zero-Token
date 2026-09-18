@@ -10,7 +10,7 @@ AI Zero Token macOS 安装说明
 2. 打开“终端”。
 3. 运行下面的命令，文件名按实际下载文件调整：
 
-   xattr -dr com.apple.quarantine "$HOME/Downloads/AI Zero Token-2.0.12-mac-arm64.dmg"
+   xattr -dr com.apple.quarantine "$HOME/Downloads/AI Zero Token-2.0.14-mac-arm64.dmg"
 
 4. 再次双击打开 DMG。
 

@@ -19,6 +19,15 @@ const productName = packageJson.build?.productName || packageJson.name;
 const version = packageJson.version;
 const appOutDir = path.join(releaseDir, arch === "arm64" ? "mac-arm64" : "mac");
 const appPath = path.join(appOutDir, `${productName}.app`);
+const electronFrameworkPath = path.join(
+  appPath,
+  "Contents",
+  "Frameworks",
+  "Electron Framework.framework",
+  "Versions",
+  "A",
+  "Electron Framework",
+);
 const dmgPath = path.join(releaseDir, `${productName}-${version}-mac-${arch}.dmg`);
 const installGuidePath = path.join(projectDir, "build", "mac-install-guide.txt");
 
@@ -40,7 +49,7 @@ async function loadSignAsync() {
   return signAsync;
 }
 
-async function signAdhocRuntime() {
+async function signAdhocWithoutHardenedRuntime() {
   const signAsync = await loadSignAsync();
   await signAsync({
     app: appPath,
@@ -48,19 +57,19 @@ async function signAdhocRuntime() {
     identityValidation: false,
     platform: "darwin",
     type: "distribution",
-    hardenedRuntime: true,
+    optionsForFile: () => ({ hardenedRuntime: false }),
     strictVerify: true,
   });
 }
 
-async function verifyRuntimeSignature(targetPath) {
+async function verifyAdhocSignatureWithoutHardenedRuntime(targetPath) {
   const { stderr } = await run("codesign", ["-dv", "--verbose=4", targetPath]);
   const details = stderr.toString();
   if (!/Signature=adhoc/.test(details)) {
     throw new Error(`Expected ad-hoc signature for ${targetPath}.`);
   }
-  if (!/flags=0x[0-9a-f]+\(.*runtime.*\)/i.test(details)) {
-    throw new Error(`Expected hardened runtime signature for ${targetPath}.`);
+  if (/flags=0x[0-9a-f]+\([^)]*\bruntime\b[^)]*\)/i.test(details)) {
+    throw new Error(`Hardened Runtime must remain disabled for ad-hoc macOS builds: ${targetPath}.`);
   }
   await run("codesign", ["--verify", "--deep", "--strict", "--verbose=2", targetPath]);
 }
@@ -103,9 +112,11 @@ async function verifyHfsDmg() {
 }
 
 await fs.access(appPath);
-await signAdhocRuntime();
-await verifyRuntimeSignature(appPath);
+await fs.access(electronFrameworkPath);
+await signAdhocWithoutHardenedRuntime();
+await verifyAdhocSignatureWithoutHardenedRuntime(appPath);
+await verifyAdhocSignatureWithoutHardenedRuntime(electronFrameworkPath);
 await createHfsDmg();
 await verifyHfsDmg();
 
-console.log(`Created HFS+ DMG with ad-hoc hardened runtime signature: ${path.relative(projectDir, dmgPath)}`);
+console.log(`Created HFS+ DMG with ad-hoc signature and Hardened Runtime disabled: ${path.relative(projectDir, dmgPath)}`);
