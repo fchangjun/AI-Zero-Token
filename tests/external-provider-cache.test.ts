@@ -20,7 +20,7 @@ function historyEntry(overrides?: Partial<ExternalInspectionHistoryEntry>): Exte
       candidateCount: 3,
       recommendedModel: "model-b",
       results: [
-        { id: "model-a", name: "Model A", status: "ready", capabilities: { reasoningEfforts: ["low"] } },
+        { id: "model-a", name: "Model A", status: "ready", capabilities: { reasoningEfforts: ["low"], inputModalities: ["text", "image"], imageInput: true } },
         { id: "model-b", name: "Model B", status: "ready", capabilities: { reasoningEfforts: ["high"] } },
         { id: "model-c", name: "Model C", status: "auth_error" },
       ],
@@ -45,6 +45,7 @@ describe("external provider cache", () => {
   test("falls back to the recommended ready model for legacy history", () => {
     const restored = restoreExternalProviderCache(historyEntry());
     expect(restored.catalogModels.map((model) => model.id)).toEqual(["model-a", "model-b"]);
+    expect(restored.catalogModels[0]?.inputModalities).toEqual(["text", "image"]);
     expect(restored.selectedModel).toBe("model-b");
   });
 

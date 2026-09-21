@@ -98,7 +98,7 @@ The web console is the recommended entry point:
 - Tune global quota refresh concurrency for larger account pools.
 - Test `models`, `responses`, `chat.completions`, `images.generations`, and `images.edits`.
 - Review local usage statistics for today, the current gateway process, and lifetime totals.
-- See a global update banner when a newer version is available, with separate GitHub desktop release and npm update paths.
+- Check two release channels independently: desktop builds are compared only with same-platform GitHub Release artifacts, while npm/CLI is compared only with the npm registry; a newer local desktop build is labeled development/unreleased instead of being reported as an update.
 
 ![AI Zero Token admin dashboard](docs/images/admin-dashboard.jpg)
 
@@ -151,7 +151,9 @@ Codex CLI/Desktop can also use the gateway as a custom Responses provider:
 
 Use the management console Settings page and choose the history mode before clicking "接管 Codex 请求". The default `openai` mode keeps Codex history in the native provider view; the `AI Zero Token` mode creates a separate provider/history bucket. "解除接管" restores the previous defaults but retains an inactive compatibility provider so existing conversations remain loadable; continuing an old conversation still contacts its original endpoint. You can also add the provider manually to `~/.codex/config.toml`:
 
-For a company relay or another OpenAI-compatible API, choose `外部 API`, enter its Base URL and token, then click `自动检测并接管`. The app reads `/models`, verifies each candidate with Responses SSE plus a function-call/function-output round trip, selects a verified default, and writes every verified model to a managed `model_catalog_json` so Codex can show them in its native model picker after restart. Discovery makes a small number of real model requests. Disconnecting keeps the last Base URL, token, verified catalog, and selected model locally; reconnecting to that exact normalized URL can use the saved result directly without another scan. Tokens and model caches are never reused for a different URL path, origin, or port.
+For a company relay or another OpenAI-compatible API, choose `外部 API`, enter its Base URL and token, then click `自动检测并接管`. The app reads `/models`, verifies each candidate with Responses SSE, a function-call/function-output round trip, and a real image-input request, selects a verified default, and writes every verified model with its actual input modalities to a managed `model_catalog_json` so Codex can show them in its native model picker after restart. Discovery also probes `gpt-image-2`, `gpt-image-2.5-flare`, and `gpt-image-2.5-sunburst` through `/images/generations`, generating three minimal test images and consuming a small amount of real quota. Disconnecting keeps the last Base URL, token, verified catalog, and selected model locally; reconnecting to that exact normalized URL can use the saved result directly without another scan. Tokens and model caches are never reused for a different URL path, origin, or port.
+
+Image generation probes are displayed separately from ordinary text-model capabilities: `gpt-image-2` is the mature general-purpose option focused on compatibility and stability; `gpt-image-2.5-flare` is positioned for fast generation and frequent iteration; and `gpt-image-2.5-sunburst` is positioned for detail, lighting, reference fidelity, and precise editing. Overall Images 2.5 improvements follow currently available launch descriptions. Because an official readable Flare/Sunburst comparison is not currently available, the UI explicitly identifies the per-variant positioning as a summary based on the model names and observed API behavior rather than presenting it as a verified official claim.
 
 ```toml
 model = "gpt-5.4"

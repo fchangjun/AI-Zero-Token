@@ -316,6 +316,7 @@ const codexProviderConfigSchema = z.object({
     displayName: z.string().min(1).max(256).optional(),
     contextWindow: z.number().int().min(8_192).max(4_000_000).optional(),
     reasoningEfforts: z.array(z.enum(["minimal", "low", "medium", "high", "xhigh"])).max(5).optional(),
+    inputModalities: z.array(z.enum(["text", "image"])).min(1).max(2).optional(),
   })).max(200).optional(),
   inspectionId: z.string().uuid().optional(),
   purgeProviderDefinition: z.boolean().optional(),

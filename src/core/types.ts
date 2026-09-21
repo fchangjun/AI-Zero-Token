@@ -180,13 +180,23 @@ export type GatewaySettings = {
   };
 };
 
-export type VersionStatus = {
-  packageName: string;
+export type ReleaseChannelStatus = {
   currentVersion: string;
   latestVersion?: string;
   checkedAt: number;
   needsUpdate: boolean;
-  registryUrl: string;
-  status: "ok" | "update-available" | "error";
+  sourceUrl: string;
+  status: "ok" | "update-available" | "ahead" | "error";
   error?: string;
+  releaseUrl?: string;
+  expectedAssetNames?: string[];
+  availableAssetNames?: string[];
+  downloadUrl?: string;
+};
+
+export type VersionStatus = {
+  packageName: string;
+  checkedAt: number;
+  desktop: ReleaseChannelStatus;
+  npm: ReleaseChannelStatus;
 };

@@ -109,15 +109,25 @@ export type ModelCatalogInfo = {
   modelCount: number;
 };
 
-export type VersionStatus = {
-  packageName: string;
+export type ReleaseChannelStatus = {
   currentVersion: string;
   latestVersion?: string;
   checkedAt: number;
   needsUpdate: boolean;
-  registryUrl: string;
-  status: "ok" | "update-available" | "error";
+  sourceUrl: string;
+  status: "ok" | "update-available" | "ahead" | "error";
   error?: string;
+  releaseUrl?: string;
+  expectedAssetNames?: string[];
+  availableAssetNames?: string[];
+  downloadUrl?: string;
+};
+
+export type VersionStatus = {
+  packageName: string;
+  checkedAt: number;
+  desktop: ReleaseChannelStatus;
+  npm: ReleaseChannelStatus;
 };
 
 export type SupportedEndpoint = {
@@ -224,6 +234,7 @@ export type AdminConfig = {
         id: string;
         displayName?: string;
         reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+        inputModalities?: Array<"text" | "image">;
       }>;
     };
     savedExternalProvider?: {
@@ -241,6 +252,7 @@ export type AdminConfig = {
         id: string;
         displayName?: string;
         reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+        inputModalities?: Array<"text" | "image">;
       }>;
     };
   };

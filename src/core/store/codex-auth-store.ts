@@ -68,6 +68,7 @@ export type CodexCatalogModelInput = {
   displayName?: string;
   contextWindow?: number;
   reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+  inputModalities?: Array<"text" | "image">;
 };
 
 export type CodexHistoryMigrationResult = {
@@ -938,11 +939,15 @@ function normalizeCodexCatalogModels(
     const reasoningEfforts = candidate.reasoningEfforts
       ? [...new Set(candidate.reasoningEfforts)]
       : undefined;
+    const inputModalities = candidate.inputModalities
+      ? [...new Set(candidate.inputModalities)]
+      : undefined;
     const next = {
       id,
       ...(displayName ? { displayName } : {}),
       ...(contextWindow ? { contextWindow } : {}),
       ...(reasoningEfforts ? { reasoningEfforts } : {}),
+      ...(inputModalities?.length ? { inputModalities } : {}),
     };
     const existingIndex = normalized.findIndex((item) => item.id === id);
     if (existingIndex >= 0) continue;
@@ -1039,7 +1044,7 @@ function buildCodexCatalogEntry(
     max_context_window: contextWindow,
     effective_context_window_percent: 95,
     experimental_supported_tools: [],
-    input_modalities: ["text"],
+    input_modalities: model.inputModalities?.length ? model.inputModalities : ["text"],
     supports_search_tool: false,
     supports_experimental_context: false,
     use_responses_lite: false,
@@ -1097,7 +1102,15 @@ async function readManagedCodexModelCatalog(catalogPath: string | undefined): Pr
           .map((level) => isRecord(level) && typeof level.effort === "string" ? level.effort : undefined)
           .filter((effort): effort is "minimal" | "low" | "medium" | "high" | "xhigh" => effort === "minimal" || effort === "low" || effort === "medium" || effort === "high" || effort === "xhigh")
         : [];
-      models.push({ id, ...(displayName ? { displayName } : {}), ...(levels.length ? { reasoningEfforts: levels } : {}) });
+      const inputModalities = Array.isArray(item.input_modalities)
+        ? item.input_modalities.filter((modality): modality is "text" | "image" => modality === "text" || modality === "image")
+        : [];
+      models.push({
+        id,
+        ...(displayName ? { displayName } : {}),
+        ...(levels.length ? { reasoningEfforts: levels } : {}),
+        ...(inputModalities.length ? { inputModalities } : {}),
+      });
     }
     return normalizeCodexCatalogModels(models, undefined);
   } catch {

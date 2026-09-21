@@ -7,6 +7,7 @@ export type ExternalProviderModelStatus =
   | "transport_error";
 
 export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type InputModality = "text" | "image";
 
 export type ExternalProviderModelProbe = {
   id: string;
@@ -20,7 +21,19 @@ export type ExternalProviderModelProbe = {
     functionCalling: boolean;
     functionCallOutput: boolean;
     reasoningEfforts: ReasoningEffort[];
+    inputModalities: InputModality[];
+    imageInput: boolean;
   };
+};
+
+export type ExternalImageGenerationModelProbe = {
+  id: string;
+  status: ExternalProviderModelStatus;
+  supported: boolean;
+  latencyMs: number;
+  statusCode?: number;
+  error?: string;
+  message?: string;
 };
 
 export type ExternalProviderFilteredModel = {
@@ -35,6 +48,7 @@ export type ExternalProviderInspection = {
   modelsEndpoint: string;
   modelsUrl: string;
   responsesEndpoint: string;
+  imageGenerationEndpoint?: string;
   tokenSource: "provided" | "stored" | "none";
   discoveredCount: number;
   modelCount: number;
@@ -43,6 +57,7 @@ export type ExternalProviderInspection = {
   filteredModels: ExternalProviderFilteredModel[];
   models: ExternalProviderModelProbe[];
   results: ExternalProviderModelProbe[];
+  imageGenerationModels?: ExternalImageGenerationModelProbe[];
   summary: Record<ExternalProviderModelStatus, number>;
   recommendedModel?: string;
   durationMs: number;
@@ -109,6 +124,7 @@ type ProbeStreamResult = {
   status: ExternalProviderModelStatus;
   responsesStreaming: boolean;
   functionCall?: ProbeFunctionCall;
+  statusCode?: number;
   error?: string;
 };
 
@@ -116,13 +132,21 @@ type ProbeMode = "function_call" | "function_call_output" | "text";
 
 const MODEL_LIST_TIMEOUT_MS = 15_000;
 const MODEL_PROBE_TIMEOUT_MS = 20_000;
+const IMAGE_GENERATION_PROBE_TIMEOUT_MS = 120_000;
 const MODEL_LIST_MAX_BYTES = 2 * 1024 * 1024;
 const MODEL_PROBE_MAX_BYTES = 512 * 1024;
+const IMAGE_GENERATION_PROBE_MAX_BYTES = 32 * 1024 * 1024;
 const MAX_MODELS_TO_PROBE = 200;
 const MODEL_PROBE_CONCURRENCY = 3;
 const MAX_REDIRECTS = 3;
 const PROBE_TOOL_NAME = "azt_provider_probe";
 const REASONING_EFFORTS: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh"];
+const IMAGE_GENERATION_MODEL_IDS = [
+  "gpt-image-2",
+  "gpt-image-2.5-flare",
+  "gpt-image-2.5-sunburst",
+] as const;
+const IMAGE_INPUT_PROBE_DATA_URL = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVR4nGNgAAAAAgABSK+kcQAAAABJRU5ErkJggg==";
 
 const PROBE_TOOL = {
   type: "function",
@@ -283,7 +307,7 @@ export function normalizeOpenAICompatibleBaseUrl(value: string): string {
   return url.toString().replace(/\/+$/g, "");
 }
 
-function endpointUrl(baseUrl: string, endpoint: "models" | "responses"): string {
+function endpointUrl(baseUrl: string, endpoint: "models" | "responses" | "images/generations"): string {
   return `${baseUrl}/${endpoint}`;
 }
 
@@ -779,6 +803,143 @@ async function probeReasoningEfforts(
   return supported;
 }
 
+async function probeImageInput(
+  responsesEndpoint: string,
+  model: DiscoveredModel,
+  bearerToken: string | undefined,
+): Promise<boolean> {
+  const result = await runProbeRequest({
+    responsesEndpoint,
+    bearerToken,
+    mode: "text",
+    body: {
+      model: model.id,
+      input: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "Reply with exactly OK." },
+            { type: "input_image", image_url: IMAGE_INPUT_PROBE_DATA_URL },
+          ],
+        },
+      ],
+      max_output_tokens: 32,
+      store: false,
+      stream: true,
+    },
+  });
+  return result.status === "ready";
+}
+
+function imageGenerationPayloadLooksValid(value: unknown): boolean {
+  if (!isRecord(value) || !Array.isArray(value.data) || value.data.length === 0) {
+    return false;
+  }
+  return value.data.some((item) => {
+    if (!isRecord(item)) return false;
+    return (typeof item.b64_json === "string" && item.b64_json.length > 0)
+      || (typeof item.url === "string" && /^https?:\/\//i.test(item.url));
+  });
+}
+
+function imageGenerationProbeSize(modelId: string): "1024x1024" | "auto" {
+  return modelId.startsWith("gpt-image-2.5-") ? "auto" : "1024x1024";
+}
+
+async function probeImageGenerationModel(
+  imageGenerationEndpoint: string,
+  modelId: string,
+  bearerToken: string | undefined,
+): Promise<ExternalImageGenerationModelProbe> {
+  const startedAt = performance.now();
+  try {
+    const { response, cleanup } = await fetchWithSafeRedirects(imageGenerationEndpoint, {
+      method: "POST",
+      headers: {
+        ...createHeaders(bearerToken, "application/json"),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        prompt: "A single black dot centered on a plain white background.",
+        n: 1,
+        size: imageGenerationProbeSize(modelId),
+        quality: "low",
+        response_format: "b64_json",
+      }),
+    }, IMAGE_GENERATION_PROBE_TIMEOUT_MS);
+    try {
+      const text = await readTextLimited(response, IMAGE_GENERATION_PROBE_MAX_BYTES);
+      if (!response.ok) {
+        const details = extractErrorDetails(text);
+        const message = redactErrorMessage(details.message ?? details.code ?? `HTTP ${response.status}`, bearerToken);
+        return {
+          id: modelId,
+          status: classifyHttpFailure(response.status, details.code, details.message),
+          supported: false,
+          latencyMs: roundMs(performance.now() - startedAt),
+          statusCode: response.status,
+          error: message,
+          message,
+        };
+      }
+
+      let payload: unknown;
+      try {
+        payload = JSON.parse(text) as unknown;
+      } catch {
+        const message = "图片生成接口返回的不是有效 JSON";
+        return {
+          id: modelId,
+          status: "incompatible",
+          supported: false,
+          latencyMs: roundMs(performance.now() - startedAt),
+          error: message,
+          message,
+        };
+      }
+      if (!imageGenerationPayloadLooksValid(payload)) {
+        const message = "图片生成接口未返回 b64_json 或 URL";
+        return {
+          id: modelId,
+          status: "incompatible",
+          supported: false,
+          latencyMs: roundMs(performance.now() - startedAt),
+          error: message,
+          message,
+        };
+      }
+      return {
+        id: modelId,
+        status: "ready",
+        supported: true,
+        latencyMs: roundMs(performance.now() - startedAt),
+      };
+    } finally {
+      cleanup();
+    }
+  } catch (error) {
+    const normalized = error instanceof ExternalProviderInspectionError
+      ? error
+      : inspectionError(error instanceof Error ? error.message : String(error), "transport_error");
+    const status = normalized.code === "auth_error"
+      ? "auth_error"
+      : normalized.code === "request_timeout"
+        ? "busy"
+        : "transport_error";
+    const message = redactErrorMessage(normalized.message, bearerToken);
+    return {
+      id: modelId,
+      status,
+      supported: false,
+      latencyMs: roundMs(performance.now() - startedAt),
+      statusCode: normalized.statusCode >= 400 && normalized.statusCode < 600 ? normalized.statusCode : undefined,
+      error: message,
+      message,
+    };
+  }
+}
+
 async function probeModel(
   responsesEndpoint: string,
   model: DiscoveredModel,
@@ -790,6 +951,8 @@ async function probeModel(
     functionCalling: false,
     functionCallOutput: false,
     reasoningEfforts: [] as ReasoningEffort[],
+    inputModalities: ["text"] as InputModality[],
+    imageInput: false,
   };
   try {
     const first = await runProbeRequest({
@@ -850,9 +1013,12 @@ async function probeModel(
         stream: true,
       },
     });
-    const reasoningEfforts = second.status === "ready"
-      ? await probeReasoningEfforts(responsesEndpoint, model, bearerToken)
-      : [];
+    const [reasoningEfforts, imageInput] = second.status === "ready"
+      ? await Promise.all([
+          probeReasoningEfforts(responsesEndpoint, model, bearerToken),
+          probeImageInput(responsesEndpoint, model, bearerToken).catch(() => false),
+        ])
+      : [[], false];
     return {
       id: model.id,
       status: second.status,
@@ -864,6 +1030,8 @@ async function probeModel(
         functionCalling: true,
         functionCallOutput: second.status === "ready",
         reasoningEfforts,
+        inputModalities: imageInput ? ["text", "image"] : ["text"],
+        imageInput,
       },
     };
   } catch (error) {
@@ -941,14 +1109,19 @@ export async function inspectExternalProvider(
   const bearerToken = params.bearerToken?.trim() || undefined;
   const modelsEndpoint = endpointUrl(baseUrl, "models");
   const responsesEndpoint = endpointUrl(baseUrl, "responses");
+  const imageGenerationEndpoint = endpointUrl(baseUrl, "images/generations");
   const discovered = await discoverModels(modelsEndpoint, bearerToken);
   const filteredModels = discovered
     .filter(isObviouslyNonTextModel)
     .map((model) => ({ id: model.id, reason: "non_text_model" as const }));
   const allCandidates = discovered.filter((model) => !isObviouslyNonTextModel(model));
   const candidates = allCandidates.slice(0, MAX_MODELS_TO_PROBE);
-  const models = await mapWithConcurrency(candidates, MODEL_PROBE_CONCURRENCY, (model) =>
-    probeModel(responsesEndpoint, model, bearerToken));
+  const [models, imageGenerationModels] = await Promise.all([
+    mapWithConcurrency(candidates, MODEL_PROBE_CONCURRENCY, (model) =>
+      probeModel(responsesEndpoint, model, bearerToken)),
+    mapWithConcurrency([...IMAGE_GENERATION_MODEL_IDS], IMAGE_GENERATION_MODEL_IDS.length, (modelId) =>
+      probeImageGenerationModel(imageGenerationEndpoint, modelId, bearerToken)),
+  ]);
   const summary = emptySummary();
   for (const model of models) {
     summary[model.status] += 1;
@@ -960,6 +1133,7 @@ export async function inspectExternalProvider(
     modelsEndpoint,
     modelsUrl: modelsEndpoint,
     responsesEndpoint,
+    imageGenerationEndpoint,
     tokenSource: params.tokenSource,
     discoveredCount: discovered.length,
     modelCount: discovered.length,
@@ -968,6 +1142,7 @@ export async function inspectExternalProvider(
     filteredModels,
     models: models.map((model) => ({ ...model, message: model.error })),
     results: models.map((model) => ({ ...model, message: model.error })),
+    imageGenerationModels,
     summary,
     recommendedModel: chooseRecommendedModel(models),
     durationMs: roundMs(performance.now() - startedAt),

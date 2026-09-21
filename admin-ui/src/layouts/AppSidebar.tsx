@@ -12,15 +12,18 @@ export function AppSidebar({ workspace }: { workspace: UseAdminWorkspaceResult }
   const { routes, activeRoute, goRoute, config, copyBaseUrl, setContactOpen } = workspace;
   const isOnline = Boolean(config?.status.loggedIn);
   const versionStatus = config?.versionStatus;
-  const versionTone = versionStatus?.status === "update-available" ? "orange" : versionStatus?.status === "error" ? "red" : "green";
+  const desktopVersion = versionStatus?.desktop;
+  const versionTone = desktopVersion?.status === "update-available" ? "orange" : desktopVersion?.status === "error" ? "red" : desktopVersion?.status === "ahead" ? "blue" : "green";
   const versionLabel =
-    versionStatus?.status === "update-available"
+    desktopVersion?.status === "update-available"
       ? t("sidebar.versionUpdateAvailable")
-      : versionStatus?.status === "error"
+      : desktopVersion?.status === "error"
         ? t("sidebar.versionCheckFailed")
-        : versionStatus?.status === "ok"
-          ? t("sidebar.versionUpToDate")
-          : t("common.notChecked");
+        : desktopVersion?.status === "ahead"
+          ? t("sidebar.versionAhead")
+          : desktopVersion?.status === "ok"
+            ? t("sidebar.versionUpToDate")
+            : t("common.notChecked");
 
   return (
     <aside className="sidebar">
@@ -64,12 +67,20 @@ export function AppSidebar({ workspace }: { workspace: UseAdminWorkspaceResult }
         </button>
         <div className="sidebar-meta-grid">
           <div className="sidebar-meta">
-            <span>{t("sidebar.currentVersion")}</span>
-            <strong>{versionStatus?.currentVersion || t("common.na")}</strong>
+            <span>{t("sidebar.currentDesktopVersion")}</span>
+            <strong>{desktopVersion?.currentVersion || t("common.na")}</strong>
           </div>
           <div className="sidebar-meta">
-            <span>{t("sidebar.latestVersion")}</span>
-            <strong>{versionStatus?.latestVersion || t("common.na")}</strong>
+            <span>{t("sidebar.latestDesktopVersion")}</span>
+            <strong>{desktopVersion?.latestVersion || t("common.na")}</strong>
+          </div>
+          <div className="sidebar-meta">
+            <span>{t("sidebar.currentNpmVersion")}</span>
+            <strong>{versionStatus?.npm.currentVersion || t("common.na")}</strong>
+          </div>
+          <div className="sidebar-meta">
+            <span>{t("sidebar.latestNpmVersion")}</span>
+            <strong>{versionStatus?.npm.latestVersion || t("common.na")}</strong>
           </div>
         </div>
       </section>

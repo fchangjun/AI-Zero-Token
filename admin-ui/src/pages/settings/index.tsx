@@ -30,6 +30,12 @@ type ShareGatewayFeedback = {
   apiKey?: string;
 };
 
+const imageGenerationModelI18nSuffix: Record<string, string> = {
+  "gpt-image-2": "gptImage2",
+  "gpt-image-2.5-flare": "gptImage25Flare",
+  "gpt-image-2.5-sunburst": "gptImage25Sunburst",
+};
+
 const externalModelStatusClassName: Record<ExternalModelStatus, string> = {
   ready: "is-ready",
   busy: "is-busy",
@@ -1284,6 +1290,7 @@ export function SettingsPage(props: {
                           <span className={`external-provider-model-badge ${item.capabilities?.functionCalling ? "is-ready" : "is-failed"}`}>{item.capabilities?.functionCalling ? t("settings.externalInspect.toolsPass") : t("settings.externalInspect.toolsFail")}</span>
                           <span className={`external-provider-model-badge ${item.capabilities?.functionCallOutput ? "is-ready" : "is-failed"}`}>{item.capabilities?.functionCallOutput ? t("settings.externalInspect.toolOutputPass") : t("settings.externalInspect.toolOutputFail")}</span>
                           <span className={`external-provider-model-badge ${item.capabilities?.reasoningEfforts?.length ? "is-ready" : "is-failed"}`}>{item.capabilities?.reasoningEfforts?.length ? t("settings.externalInspect.reasoningPass", { levels: item.capabilities.reasoningEfforts.join(", ") }) : t("settings.externalInspect.reasoningFail")}</span>
+                          <span className={`external-provider-model-badge ${item.capabilities?.imageInput ? "is-ready" : "is-failed"}`}>{item.capabilities?.imageInput ? t("settings.externalInspect.imageInputPass") : t("settings.externalInspect.imageInputFail")}</span>
                           {typeof item.latencyMs === "number" ? <small>{item.latencyMs} ms</small> : null}
                         </div>
                       </div>
@@ -1292,6 +1299,30 @@ export function SettingsPage(props: {
                     <div className="external-provider-model-empty">{t("settings.externalInspect.empty")}</div>
                   )}
                 </div>
+                <div className="external-provider-model-list">
+                  <div className="external-provider-model-list-title">{t("settings.externalInspect.imageGenerationLabel")}</div>
+                  {(externalInspection.imageGenerationModels || []).map((item) => {
+                    const status = externalModelStatusMeta(t)[item.status];
+                    const descriptionKey = imageGenerationModelI18nSuffix[item.id];
+                    return (
+                      <div className="external-provider-model-row external-provider-image-model-row" key={item.id}>
+                        <div className="external-provider-model-copy">
+                          <strong>{item.id}</strong>
+                          {descriptionKey ? <span className="external-provider-image-model-description">{t(`settings.externalInspect.${descriptionKey}Description`)}</span> : null}
+                          {descriptionKey ? <small>{t(`settings.externalInspect.${descriptionKey}BestFor`)}</small> : null}
+                          {item.message ? <span>{item.message}</span> : null}
+                        </div>
+                        <div className="external-provider-model-state">
+                          <span className={`external-provider-model-badge ${item.supported ? "is-ready" : status.className}`}>
+                            {item.supported ? t("settings.externalInspect.imageGenerationPass") : t("settings.externalInspect.imageGenerationFail")}
+                          </span>
+                          {typeof item.latencyMs === "number" ? <small>{item.latencyMs} ms</small> : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="external-provider-image-model-source-note">{t("settings.externalInspect.imageGenerationSourceNote")}</p>
               </div>
             </details>
           ) : null}

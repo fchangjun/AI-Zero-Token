@@ -671,6 +671,7 @@ export class AuthService {
       displayName?: string;
       contextWindow?: number;
       reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+      inputModalities?: Array<"text" | "image">;
     }>;
     inspectionId?: string;
   }): Promise<ApplyCodexGatewayProviderResult> {

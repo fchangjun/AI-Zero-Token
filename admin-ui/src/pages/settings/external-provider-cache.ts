@@ -18,7 +18,18 @@ export type ExternalModelInspectionResult = {
     functionCalling?: boolean;
     functionCallOutput?: boolean;
     reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+    inputModalities?: Array<"text" | "image">;
+    imageInput?: boolean;
   };
+};
+
+export type ExternalImageGenerationModelResult = {
+  id: string;
+  status: ExternalModelStatus;
+  supported: boolean;
+  latencyMs?: number;
+  statusCode?: number;
+  message?: string;
 };
 
 export type ExternalProviderInspection = {
@@ -29,6 +40,7 @@ export type ExternalProviderInspection = {
   candidateCount: number;
   recommendedModel?: string;
   results: ExternalModelInspectionResult[];
+  imageGenerationModels?: ExternalImageGenerationModelResult[];
 };
 
 export type ExternalInspectionHistoryEntry = {
@@ -46,6 +58,7 @@ export type CodexCatalogModel = {
   id: string;
   displayName?: string;
   reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+  inputModalities?: Array<"text" | "image">;
 };
 
 export type ExternalConnectIntent = "connect" | "rescan";
@@ -57,6 +70,9 @@ function catalogModelFromInspection(result: ExternalModelInspectionResult): Code
     ...(result.name ? { displayName: result.name } : {}),
     ...(result.capabilities?.reasoningEfforts?.length
       ? { reasoningEfforts: result.capabilities.reasoningEfforts }
+      : {}),
+    ...(result.capabilities?.inputModalities?.length
+      ? { inputModalities: result.capabilities.inputModalities }
       : {}),
   };
 }

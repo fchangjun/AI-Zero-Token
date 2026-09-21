@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.15 - 2026-09-22
+
+- Fixed Codex image uploads for compatible external text models by probing a real image input and writing image capability only after that probe succeeds.
+- Added separate generation probes for `gpt-image-2`, `gpt-image-2.5-flare`, and `gpt-image-2.5-sunburst`, with a dedicated UI section that explains their general-purpose, speed, and quality tradeoffs.
+- Split version checking into independent desktop and npm/CLI channels: desktop builds now compare with matching GitHub Release artifacts, npm/CLI compares with npm registry, and newer local desktop builds are labeled as development/unreleased.
+
 ## 2.0.14 - 2026-09-18
 
 - Disabled Hardened Runtime throughout the ad-hoc macOS packaging pipeline and added signature guards so builds fail if it is reintroduced, preventing Electron Framework launch failures on SIP-enabled Macs.

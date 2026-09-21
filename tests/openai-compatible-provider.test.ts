@@ -150,6 +150,10 @@ function sendSuccessfulProbeRound(response: ServerResponse, recorded: RecordedRe
   ]);
 }
 
+function sendSuccessfulImageGeneration(response: ServerResponse): void {
+  sendJson(response, { data: [{ b64_json: "dGVzdA==" }] });
+}
+
 async function inspect(origin: string, bearerToken = "local-test-token") {
   return inspectExternalProvider({
     baseUrl: origin,
@@ -207,6 +211,10 @@ describe("OpenAI-compatible provider inspection", () => {
           sendSuccessfulProbeRound(response, recorded);
           return;
         }
+        if (recorded.url === "/v1/images/generations") {
+          sendSuccessfulImageGeneration(response);
+          return;
+        }
         sendJson(response, { error: { message: "not found" } }, 404);
       });
 
@@ -215,7 +223,8 @@ describe("OpenAI-compatible provider inspection", () => {
       expect(result.discoveredCount).toBe(2);
       expect(result.results.map((model) => model.id)).toEqual(["model-a", "model-b"]);
       expect(result.results.every((model) => model.status === "ready")).toBe(true);
-      expect(server.requests.filter((request) => request.url === "/v1/responses")).toHaveLength(14);
+      expect(server.requests.filter((request) => request.url === "/v1/responses")).toHaveLength(16);
+      expect(server.requests.filter((request) => request.url === "/v1/images/generations")).toHaveLength(3);
 
       await liveServers.pop()?.close();
     }
@@ -249,6 +258,8 @@ describe("OpenAI-compatible provider inspection", () => {
         functionCalling: true,
         functionCallOutput: true,
         reasoningEfforts: ["minimal", "low", "medium", "high", "xhigh"],
+        inputModalities: ["text", "image"],
+        imageInput: true,
       },
     });
     expect(result.results.find((model) => model.id === "first-round-only")).toMatchObject({
@@ -267,6 +278,82 @@ describe("OpenAI-compatible provider inspection", () => {
     expect(continuation?.input).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "function_call_output", output: "{\"ok\":true}" }),
     ]));
+  });
+
+  test("probes gpt-image-2 and both gpt-image-2.5 generation variants", async () => {
+    const server = await startTestServer((_request, response, recorded) => {
+      if (recorded.url === "/v1/models") {
+        sendJson(response, { data: [{ id: "text-model" }] });
+        return;
+      }
+      if (recorded.url === "/v1/responses") {
+        sendSuccessfulProbeRound(response, recorded);
+        return;
+      }
+      if (recorded.url === "/v1/images/generations") {
+        const body = parseJsonBody(recorded);
+        if (body.model === "gpt-image-2" || body.model === "gpt-image-2.5-flare") {
+          sendSuccessfulImageGeneration(response);
+          return;
+        }
+        sendJson(response, { error: { code: "model_not_found", message: "unknown model" } }, 404);
+        return;
+      }
+      sendJson(response, { error: { message: "not found" } }, 404);
+    });
+
+    const result = await inspect(server.origin);
+    expect(result.imageGenerationEndpoint).toBe(`${server.origin}/v1/images/generations`);
+    expect(result.imageGenerationModels).toEqual([
+      expect.objectContaining({ id: "gpt-image-2", status: "ready", supported: true }),
+      expect.objectContaining({ id: "gpt-image-2.5-flare", status: "ready", supported: true }),
+      expect.objectContaining({ id: "gpt-image-2.5-sunburst", status: "unavailable", supported: false, statusCode: 404 }),
+    ]);
+    const requests = server.requests
+      .filter((request) => request.url === "/v1/images/generations")
+      .map((request) => parseJsonBody(request));
+    expect(requests.map((request) => request.model)).toEqual([
+      "gpt-image-2",
+      "gpt-image-2.5-flare",
+      "gpt-image-2.5-sunburst",
+    ]);
+    expect(requests.map((request) => request.size)).toEqual(["1024x1024", "auto", "auto"]);
+    expect(requests.every((request) => request.quality === "low")).toBe(true);
+  });
+
+  test("keeps text-only models out of image upload in the Codex catalog", async () => {
+    const server = await startTestServer((_request, response, recorded) => {
+      if (recorded.url === "/v1/models") {
+        sendJson(response, { data: [{ id: "text-only" }] });
+        return;
+      }
+      if (recorded.url === "/v1/responses") {
+        const body = parseJsonBody(recorded);
+        const isImageProbe = Array.isArray(body.input)
+          && JSON.stringify(body.input).includes('"input_image"');
+        if (isImageProbe) {
+          sendJson(response, { error: { code: "unsupported_value", message: "image input is not supported" } }, 400);
+          return;
+        }
+        sendSuccessfulProbeRound(response, recorded);
+        return;
+      }
+      if (recorded.url === "/v1/images/generations") {
+        sendJson(response, { error: { code: "model_not_found", message: "unknown model" } }, 404);
+        return;
+      }
+      sendJson(response, { error: { message: "not found" } }, 404);
+    });
+
+    const result = await inspect(server.origin);
+    expect(result.results[0]).toMatchObject({
+      id: "text-only",
+      status: "ready",
+      capabilities: {
+        inputModalities: ["text"],
+        imageInput: false,
+      },
+    });
   });
 
   test("does not accept Chat Completions JSON, [DONE]-only, or response.incomplete as ready", async () => {
@@ -452,7 +539,7 @@ describe("Codex provider configuration lifecycle", () => {
       bearerToken: "stored-test-token",
       model: "DeepSeek-V4-Flash",
       catalogModels: [
-        { id: "Grok-4.6", reasoningEfforts: ["low", "high"] },
+        { id: "Grok-4.6", reasoningEfforts: ["low", "high"], inputModalities: ["text", "image"] },
         { id: "DeepSeek-V4-Flash", reasoningEfforts: ["medium"] },
         { id: "MiniMax-M3", displayName: "MiniMax M3" },
       ],
@@ -478,6 +565,11 @@ describe("Codex provider configuration lifecycle", () => {
     ]);
     expect(catalog.models.every((item) => item.visibility === "list")).toBe(true);
     expect(catalog.models.every((item) => typeof item.base_instructions === "string")).toBe(true);
+    expect(catalog.models.map((item) => item.input_modalities)).toEqual([
+      ["text", "image"],
+      ["text"],
+      ["text"],
+    ]);
     expect(catalog.models.map((item) => item.supported_reasoning_levels)).toEqual([
       [
         { effort: "low", description: "Fast responses with lighter reasoning" },

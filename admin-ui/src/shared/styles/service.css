@@ -24,6 +24,11 @@
   background: rgba(254, 242, 242, 0.95);
 }
 
+.sidebar-status.tone-blue {
+  border-color: rgba(59, 130, 246, 0.24);
+  background: rgba(239, 246, 255, 0.95);
+}
+
 .sidebar-status .service-head span {
   color: var(--text-muted);
   font-size: 11px;

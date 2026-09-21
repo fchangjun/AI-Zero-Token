@@ -410,6 +410,15 @@
   background: #fff;
 }
 
+.external-provider-model-list-title {
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-soft);
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 850;
+}
+
 .external-provider-model-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -439,6 +448,26 @@
 .external-provider-model-copy span {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.external-provider-image-model-row {
+  align-items: start;
+}
+
+.external-provider-model-copy .external-provider-image-model-description {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.external-provider-model-copy small,
+.external-provider-image-model-source-note {
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.external-provider-image-model-source-note {
+  margin: -2px 2px 0;
 }
 
 .external-provider-model-copy strong {
