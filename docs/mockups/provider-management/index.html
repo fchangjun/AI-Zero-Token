@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Zero Token · 模型与服务产品界面草图</title>
+  <style>
+    :root{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:#18202f;background:#f6f7fa;font-synthesis:none}
+    *{box-sizing:border-box}
+    body{margin:0;width:1600px;height:900px;overflow:hidden}
+    svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:none}
+    .app{display:flex;width:1600px;height:900px;background:#f6f7fa}
+    .sidebar{width:232px;flex:none;background:#fff;border-right:1px solid #dfe4ed;display:flex;flex-direction:column;padding:24px 14px 18px}
+    .brand{display:flex;align-items:center;gap:10px;padding:2px 12px 26px;border-bottom:1px solid #eef0f5;margin-bottom:22px}
+    .brand-mark{width:34px;height:34px;border:2px solid #5d5ef6;border-radius:11px;display:grid;place-items:center;color:#595bf0;font-size:20px;font-weight:800;transform:rotate(-8deg)}
+    .brand-copy strong{display:block;font-size:15px;line-height:19px}
+    .brand-copy span{display:block;color:#8290a4;font-size:11px;margin-top:2px}
+    .nav-caption{font-size:11px;color:#9aa5b7;font-weight:700;letter-spacing:.08em;padding:0 13px;margin-bottom:10px}
+    .nav{display:flex;flex-direction:column;gap:4px}
+    .nav-item{height:42px;display:flex;align-items:center;gap:12px;padding:0 13px;color:#5e6b7d;font-size:13px;font-weight:550;border-radius:8px}
+    .nav-item.selected{color:#343fe3;background:#eff0ff;font-weight:700}
+    .nav-item.selected:before{content:"";position:absolute;left:14px;width:3px;height:20px;border-radius:2px;background:#6366f1}
+    .sidebar-bottom{margin-top:auto;border:1px solid #e4e8f0;background:#fbfcff;border-radius:9px;padding:14px 13px}
+    .sidebar-bottom .small-title{font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:space-between}
+    .sidebar-bottom .url{font-size:11px;color:#667085;margin-top:10px}
+    .sidebar-bottom .url strong{display:block;color:#344054;margin-top:3px;font-size:11px}
+    .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#22a35a;margin-right:5px}
+    .main{flex:1;min-width:0}
+    .topbar{height:60px;background:#fff;border-bottom:1px solid #e4e8ef;display:flex;align-items:center;justify-content:space-between;padding:0 34px}
+    .crumb{font-size:12px;color:#8b96a8;display:flex;align-items:center;gap:10px}
+    .crumb strong{color:#455266;font-weight:650}
+    .top-actions{display:flex;align-items:center;gap:18px;color:#657285;font-size:12px}
+    .gateway-badge{display:flex;align-items:center;gap:5px;padding:6px 9px;background:#ecf9f0;color:#178443;border-radius:5px;font-weight:650}
+    .avatar{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#e9e9ff;color:#5454df;font-weight:700}
+    .content{padding:30px 34px 32px}
+    .screen{display:none}
+    body[data-screen="list"] #list,body[data-screen="add"] #list,body[data-screen="detail"] #detail,body[data-screen="codex"] #codex{display:block}
+    .page-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px}
+    h1{font-size:25px;letter-spacing:-.02em;line-height:34px;margin:0 0 7px;font-weight:760}
+    .subtitle{font-size:13px;color:#758194;line-height:20px}
+    button{font:inherit;white-space:nowrap;cursor:default}
+    .btn{height:36px;border-radius:7px;padding:0 14px;border:1px solid #dce2eb;background:#fff;color:#334155;display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:12px;font-weight:700}
+    .btn svg{width:15px;height:15px}
+    .btn.primary{background:#4f5de9;color:#fff;border-color:#4f5de9;box-shadow:0 2px 3px #4f5de915}
+    .btn.ghost{background:#f8f9fc}
+    .btn.small{height:30px;padding:0 10px;font-size:11px}
+    .btn.link{background:none;border:0;color:#4f5de9;box-shadow:none;padding:0}
+    .tabs{height:40px;display:flex;gap:28px;border-bottom:1px solid #dfe4ec;margin-bottom:22px}
+    .tab{height:40px;color:#7a8799;font-size:13px;font-weight:650;padding:0 2px;position:relative}
+    .tab.active{color:#4955d9}
+    .tab.active:after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:2px;background:#5864e9;border-radius:3px}
+    .panel{background:#fff;border:1px solid #e0e5ee;border-radius:9px;box-shadow:0 2px 7px #273a5808}
+    .active-strip{height:106px;display:flex;align-items:center;justify-content:space-between;padding:20px 24px;margin-bottom:22px;border-left:3px solid #5b68ed}
+    .eyebrow{font-size:11px;color:#7d8899;font-weight:700;margin-bottom:9px}
+    .active-name{font-size:17px;font-weight:760;display:flex;align-items:center;gap:10px}
+    .active-meta{font-size:12px;color:#778396;margin-top:7px}
+    .pill{display:inline-flex;align-items:center;justify-content:center;border-radius:5px;padding:4px 7px;font-size:10px;font-weight:750;line-height:1.2}
+    .pill.green{background:#e9f8ef;color:#148449}
+    .pill.blue{background:#edf0ff;color:#5060d8}
+    .pill.gray{background:#f0f2f5;color:#778292}
+    .pill.amber{background:#fff4df;color:#ae6b09}
+    .pill.red{background:#fff0ed;color:#b94a37}
+    .service-panel{overflow:hidden}
+    .panel-titlebar{height:66px;padding:0 20px;display:flex;align-items:center;justify-content:space-between}
+    h2{font-size:16px;margin:0;font-weight:760}
+    .panel-hint{font-size:11px;color:#9aa4b2;margin-top:5px}
+    .search{height:34px;min-width:204px;border:1px solid #e0e4eb;color:#9aa5b5;border-radius:7px;padding:0 10px;display:flex;align-items:center;gap:7px;font-size:11px}
+    .search svg{width:14px;height:14px}
+    .service-head,.service-row{display:grid;grid-template-columns:2.4fr 1.08fr .92fr 1fr 1fr .68fr;align-items:center;padding:0 20px;column-gap:15px}
+    .service-head{height:43px;background:#f8f9fc;border-top:1px solid #eef0f5;border-bottom:1px solid #eef0f5;color:#8894a5;font-size:11px;font-weight:700}
+    .service-row{height:90px;border-bottom:1px solid #eef0f4;font-size:12px;color:#465365}
+    .service-row:last-child{border:0}
+    .service-id{display:flex;align-items:center;gap:12px;min-width:0}
+    .service-icon{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;background:#e9edff;color:#5263d9;font-weight:850;font-size:13px}
+    .service-icon.purple{background:#f0ebff;color:#8b5ad3}
+    .service-icon.slate{background:#e8f0f4;color:#4b7890}
+    .service-id strong{display:block;font-size:13px;color:#263245;margin-bottom:5px}
+    .service-id small{font-size:11px;color:#97a2b1}
+    .strong{font-weight:740;color:#263245}
+    .muted{color:#8a95a5}
+    .cell-sub{font-size:10px;color:#98a3b2;margin-top:5px}
+    .hint-box{margin-top:20px;height:57px;border:1px dashed #d9e0eb;border-radius:8px;display:flex;align-items:center;padding:0 18px;color:#667389;font-size:12px}
+    .hint-box svg{width:16px;height:16px;color:#6470df;margin-right:10px}
+    .scrim{display:none;position:fixed;inset:0;background:#15203968}
+    .drawer{display:none;position:fixed;right:0;top:0;height:900px;width:520px;background:#fff;box-shadow:-15px 0 35px #101a3022}
+    body[data-screen="add"] .scrim,body[data-screen="add"] .drawer{display:block}
+    .drawer-head{height:79px;padding:20px 28px;border-bottom:1px solid #e6e9ef;display:flex;justify-content:space-between;align-items:flex-start}
+    .drawer-head h2{font-size:18px}
+    .drawer-head .panel-hint{margin-top:5px}
+    .close{font-size:22px;color:#9aa4b2;line-height:20px}
+    .drawer-body{padding:26px 28px}
+    label.field{display:block;margin-bottom:22px}
+    .label{font-size:12px;font-weight:720;color:#3f4b5f;margin-bottom:8px}
+    .req{color:#d1515c}
+    .input{height:39px;border:1px solid #d8dfe9;border-radius:7px;padding:0 12px;display:flex;align-items:center;color:#253247;font-size:12px;width:100%}
+    .input.placeholder{color:#97a3b1}
+    .field-note{font-size:11px;color:#9aa4b2;margin-top:7px;line-height:17px}
+    .password{letter-spacing:3px;font-size:17px}
+    .test-row{display:flex;align-items:center;gap:12px;margin:-3px 0 25px}
+    .test-ok{font-size:11px;color:#168448;display:flex;align-items:center;gap:4px}
+    .method-title{font-size:12px;font-weight:720;color:#3f4b5f;margin-bottom:10px}
+    .radio-row{height:42px;display:flex;align-items:center;gap:9px;color:#354154;font-size:12px;border:1px solid #e1e6ed;border-radius:7px;padding:0 12px;margin-bottom:8px}
+    .radio-row.selected{border-color:#6470ee;background:#f7f7ff}
+    .radio{width:15px;height:15px;border:1.5px solid #a8b0bd;border-radius:50%;display:grid;place-items:center}
+    .radio.selected{border-color:#5565e8}
+    .radio.selected:after{content:"";width:7px;height:7px;background:#5565e8;border-radius:50%}
+    .drawer-note{margin-top:24px;padding:13px;background:#f6f7fa;border-radius:7px;color:#697588;font-size:11px;line-height:18px}
+    .drawer-foot{position:absolute;bottom:0;left:0;right:0;border-top:1px solid #e6e9ef;height:80px;display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:0 28px;background:#fff}
+    .backline{font-size:12px;color:#758297;margin-bottom:19px}
+    .backline strong{color:#4c5ae5}
+    .detail-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:21px}
+    .detail-name{display:flex;align-items:center;gap:10px}
+    .detail-meta{font-size:12px;color:#8893a4;margin-top:5px}
+    .detail-actions{display:flex;gap:8px}
+    .metrics{display:flex;gap:0;height:91px;align-items:center;margin-bottom:21px}
+    .metric{flex:1;padding:0 23px;border-right:1px solid #e9ecf2}
+    .metric:last-child{border:0}
+    .metric span{display:block;color:#8793a4;font-size:11px;margin-bottom:9px}
+    .metric strong{font-size:20px;color:#243044}
+    .metric .status-value{font-size:14px;color:#21834a}
+    .model-tools{height:60px;padding:0 18px;display:flex;align-items:center;justify-content:space-between}
+    .tools-left{display:flex;align-items:center;gap:10px}
+    .model-table-head,.model-row{display:grid;grid-template-columns:2.2fr 1.35fr 2fr 1.05fr .72fr;align-items:center;padding:0 19px;column-gap:13px}
+    .model-table-head{height:40px;background:#f8f9fc;border-top:1px solid #eef0f5;border-bottom:1px solid #eef0f5;color:#8995a5;font-size:11px;font-weight:700}
+    .model-row{height:68px;border-bottom:1px solid #eef0f4;color:#5a6679;font-size:12px}
+    .model-row:last-child{border:0}
+    .model-row strong{font-size:12px;color:#263245}
+    .model-row small{display:block;color:#98a2b1;font-size:10px;margin-top:5px}
+    .progress-panel{margin-top:17px;height:62px;display:flex;justify-content:space-between;align-items:center;padding:0 19px;color:#586679;font-size:11px}
+    .progress-copy{display:flex;align-items:center;gap:9px}
+    .spinner{width:16px;height:16px;border:2px solid #ced4f5;border-top-color:#5966e7;border-radius:50%}
+    .progress-track{height:6px;width:220px;background:#eef0f5;border-radius:6px;overflow:hidden}
+    .progress-track i{display:block;height:100%;width:38%;background:#5b67e9;border-radius:6px}
+    .switch-panel{height:115px;padding:19px 22px;margin-bottom:18px}
+    .switch-layout{display:flex;align-items:center;gap:17px}
+    .switch-box{width:278px;height:64px;border:1px solid #e0e5ec;border-radius:7px;padding:10px 13px}
+    .switch-box.target{border-color:#aab5f7;background:#f9f9ff}
+    .switch-box span{font-size:10px;color:#8995a6}
+    .switch-box strong{font-size:13px;display:block;margin-top:7px}
+    .switch-arrow{font-size:20px;color:#929db0}
+    .notice{height:42px;background:#eef3ff;border:1px solid #dce6ff;color:#5b6b91;border-radius:7px;padding:0 14px;display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:18px}
+    .notice svg{width:15px;height:15px;color:#5b69db}
+    .codex-section{padding:18px 20px 0}
+    .section-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px}
+    .section-top small{display:block;color:#9aa4b2;font-size:11px;margin-top:5px}
+    .check-head,.check-row{display:grid;grid-template-columns:35px 2.2fr 1fr 1.7fr;align-items:center;padding:0 14px}
+    .check-head{height:36px;background:#f8f9fc;color:#8d98a8;font-size:10px;font-weight:700;border-top:1px solid #eef0f5;border-bottom:1px solid #eef0f5}
+    .check-row{height:53px;border-bottom:1px solid #eef0f4;color:#536075;font-size:11px}
+    .check-row:last-child{border:0}
+    .check-row strong{font-size:12px;color:#2a3547}
+    .checkbox{width:16px;height:16px;border:1.4px solid #b7c0cf;border-radius:4px}
+    .checkbox.checked{background:#5865e9;border-color:#5865e9;color:#fff;display:grid;place-items:center;font-size:12px;line-height:1}
+    .default-row{height:63px;border-top:1px solid #eef0f4;display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#4c596c}
+    .select{height:33px;width:230px;border:1px solid #dfe4ec;border-radius:6px;padding:0 10px;display:flex;align-items:center;justify-content:space-between;color:#2f3c4e;font-size:11px}
+    .codex-foot{display:flex;justify-content:space-between;align-items:center;margin-top:20px}
+    .codex-foot span{color:#8b98a8;font-size:11px}
+    .codex-foot .actions{display:flex;gap:9px}
+  </style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:none">
+  <symbol id="home" viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><path d="M9 21v-7h6v7"/></symbol>
+  <symbol id="users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m1 3a5 5 0 0 1 4 5v1"/></symbol>
+  <symbol id="layers" viewBox="0 0 24 24"><path d="m12 2 9 5-9 5-9-5 9-5Zm-9 10 9 5 9-5M3 17l9 5 9-5"/></symbol>
+  <symbol id="test" viewBox="0 0 24 24"><path d="M7 3h10v7l3 8a2 2 0 0 1-2 3H6a2 2 0 0 1-2-3l3-8zM7 10h10M9 16h6"/></symbol>
+  <symbol id="log" viewBox="0 0 24 24"><path d="M5 4h14v16H5zM9 9h6M9 13h6M9 17h4"/></symbol>
+  <symbol id="settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="m10 2-.5 2-2 .8-1.8-1-2 2 1 1.8-.8 2L2 10v4l2 .5.8 2-1 1.8 2 2 1.8-1 2 .8.5 2h4l.5-2 2-.8 1.8 1 2-2-1-1.8.8-2 2-.5v-4l-2-.5-.8-2 1-1.8-2-2-1.8 1-2-.8L14 2z"/></symbol>
+  <symbol id="search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 4v16M4 12h16"/></symbol>
+  <symbol id="refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2 6M20 4v7h-7"/></symbol>
+  <symbol id="info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 11v6M12 7h.01"/></symbol>
+</svg>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">◇</div><div class="brand-copy"><strong>AI Zero Token</strong><span>本地 AI 网关控制台</span></div></div>
+    <div class="nav-caption">工作台</div>
+    <nav class="nav">
+      <div class="nav-item"><svg><use href="#home"/></svg>概览</div>
+      <div class="nav-item"><svg><use href="#users"/></svg>账号管理</div>
+      <div class="nav-item selected"><svg><use href="#layers"/></svg>模型与服务</div>
+      <div class="nav-item"><svg><use href="#test"/></svg>接口测试</div>
+      <div class="nav-item"><svg><use href="#log"/></svg>请求日志</div>
+      <div class="nav-item"><svg><use href="#settings"/></svg>系统设置</div>
+    </nav>
+    <div class="sidebar-bottom"><div class="small-title">服务状态 <span class="pill green"><span class="dot"></span>运行中</span></div><div class="url">本地网关<strong>http://127.0.0.1:8787</strong></div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div class="crumb">工作台 <span>/</span> <strong>模型与服务</strong></div><div class="top-actions"><div class="gateway-badge"><span class="dot"></span> 网关运行中</div><span>帮助文档</span><div class="avatar">A</div></div></header>
+    <div class="content">
+      <section class="screen" id="list">
+        <div class="page-head"><div><h1>模型与服务</h1><div class="subtitle">管理第三方 API 连接与模型，并选择一个服务接入 Codex。</div></div><button class="btn primary"><svg><use href="#plus"/></svg>添加服务</button></div>
+        <div class="tabs"><div class="tab active">API 服务</div><div class="tab">Codex 接入</div></div>
+        <div class="panel active-strip"><div><div class="eyebrow">当前接入 Codex</div><div class="active-name">公司 OneAPI <span class="pill green">已接入</span></div><div class="active-meta">默认模型 deepseek-chat　·　4 个模型已启用　·　重启 Codex 后生效</div></div><button class="btn">管理接入</button></div>
+        <div class="panel service-panel">
+          <div class="panel-titlebar"><div><h2>API 服务</h2><div class="panel-hint">每个服务分别保存地址、凭据和模型状态</div></div><div class="search"><svg><use href="#search"/></svg>搜索服务名称</div></div>
+          <div class="service-head"><span>服务</span><span>连接状态</span><span>模型</span><span>最近同步</span><span>Codex</span><span>操作</span></div>
+          <div class="service-row"><div class="service-id"><div class="service-icon">O</div><div><strong>公司 OneAPI</strong><small>oneapi.example.com/v1</small></div></div><div><span class="pill green">连接正常</span></div><div><span class="strong">24 个</span><div class="cell-sub">8 个已验证</div></div><div>今天 10:32</div><div><span class="pill blue">当前接入</span></div><button class="btn link">查看模型 →</button></div>
+          <div class="service-row"><div class="service-id"><div class="service-icon purple">R</div><div><strong>OpenRouter</strong><small>openrouter.ai/api/v1</small></div></div><div><span class="pill green">连接正常</span></div><div><span class="strong">36 个</span><div class="cell-sub">12 个已验证</div></div><div>昨天 18:20</div><div><span class="pill gray">未接入</span></div><button class="btn link">查看模型 →</button></div>
+          <div class="service-row"><div class="service-id"><div class="service-icon slate">S</div><div><strong>自建模型服务</strong><small>ai.internal.example/v1</small></div></div><div><span class="pill amber">待验证</span></div><div><span class="strong">1 个</span><div class="cell-sub">手动添加</div></div><div class="muted">尚未同步</div><div><span class="pill gray">未接入</span></div><button class="btn link">查看模型 →</button></div>
+        </div>
+        <div class="hint-box"><svg><use href="#info"/></svg>添加服务不会改变当前 Codex 接入。进入服务详情后，可以验证模型并决定是否切换接入。</div>
+      </section>
+      <section class="screen" id="detail">
+        <div class="backline">API 服务　/　<strong>公司 OneAPI</strong></div>
+        <div class="detail-head"><div><div class="detail-name"><h1>公司 OneAPI</h1><span class="pill green">连接正常</span></div><div class="detail-meta">https://oneapi.example.com/v1　·　上次同步：今天 10:32</div></div><div class="detail-actions"><button class="btn"><svg><use href="#refresh"/></svg>同步模型</button><button class="btn primary">接入 Codex</button></div></div>
+        <div class="tabs"><div class="tab active">模型</div><div class="tab">连接设置</div><div class="tab">检测记录</div></div>
+        <div class="panel metrics"><div class="metric"><span>发现的模型</span><strong>24</strong></div><div class="metric"><span>可用于 Codex</span><strong>8</strong></div><div class="metric"><span>待验证或重试</span><strong>2</strong></div><div class="metric"><span>服务状态</span><strong class="status-value">● 连接正常</strong></div></div>
+        <div class="panel service-panel">
+          <div class="model-tools"><div class="tools-left"><div class="search" style="min-width:255px"><svg><use href="#search"/></svg>搜索模型 ID</div><button class="btn small">全部状态　⌄</button></div><button class="btn small">批量验证能力</button></div>
+          <div class="model-table-head"><span>模型</span><span>验证状态</span><span>Codex 能力</span><span>上次验证</span><span>操作</span></div>
+          <div class="model-row"><div><strong>deepseek-chat</strong><small>推荐默认模型</small></div><div><span class="pill green">可用</span></div><div>流式 · 工具调用 · 工具结果</div><div>今天 10:31</div><button class="btn link">查看详情</button></div>
+          <div class="model-row"><div><strong>qwen-coder</strong><small>代码任务</small></div><div><span class="pill green">可用</span></div><div>流式 · 工具调用 · 工具结果</div><div>今天 10:29</div><button class="btn link">查看详情</button></div>
+          <div class="model-row"><div><strong>claude-sonnet-4</strong><small>已保留上次可用结果</small></div><div><span class="pill amber">本次检测超时</span></div><div>流式 · 工具调用</div><div>昨天 18:08</div><button class="btn link">重新验证</button></div>
+          <div class="model-row"><div><strong>gpt-4.1</strong><small>首次发现</small></div><div><span class="pill gray">未验证</span></div><div class="muted">尚未确认</div><div class="muted">—</div><button class="btn link">验证能力</button></div>
+          <div class="model-row"><div><strong>glm-4.5</strong><small>文本模型</small></div><div><span class="pill green">可用</span></div><div>流式 · 工具调用</div><div>今天 10:21</div><button class="btn link">查看详情</button></div>
+        </div>
+        <div class="panel progress-panel"><div class="progress-copy"><div class="spinner"></div><span>正在后台验证 3 / 8 个模型，可离开此页面</span></div><div class="progress-track"><i></i></div></div>
+      </section>
+      <section class="screen" id="codex">
+        <div class="backline">API 服务　/　公司 OneAPI　/　<strong>接入 Codex</strong></div>
+        <div class="page-head" style="margin-bottom:19px"><div><h1>将公司 OneAPI 接入 Codex</h1><div class="subtitle">从这个服务选择模型。同一时间只接入一个外部 API 服务。</div></div></div>
+        <div class="panel switch-panel"><div class="switch-layout"><div class="switch-box"><span>当前接入</span><strong>OpenRouter</strong></div><div class="switch-arrow">→</div><div class="switch-box target"><span>准备切换至</span><strong>公司 OneAPI</strong></div></div></div>
+        <div class="notice"><svg><use href="#info"/></svg>切换后会保留 OpenRouter 服务及其模型记录。新的 Codex 接入配置在重启后生效。</div>
+        <div class="panel codex-section">
+          <div class="section-top"><div><h2>选择要显示在 Codex 中的模型</h2><small>下方仅显示公司 OneAPI 的模型；可用模型已根据验证结果推荐。</small></div><span class="pill blue">公司 OneAPI · 24 个模型</span></div>
+          <div class="check-head"><span></span><span>模型</span><span>验证状态</span><span>能力</span></div>
+          <div class="check-row"><div class="checkbox checked">✓</div><strong>deepseek-chat</strong><span class="pill green" style="justify-self:start">可用</span><span>流式 · 工具调用 · 工具结果</span></div>
+          <div class="check-row"><div class="checkbox checked">✓</div><strong>qwen-coder</strong><span class="pill green" style="justify-self:start">可用</span><span>流式 · 工具调用 · 工具结果</span></div>
+          <div class="check-row"><div class="checkbox"></div><strong>claude-sonnet-4</strong><span class="pill amber" style="justify-self:start">本次检测超时</span><span>保留上次可用结果</span></div>
+          <div class="check-row"><div class="checkbox"></div><strong>gpt-4.1</strong><span class="pill gray" style="justify-self:start">未验证</span><span class="muted">尚未确认</span></div>
+          <div class="default-row"><span>默认模型</span><div class="select">deepseek-chat <span>⌄</span></div></div>
+        </div>
+        <div class="codex-foot"><span>已选择 2 个模型　·　需要重启 Codex 才会更新模型选择器</span><div class="actions"><button class="btn">返回模型列表</button><button class="btn primary">确认切换到公司 OneAPI</button></div></div>
+      </section>
+    </div>
+  </main>
+</div>
+<div class="scrim"></div>
+<aside class="drawer">
+  <div class="drawer-head"><div><h2>添加 API 服务</h2><div class="panel-hint">先保存连接，再获取和验证模型。</div></div><span class="close">×</span></div>
+  <div class="drawer-body">
+    <label class="field"><div class="label">服务名称 <span class="req">*</span></div><div class="input">公司 OneAPI</div><div class="field-note">为这个连接起一个容易辨认的名字。</div></label>
+    <label class="field"><div class="label">API Base URL <span class="req">*</span></div><div class="input">https://oneapi.example.com/v1</div><div class="field-note">填写服务提供的 OpenAI 兼容 API 地址。</div></label>
+    <label class="field"><div class="label">API Token <span class="req">*</span></div><div class="input password">••••••••••••••••••••</div><div class="field-note">凭据只保存在本机，不会显示在模型列表中。</div></label>
+    <div class="test-row"><button class="btn"><svg><use href="#refresh"/></svg>测试连接</button><span class="test-ok">● 连接成功，凭据有效</span></div>
+    <div class="method-title">模型获取方式</div>
+    <div class="radio-row selected"><span class="radio selected"></span>自动获取模型列表 <span class="muted" style="margin-left:auto">推荐</span></div>
+    <div class="radio-row"><span class="radio"></span>手动填写模型 ID</div>
+    <div class="drawer-note">保存服务不会改变当前 Codex 接入。进入服务详情后，可以选择模型并决定是否接入。</div>
+  </div>
+  <div class="drawer-foot"><button class="btn">取消</button><button class="btn primary">保存并查看模型</button></div>
+</aside>
+<script>
+  const requested = new URLSearchParams(location.search).get("screen");
+  document.body.dataset.screen = ["list","add","detail","codex"].includes(requested) ? requested : "list";
+</script>
+</body>
+</html>

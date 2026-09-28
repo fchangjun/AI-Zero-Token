@@ -4,34 +4,19 @@ import path from "node:path";
 import type { ModelCatalogInfo, ModelInfo, OAuthProfile } from "../types.js";
 import { requestText } from "../providers/http-client.js";
 
-export const DEFAULT_CODEX_MODEL = "gpt-5.4";
+export const DEFAULT_CODEX_MODEL = "gpt-6-luna";
 const CODEX_MODELS_URL = process.env.CODEX_MODELS_URL || "https://chatgpt.com/backend-api/codex/models";
 const CODEX_MODELS_REFRESH_TIMEOUT_MS = 60_000;
-const DEFAULT_CODEX_MODELS_CLIENT_VERSION = "0.130.0";
+const DEFAULT_CODEX_MODELS_CLIENT_VERSION = "0.155.0";
 
+// Used only before a network refresh or when the user's Codex cache is absent.
 export const CODEX_MODEL_INFOS: ModelInfo[] = [
-  { provider: "openai-codex", id: "gpt-5.4", name: "GPT-5.4", input: ["text", "image"], source: "static" },
-  { provider: "openai-codex", id: "gpt-5.2", name: "GPT-5.2", input: ["text", "image"], source: "static" },
-  { provider: "openai-codex", id: "gpt-5.2-codex", name: "GPT-5.2 Codex", input: ["text", "image"], source: "static" },
-  { provider: "openai-codex", id: "gpt-5.3-codex", name: "GPT-5.3 Codex", input: ["text", "image"], source: "static" },
-  { provider: "openai-codex", id: "gpt-5.3-codex-spark", name: "GPT-5.3 Codex Spark", input: ["text"], source: "static" },
-  { provider: "openai-codex", id: "gpt-5.1", name: "GPT-5.1", input: ["text", "image"], source: "static" },
-  { provider: "openai-codex", id: "gpt-5.1-codex", name: "GPT-5.1 Codex", input: ["text", "image"], source: "static" },
-  { provider: "openai-codex", id: "gpt-5.1-codex-mini", name: "GPT-5.1 Codex Mini", input: ["text", "image"], source: "static" },
-  { provider: "openai-codex", id: "gpt-5.1-codex-max", name: "GPT-5.1 Codex Max", input: ["text", "image"], source: "static" },
+  { provider: "openai-codex", id: "gpt-6-luna", name: "GPT-6 Luna", input: ["text", "image"], source: "static" },
+  { provider: "openai-codex", id: "gpt-6-sol", name: "GPT-6 Sol", input: ["text", "image"], source: "static" },
+  { provider: "openai-codex", id: "gpt-6-astra", name: "GPT-6 Astra", input: ["text", "image"], source: "static" },
 ];
 
-export const SUPPORTED_CODEX_MODELS = [
-  "gpt-5.4",
-  "gpt-5.2",
-  "gpt-5.2-codex",
-  "gpt-5.3-codex",
-  "gpt-5.3-codex-spark",
-  "gpt-5.1",
-  "gpt-5.1-codex",
-  "gpt-5.1-codex-mini",
-  "gpt-5.1-codex-max",
-] as const;
+export const SUPPORTED_CODEX_MODELS = ["gpt-6-luna", "gpt-6-sol", "gpt-6-astra"] as const;
 
 export type SupportedCodexModel = (typeof SUPPORTED_CODEX_MODELS)[number];
 
@@ -52,7 +37,7 @@ type CodexModelsCacheEntry = {
 };
 
 export function getCodexModelsCachePath(): string {
-  return process.env.CODEX_MODELS_CACHE_PATH || path.join(os.homedir(), ".codex", "models_cache.json");
+  return process.env.CODEX_MODELS_CACHE_PATH || path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "models_cache.json");
 }
 
 function normalizeInputModalities(input: unknown): Array<"text" | "image"> {

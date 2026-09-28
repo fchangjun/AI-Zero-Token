@@ -47,7 +47,7 @@ http://127.0.0.1:8787
 http://127.0.0.1:8787/v1
 ```
 
-如果客户端必须填写 API Key，可以填任意非空占位值；真正起作用的是本地网关里的账号授权。
+默认沿用免密调用，客户端要求 API Key 时可填 `local`。在“模型与服务 → 对外提供 API → 服务概览”启用访问密钥后，所有模型接口都需要 `Authorization: Bearer <访问密钥>`。
 
 ## 桌面端预览
 
@@ -115,7 +115,7 @@ curl http://127.0.0.1:8787/v1/models
 ```bash
 curl http://127.0.0.1:8787/v1/responses \
   -H "content-type: application/json" \
-  -d '{"model":"gpt-5.4","input":"请只回复 OK"}'
+  -d '{"model":"gpt-6-luna","input":"请只回复 OK"}'
 ```
 
 ### Chat Completions
@@ -124,7 +124,7 @@ curl http://127.0.0.1:8787/v1/responses \
 curl http://127.0.0.1:8787/v1/chat/completions \
   -H "content-type: application/json" \
   -d '{
-    "model": "gpt-5.4",
+    "model": "gpt-6-luna",
     "messages": [
       {
         "role": "user",
@@ -140,7 +140,7 @@ OpenClaw 或其他 OpenAI 兼容编程客户端可以这样配置：
 Provider: OpenAI compatible
 Base URL: http://127.0.0.1:8787/v1
 API Key: local
-Model: gpt-5.4
+Model: gpt-6-luna
 Streaming: enabled
 Tools / function calling: enabled
 ```
@@ -149,23 +149,31 @@ Tools / function calling: enabled
 
 Codex CLI/Desktop 也可以把本工具配置成自定义 Responses provider：
 
-管理页“系统设置”里可以先选择历史记录模式，再点击“接管 Codex 请求”。默认的 `openai` 模式会把历史继续留在 Codex 原生视图里；`AI Zero Token` 模式会创建单独的 provider 历史分组。点击“解除接管”会恢复原来的默认配置，同时保留一个非激活的兼容 provider，避免已有对话因找不到 provider 而无法打开；继续旧对话时仍会访问原来的服务地址。也可以手动写入 `~/.codex/config.toml`：
+“模型与服务”分为“接入外部 API”和“对外提供 API”。账号管理、模型目录、默认模型、Free 账号生图和轮换策略统一位于“对外提供 API”，沿用现有账号文件；旧 `#accounts` 链接自动跳转到账号池。
 
-如果使用公司中转或其他 OpenAI 兼容 API，切到“外部 API”，只需填写 Base URL 和 Token，再点击“自动检测并接管”。系统会读取 `/models`，逐个验证 Responses SSE、function call、`function_call_output` 闭环和图片输入，自动选择默认模型，并把全部验证通过的模型及实际输入模态写入受管 `model_catalog_json`；重启后即可在 Codex 原生模型选择器中切换，支持图片输入的模型也不会再被对话框误判为纯文本模型。检测还会分别调用 `/images/generations` 探测 `gpt-image-2`、`gpt-image-2.5-flare` 和 `gpt-image-2.5-sunburst`，因此会生成三张最小测试图并消耗少量真实额度。解除接管后会在本机保留最近一次的 Base URL、Token、验证通过的模型和所选模型；下次使用完全相同的规范化地址时可直接接入，不再重复检测。地址的域名、端口或路径不同，都不会复用 Token 或模型缓存。
+在“对外提供 API → 服务概览”复制本机或局域网调用配置，也可以一键接入本机 Codex。API 服务状态与 Codex 接入状态分别显示：Codex 切到外部 API 或解除接入时，账号池服务继续运行。连接其他设备的 AI Zero Token 网关，请使用“接入外部 API → 接入远程 AI Zero Token”。
 
-生图探测会与普通文本模型能力分开展示：`gpt-image-2` 作为成熟通用款，优先兼容性与稳定性；`gpt-image-2.5-flare` 定位快速生成和高频迭代；`gpt-image-2.5-sunburst` 定位细节、光影、参考图保真与精细编辑。Images 2.5 的总体改进依据当前公开发布介绍；由于 OpenAI 官方文档页面目前没有可读取的 Flare/Sunburst 逐型号对比，界面会明确标注这两个变体的定位为结合型号命名与实测行为的概括，不把推断冒充官方结论。
+访问密钥是可选功能。启用、更换和关闭即时生效，密钥以 `0600` 权限保存；启用时模型接口验证 Bearer 密钥。无论是否启用访问密钥，管理接口始终仅限本机操作，局域网客户端仅调用模型 API。已接入本机网关的 Codex 配置会同步更新为 `azt_gateway`，重启 Codex 后生效；其他客户端需要更新密钥。外部 API 和远程网关的 Codex 配置保持独立。
+
+免密模式下可在“高级设置 · 历史兼容”选择原生 `openai` 或独立 `AI Zero Token`。也可手动写入 `~/.codex/config.toml`：
+
+公司中转和其他 OpenAI 兼容 API 现在通过独立的“模型与服务”页面管理。选择“接入外部 API → 添加外部 API”，填写名称、Base URL 和 Token，自动读取 `/models` 返回的全部模型；没有模型列表接口时可手动填写模型 ID。保存服务不会改变 Codex 的当前接入。
+
+在服务详情页可以单独或批量检测 Responses 流式输出、工具调用、工具结果、推理档位和图片输入。检测使用真实请求，会消耗上游额度；离开页面后后台检测仍会继续。暂时繁忙或网络失败会保留上次成功确认的能力，并标记结果来源。
+
+点击“接入 Codex”，勾选要显示的模型并选择默认模型。未检测、繁忙或不兼容的模型都可勾选，标签只提供参考。系统会写入该服务及所选模型的目录；同一时间只启用一个服务，重启 Codex 后生效。编辑服务后需要重新保存 Codex 接入配置，旧版外部 API 设置和检测历史会自动导入。切换服务会保留旧服务记录，删除服务会清除其配置；继续旧对话可能仍依赖原服务。
 
 ```toml
-model = "gpt-5.4"
+model = "gpt-6-luna"
 model_provider = "openai"
 openai_base_url = "http://127.0.0.1:8787/codex/v1"
 ```
 
 这里继续使用 Codex 原生 `openai` provider 标识，只替换 `openai_base_url`，因此本地历史记录仍会留在同一个 Codex 历史视图里。
 
-如果想让 Codex 显示独立的 `AI Zero Token` provider，就在设置里切换到对应模式。那会写入 `[model_providers.ai-zero-token]`，而不是 `openai_base_url`。
+如果想让 Codex 显示独立的 `AI Zero Token` provider，就在“服务概览 → 本机 Codex 接入 → 高级设置”切换模式。那会写入 `[model_providers.ai-zero-token]`，而不是 `openai_base_url`。
 
-当 Codex 请求里包含 `image_generation` 工具时，Plus、Team、Pro 等付费账号继续透传到 Codex Responses 图片工具；如果在设置里开启“Free 账号生图”，Free 账号会改走 ChatGPT 网页图片链路，并包装成 Codex Responses SSE 返回。这个分流解决的是上游服务差异：Free 账号可以有 ChatGPT 图片额度，但不一定拥有 Codex `image_generation` tool。
+当 Codex 请求里包含 `image_generation` 工具时，Plus、Team、Pro 等付费账号继续透传到 Codex Responses 图片工具；如果在“对外提供 API → 可用模型”开启“Free 账号生图”，Free 账号会改走 ChatGPT 网页图片链路，并包装成 Codex Responses SSE 返回。这个分流解决的是上游服务差异：Free 账号可以有 ChatGPT 图片额度，但不一定拥有 Codex `image_generation` tool。
 
 ### 文生图
 
@@ -273,7 +281,7 @@ AI_ZERO_TOKEN_HOME=/path/to/home azt start
 
 管理页里的配置会保存在同一个本地状态目录。额度耗尽自动切换会保存为 `autoSwitch.enabled`；开启后，网关会根据最近一次保存的额度快照判断当前 API 账号是否耗尽，并把 API 流量切到下一个仍有额度的账号。`autoSwitch.excludedProfileIds` 里的账号不参与自动轮换，但仍可手动应用。
 
-全局额度刷新并发数可以在管理页设置里调整，默认 `16`。账号很多时可以调高；遇到上游限流或失败增多时建议调低。
+全局额度刷新并发数可以在“对外提供 API → 轮换策略”调整，默认 `3`。账号很多时可以调高；遇到上游限流或失败增多时建议调低。
 
 默认请求体上限是 `128 MiB`，用于让 JSON base64 图片和 Codex 上下文压缩请求在本地场景里更实用；`/codex/v1/responses/compact` 专用路由会至少放宽到 `256 MiB`。可以用下面的环境变量覆盖：
 
@@ -283,7 +291,7 @@ AZT_BODY_LIMIT_MB=256 azt start
 
 ## 生图额度
 
-ChatGPT Images 的可用性和额度由上游账号决定。Plus、Team、Pro 等付费账号走 Codex Responses 的 `image_generation` tool。Free 账号只有在设置里开启“Free 账号生图”时才走 ChatGPT 网页图片链路；关闭时继续走原先 Codex 图片工具链路。Free 账号限制比付费账号更严格，官方没有公开固定张数；如果网页链路也耗尽额度，网关会展示上游真实返回。
+ChatGPT Images 的可用性和额度由上游账号决定。Plus、Team、Pro 等付费账号走 Codex Responses 的 `image_generation` tool。Free 账号只有在“对外提供 API → 可用模型”开启“Free 账号生图”时才走 ChatGPT 网页图片链路；关闭时继续走原先 Codex 图片工具链路。Free 账号限制比付费账号更严格，官方没有公开固定张数；如果网页链路也耗尽额度，网关会展示上游真实返回。
 
 付费账号图片请求内部使用 `gpt-5.4-mini` 作为编排模型，并把请求里的图片模型（例如 `gpt-image-2`）传给 `image_generation` tool；开启“Free 账号生图”后，Free 账号会把同样的请求转换为 ChatGPT 网页图片任务。
 

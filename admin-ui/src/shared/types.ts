@@ -207,6 +207,7 @@ export type UsageResetResult = {
 };
 
 export type AdminConfig = {
+  gatewayAccess?: { enabled: boolean; invalid?: boolean };
   status: GatewayStatus;
   settings: GatewaySettings;
   models: ModelInfo[];

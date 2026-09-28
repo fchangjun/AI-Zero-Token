@@ -10,6 +10,7 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
+import { configureLocalGatewayForCodex, gatewayKeyMatches, getGatewayAccessStatus, isLocalGatewayUrl, KEYED_GATEWAY_PROVIDER_ID, readGatewayAccess, updateGatewayAccess } from "../core/services/gateway-access-service.js";
 import type { ChatResult, OAuthProfile, ProfileSummary } from "../core/types.js";
 import { isTransientHttpError, requestText } from "../core/providers/http-client.js";
 import { streamOpenAICodex } from "../core/providers/openai-codex/chat.js";
@@ -314,7 +315,7 @@ const codexProviderConfigSchema = z.object({
   catalogModels: z.array(z.object({
     id: z.string().min(1).max(256),
     displayName: z.string().min(1).max(256).optional(),
-    contextWindow: z.number().int().min(8_192).max(4_000_000).optional(),
+    contextWindow: z.number().int().min(1).max(4_000_000).optional(),
     reasoningEfforts: z.array(z.enum(["minimal", "low", "medium", "high", "xhigh"])).max(5).optional(),
     inputModalities: z.array(z.enum(["text", "image"])).min(1).max(2).optional(),
   })).max(200).optional(),
@@ -326,6 +327,27 @@ const codexProviderInspectSchema = z.object({
   baseUrl: z.string().min(1).max(2048),
   providerId: z.string().min(1).max(128).optional(),
   bearerToken: z.string().max(16_384).optional(),
+});
+
+const externalProviderParamsSchema = z.object({
+  id: z.string().min(1).max(128),
+});
+
+const externalProviderDraftSchema = z.object({
+  name: z.string().min(1).max(120),
+  baseUrl: z.string().min(1).max(2048),
+  apiToken: z.string().max(16_384).optional(),
+  modelSource: z.enum(["auto", "manual"]).optional(),
+  manualModelIds: z.array(z.string().trim().min(1).max(256)).max(10_000).optional(),
+});
+
+const externalProviderInspectModelsSchema = z.object({
+  modelIds: z.array(z.string().trim().min(1).max(256)).min(1).max(10_000).optional(),
+});
+
+const externalProviderActivateSchema = z.object({
+  modelIds: z.array(z.string().trim().min(1).max(256)).min(1).max(10_000),
+  defaultModelId: z.string().trim().min(1).max(256),
 });
 
 const diagnosticRequestParamsSchema = z.object({
@@ -2132,7 +2154,26 @@ function buildDiagnosticResponse(params: {
   rawSse: string;
   includeProtocol: boolean;
   partial?: boolean;
+  jsonResponse?: Record<string, unknown>;
 }): Record<string, unknown> {
+  if (params.jsonResponse) {
+    return {
+      capturedAt: params.capturedAt ?? Date.now(),
+      statusCode: params.statusCode,
+      upstreamRequestId: params.upstreamRequestId,
+      upstreamEndpoint: params.upstreamEndpoint,
+      headers: params.headers ? compactHeaders(params.headers) : undefined,
+      format: "json",
+      stream: params.stream,
+      compact: {
+        rawBytes: params.stream.bytes,
+        finalResponse: compactResponseObject(params.jsonResponse),
+        outputItems: Array.isArray(params.jsonResponse.output) ? params.jsonResponse.output.map(compactOutputItem) : [],
+        usage: params.stream.tokenUsage,
+      },
+      ...(params.includeProtocol ? { protocol: { response: params.jsonResponse } } : {}),
+    };
+  }
   const events = parseSseDiagnosticEvents(params.rawSse);
   return {
     capturedAt: params.capturedAt ?? Date.now(),
@@ -2196,7 +2237,41 @@ export function createApp(params?: {
     },
   );
   const ctx = createGatewayContext();
+  app.addHook("onRequest", (request, reply, done) => {
+    // The callback is only continued for authorized requests, including in Bun's HTTP adapter.
+    void (async () => {
+      let pathname: string;
+      try {
+        // Fastify matches percent-encoded unreserved characters after decoding them.
+        // Apply the security boundary to the same canonical path so encoded route
+        // names cannot bypass management locality or API-key enforcement.
+        pathname = decodeURIComponent(new URL(request.raw.url ?? "/", "http://localhost").pathname);
+      } catch {
+        reply.code(400).send({ error: { type: "invalid_request", message: "请求 URL 编码无效。" } });
+        return;
+      }
+      const apiRequest = /^\/(?:codex\/)?v1(?:\/|$)/.test(pathname);
+      const managementRequest = pathname.startsWith("/_gateway/");
+      if (!apiRequest && !managementRequest) { done(); return; }
+      if (managementRequest) {
+        if (!isLocalProviderInspectionRequest(request)) {
+          reply.code(403).send({ error: { type: "local_access_required", message: "请从本机管理页操作。API 访问密钥仅用于模型调用。" } });
+          return;
+        }
+      }
+      if (apiRequest) {
+        const access = await readGatewayAccess();
+        if (request.method !== "OPTIONS" && access.apiKey && !gatewayKeyMatches(access.apiKey, request.headers.authorization)) {
+          reply.header("WWW-Authenticate", "Bearer").code(401).send({ error: { type: "authentication_error", message: "请提供有效的 API 访问密钥。", code: "invalid_api_key" } });
+          return;
+        }
+      }
+      done();
+    })().catch(done);
+  });
   const gatewayRequestLogs: GatewayRequestLog[] = [];
+  const pendingUsageWrites = new Set<Promise<void>>();
+  app.addHook("onClose", async () => { await Promise.allSettled([...pendingUsageWrites]); });
   const codexResponseProfileBindings = new Map<string, { profileId: string; accountId: string; seenAt: number }>();
   let pendingOAuthLogin: { id: string; session: OpenAICodexLoginSession; createdAt: number } | null = null;
 
@@ -2274,9 +2349,11 @@ export function createApp(params?: {
       imageRoute: log.usage?.imageRoute ?? "none",
       errorType: log.usage?.errorType ?? extractUsageErrorType(log.details, entry.statusCode),
     };
-    ctx.usageService.record(usageEvent).catch((error) => {
+    const pendingWrite = ctx.usageService.record(usageEvent).catch((error) => {
       console.warn("[gateway:usage] 统计写入失败", error);
     });
+    pendingUsageWrites.add(pendingWrite);
+    void pendingWrite.finally(() => pendingUsageWrites.delete(pendingWrite));
   }
 
   void app.register(cors, {
@@ -2363,6 +2440,7 @@ export function createApp(params?: {
     return {
       status,
       settings,
+      gatewayAccess: await getGatewayAccessStatus().then((access) => ({ enabled: access.enabled || Boolean(access.invalid), invalid: access.invalid })),
       models,
       modelCatalog,
       versionStatus,
@@ -2499,11 +2577,27 @@ export function createApp(params?: {
 
   app.get("/_gateway/admin/config", async (request) => buildAdminConfig(request));
 
+  app.get("/_gateway/admin/api-access", async (_request, reply) => {
+    const access = await getGatewayAccessStatus();
+    reply.header("Cache-Control", "no-store");
+    return access;
+  });
+
+  app.post("/_gateway/admin/api-access", async (request, reply) => {
+    const parsed = z.object({ action: z.enum(["enable", "rotate", "disable"]) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: { type: "validation_error", message: "请选择启用、更换或关闭访问密钥。" } });
+    const server = await ctx.configService.getServerConfig();
+    const result = await updateGatewayAccess(parsed.data.action, request.raw.socket.localPort || server.port);
+    reply.header("Cache-Control", "no-store");
+    return { ...result, config: await buildAdminConfig(request) };
+  });
+
   app.get("/_gateway/admin/share", async (request) => {
     const status = await ctx.authService.getStatus();
     const protocol = request.protocol === "https" ? "https" : "http";
     const port = request.raw.socket.localPort || status.serverPort;
-    const serverHost = status.serverHost || "0.0.0.0";
+    const listeningAddress = app.server.address();
+    const serverHost = listeningAddress && typeof listeningAddress === "object" ? listeningAddress.address : status.serverHost || "0.0.0.0";
     const lanReachable = serverHost === "0.0.0.0" || serverHost === "::" || !isLoopbackHost(serverHost);
     const addresses = getLanIpv4Addresses().map((item) => createShareAddress(protocol, item.address, port, item.label));
     const requestHost = request.headers.host?.replace(/:\d+$/u, "");
@@ -2799,12 +2893,17 @@ export function createApp(params?: {
 
     const origin = resolveOrigin(request);
     const baseUrl = parsed.data.baseUrl ?? `${origin}/codex/v1`;
+    const server = await ctx.configService.getServerConfig();
+    const nativeGateway = parsed.data.kind !== "openai_compatible";
+    const localGateway = nativeGateway && isLocalGatewayUrl(baseUrl, request.raw.socket.localPort || server.port);
+    const bearerToken = parsed.data.bearerToken;
+    const providerId = nativeGateway && bearerToken ? KEYED_GATEWAY_PROVIDER_ID : parsed.data.providerId;
     return {
-      codexProvider: await ctx.authService.applyGatewayToCodexProvider({
+      codexProvider: localGateway ? await configureLocalGatewayForCodex({ baseUrl, providerId: parsed.data.providerId, model: parsed.data.model }) : await ctx.authService.applyGatewayToCodexProvider({
         baseUrl,
-        providerId: parsed.data.providerId,
+        providerId,
         kind: parsed.data.kind,
-        bearerToken: parsed.data.bearerToken,
+        bearerToken,
         model: parsed.data.model,
         catalogModels: parsed.data.catalogModels,
         inspectionId: parsed.data.inspectionId,
@@ -2814,6 +2913,115 @@ export function createApp(params?: {
   });
 
   app.get("/_gateway/admin/codex/inspection-history", async () => ({ data: await ctx.authService.listCodexProviderInspectionHistory() }));
+
+  app.get("/_gateway/admin/providers", async () => ctx.externalProviderService.list());
+
+  app.post("/_gateway/admin/providers", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) {
+      reply.code(403);
+      return { error: { type: "local_access_required", message: "API 服务只能从本机管理页添加。" } };
+    }
+    const parsed = externalProviderDraftSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: { type: "validation_error", message: parsed.error.issues[0]?.message ?? "请求体格式错误" } };
+    }
+    return { provider: await ctx.externalProviderService.create(parsed.data) };
+  });
+
+  app.get("/_gateway/admin/providers/:id", async (request, reply) => {
+    const parsed = externalProviderParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: { type: "validation_error", message: "API 服务 ID 格式错误" } };
+    }
+    const provider = await ctx.externalProviderService.get(parsed.data.id);
+    if (!provider) {
+      reply.code(404);
+      return { error: { type: "not_found", message: "没有找到这个 API 服务。" } };
+    }
+    return { provider };
+  });
+
+  app.put("/_gateway/admin/providers/:id", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) {
+      reply.code(403);
+      return { error: { type: "local_access_required", message: "API 服务只能从本机管理页修改。" } };
+    }
+    const paramsParsed = externalProviderParamsSchema.safeParse(request.params);
+    const bodyParsed = externalProviderDraftSchema.safeParse(request.body ?? {});
+    if (!paramsParsed.success || !bodyParsed.success) {
+      reply.code(400);
+      return { error: { type: "validation_error", message: bodyParsed.success ? "API 服务 ID 格式错误" : bodyParsed.error.issues[0]?.message ?? "请求体格式错误" } };
+    }
+    return { provider: await ctx.externalProviderService.update(paramsParsed.data.id, bodyParsed.data) };
+  });
+
+  app.delete("/_gateway/admin/providers/:id", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) {
+      reply.code(403);
+      return { error: { type: "local_access_required", message: "API 服务只能从本机管理页删除。" } };
+    }
+    const parsed = externalProviderParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: { type: "validation_error", message: "API 服务 ID 格式错误" } };
+    }
+    const deleted = await ctx.externalProviderService.delete(parsed.data.id);
+    if (!deleted) {
+      reply.code(404);
+      return { error: { type: "not_found", message: "没有找到这个 API 服务。" } };
+    }
+    return { deleted: true };
+  });
+
+  app.post("/_gateway/admin/providers/:id/sync", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) {
+      reply.code(403);
+      return { error: { type: "local_access_required", message: "模型同步只能从本机管理页执行。" } };
+    }
+    const parsed = externalProviderParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: { type: "validation_error", message: "API 服务 ID 格式错误" } };
+    }
+    return { provider: await ctx.externalProviderService.sync(parsed.data.id) };
+  });
+
+  app.post("/_gateway/admin/providers/:id/inspect", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) {
+      reply.code(403);
+      return { error: { type: "local_access_required", message: "能力检测只能从本机管理页执行。" } };
+    }
+    const paramsParsed = externalProviderParamsSchema.safeParse(request.params);
+    const bodyParsed = externalProviderInspectModelsSchema.safeParse(request.body ?? {});
+    if (!paramsParsed.success || !bodyParsed.success) {
+      reply.code(400);
+      return { error: { type: "validation_error", message: bodyParsed.success ? "API 服务 ID 格式错误" : bodyParsed.error.issues[0]?.message ?? "请求体格式错误" } };
+    }
+    reply.code(202);
+    return { provider: await ctx.externalProviderService.startInspection(paramsParsed.data.id, bodyParsed.data.modelIds) };
+  });
+
+  app.post("/_gateway/admin/providers/:id/activate", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) {
+      reply.code(403);
+      return { error: { type: "local_access_required", message: "Codex 接入只能从本机管理页执行。" } };
+    }
+    const paramsParsed = externalProviderParamsSchema.safeParse(request.params);
+    const bodyParsed = externalProviderActivateSchema.safeParse(request.body ?? {});
+    if (!paramsParsed.success || !bodyParsed.success) {
+      reply.code(400);
+      return { error: { type: "validation_error", message: bodyParsed.success ? "API 服务 ID 格式错误" : bodyParsed.error.issues[0]?.message ?? "请求体格式错误" } };
+    }
+    return {
+      provider: await ctx.externalProviderService.activate(
+        paramsParsed.data.id,
+        bodyParsed.data.modelIds,
+        bodyParsed.data.defaultModelId,
+      ),
+    };
+  });
 
   app.post("/_gateway/admin/codex/remove-provider", async (request, reply) => {
     const parsed = codexProviderConfigSchema.safeParse(request.body ?? {});
@@ -3358,6 +3566,11 @@ export function createApp(params?: {
       reply.raw.flushHeaders?.();
 
       const streamStats = createSseStreamStats();
+      if (upstream.compactResponse) {
+        streamStats.completed = true;
+        streamStats.terminalEvent = "response.compaction";
+        streamStats.tokenUsage = extractTokenUsage(upstream.compactResponse);
+      }
       const writeChunkToClient = async (chunk: unknown): Promise<void> => {
         if (clientDisconnected || reply.raw.destroyed || reply.raw.writableEnded) {
           clientDisconnected = true;
@@ -3383,7 +3596,11 @@ export function createApp(params?: {
         if (diagnosticCapture?.id) {
           diagnosticRawSse += sseChunkToText(chunk);
         }
-        trackSseChunk(streamStats, chunk);
+        if (upstream.compactResponse) {
+          streamStats.bytes += Buffer.byteLength(chunk);
+        } else {
+          trackSseChunk(streamStats, chunk);
+        }
         await writeChunkToClient(chunk);
       }
       streamFinished = true;
@@ -3427,6 +3644,7 @@ export function createApp(params?: {
             },
             rawSse: diagnosticRawSse,
             includeProtocol: captureResponseProtocolEnabled,
+            jsonResponse: upstream.compactResponse,
           }),
         });
         if (diagnosticUpdate) {
@@ -3452,7 +3670,7 @@ export function createApp(params?: {
           userAgent: request.headers["user-agent"],
           request: requestSummary,
           response: {
-            stream: true,
+            stream: !upstream.compactResponse,
             passthrough: true,
             upstreamEndpoint,
             retryCount,

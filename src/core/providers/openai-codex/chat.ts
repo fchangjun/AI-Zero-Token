@@ -4,9 +4,10 @@ import { DEFAULT_CODEX_MODEL } from "../../models/openai-codex-models.js";
 import { requestStream, requestText } from "../http-client.js";
 
 const CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
-const CODEX_RESPONSES_COMPACT_URL = `${CODEX_RESPONSES_URL}/compact`;
 const COMPAT_PROMPT_CACHE_KEY_PREFIX = "compat_cc_";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const RETAINED_COMPACT_TOKEN_BUDGET = 64_000;
+const APPROX_COMPACT_BYTES_PER_TOKEN = 4;
 
 type CodexResponsesEndpoint = "responses" | "responses/compact";
 
@@ -35,6 +36,7 @@ export type CodexStreamResponse = {
   quota?: CodexQuotaSnapshot;
   requestId: string;
   status: number;
+  compactResponse?: Record<string, unknown>;
 };
 
 const URL_KEY_RE = /(url|uri|href|download|preview|thumbnail|image|asset|file)/i;
@@ -433,6 +435,78 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
+function approximateCompactTokens(value: unknown): number {
+  return Math.max(1, Math.ceil(Buffer.byteLength(JSON.stringify(value) ?? "", "utf8") / APPROX_COMPACT_BYTES_PER_TOKEN));
+}
+
+function fitCompactText(
+  text: string,
+  maxTokens: number,
+  build: (text: string) => Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  let low = 0;
+  let high = text.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (approximateCompactTokens(build(text.slice(0, middle))) <= maxTokens) low = middle;
+    else high = middle - 1;
+  }
+  return low > 0 ? build(text.slice(0, low)) : undefined;
+}
+
+function truncateCompactUserMessage(item: unknown, maxTokens: number): Record<string, unknown> | undefined {
+  const message = asRecord(item);
+  if (!message || message.role !== "user" || (message.type !== undefined && message.type !== "message")) return undefined;
+  if (approximateCompactTokens(message) <= maxTokens) return message;
+
+  if (typeof message.content === "string") {
+    return fitCompactText(message.content, maxTokens, (text) => ({ ...message, content: text }));
+  }
+
+  const content = Array.isArray(message.content) ? message.content : [message.content];
+  const retained: unknown[] = [];
+  for (const part of content) {
+    const record = asRecord(part);
+    if (!record || typeof record.text !== "string" || !["input_text", "output_text"].includes(String(record.type))) continue;
+    const candidate = { ...message, content: [...retained, record] };
+    if (approximateCompactTokens(candidate) <= maxTokens) {
+      retained.push(record);
+      continue;
+    }
+    const fitted = fitCompactText(record.text, maxTokens, (text) => ({
+      ...message,
+      content: [...retained, { ...record, text }],
+    }));
+    if (fitted) return fitted;
+    break;
+  }
+  return retained.length ? { ...message, content: retained } : undefined;
+}
+
+function retainCompactUserInput(input: unknown[]): unknown[] {
+  const userMessages = input.filter((item) => {
+    const record = asRecord(item);
+    return record?.role === "user" && (!record.type || record.type === "message");
+  });
+  let remaining = RETAINED_COMPACT_TOKEN_BUDGET;
+  const retainedReversed: unknown[] = [];
+  for (let index = userMessages.length - 1; index >= 0 && remaining > 0; index -= 1) {
+    const item = userMessages[index];
+    const tokens = approximateCompactTokens(item);
+    if (tokens <= remaining) {
+      retainedReversed.push(item);
+      remaining -= tokens;
+      continue;
+    }
+    const boundary = truncateCompactUserMessage(item, remaining);
+    if (boundary) retainedReversed.push(boundary);
+    // Do not backfill older messages after crossing the newest-history budget.
+    remaining = 0;
+  }
+  retainedReversed.reverse();
+  return retainedReversed;
+}
+
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
@@ -525,7 +599,7 @@ function extractToolCalls(responsePayload: unknown, events: CodexSseEvent[]): Ch
 
 function parseSseEvents(body: string): CodexSseEvent[] {
   const events: CodexSseEvent[] = [];
-  for (const chunk of body.split("\n\n")) {
+  for (const chunk of body.replace(/\r\n/g, "\n").split("\n\n")) {
     const lines = chunk
       .split("\n")
       .filter((line) => line.startsWith("data:"))
@@ -770,9 +844,23 @@ export async function streamOpenAICodex(params: {
     throw new Error("Codex 请求缺少 input。请提供 prompt 或在实验请求体里显式传入 input。");
   }
 
+  const compact = params.endpoint === "responses/compact";
+  const compactInput = typeof requestBody.input === "string"
+    ? [{ role: "user", content: [{ type: "input_text", text: requestBody.input }] }]
+    : Array.isArray(requestBody.input) ? requestBody.input : [];
+  if (compact) {
+    // Current Codex uses Responses with a compaction_trigger; the former OAuth
+    // /responses/compact endpoint no longer exists. Keep the public JSON contract.
+    requestBody.input = asRecord(compactInput.at(-1))?.type === "compaction_trigger"
+      ? compactInput : [...compactInput, { type: "compaction_trigger" }];
+    requestBody.instructions ??= "";
+    requestBody.stream = true;
+    requestBody.store = false;
+  }
+
   const response = await requestStream({
     method: "POST",
-    url: params.endpoint === "responses/compact" ? CODEX_RESPONSES_COMPACT_URL : CODEX_RESPONSES_URL,
+    url: CODEX_RESPONSES_URL,
     headers: buildCodexRequestHeaders(params.profile, requestBody),
     body: JSON.stringify(requestBody),
     signal: params.signal,
@@ -784,6 +872,35 @@ export async function streamOpenAICodex(params: {
   if (response.status < 200 || response.status >= 300) {
     const body = await new Response(response.body).text();
     throw createCodexUpstreamError(response.status, body, response.transport, quota, requestId);
+  }
+
+  if (compact) {
+    const events = parseSseEvents(await new Response(response.body).text());
+    const failed = events.find(event => ["error", "response.failed", "response.incomplete"].includes(event.type ?? ""));
+    const completed = asRecord(events.find(event => event.type === "response.completed")?.response);
+    if (failed || !completed) {
+      const error = failed?.error ?? asRecord(failed?.response)?.error ?? { message: "Codex 压缩响应未正常完成。", code: "compaction_incomplete" };
+      throw createCodexUpstreamError(502, JSON.stringify({ error }), response.transport, quota, requestId);
+    }
+    const doneItems = events.filter(event => event.type === "response.output_item.done").map(event => event.item);
+    const output = doneItems.length ? doneItems : Array.isArray(completed.output) ? completed.output : [];
+    const compactions = output.filter(item => asRecord(item)?.type === "compaction");
+    if (compactions.length !== 1 || typeof asRecord(compactions[0])?.encrypted_content !== "string" || !asRecord(compactions[0])?.encrypted_content) {
+      throw createCodexUpstreamError(502, JSON.stringify({ error: { message: "Codex 未返回完整的上下文压缩结果。", code: "invalid_compaction_output" } }), response.transport, quota, requestId);
+    }
+    const retainedInput = retainCompactUserInput(compactInput);
+    const compactResponse = {
+      id: completed.id,
+      object: "response.compaction",
+      created_at: completed.created_at,
+      output: [...retainedInput, ...compactions],
+      usage: completed.usage,
+    };
+    return {
+      body: new Response(JSON.stringify(compactResponse)).body!,
+      headers: { ...headers, "content-type": "application/json; charset=utf-8" },
+      quota, requestId, status: response.status, compactResponse,
+    };
   }
 
   return {

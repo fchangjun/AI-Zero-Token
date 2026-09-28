@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -28,6 +29,7 @@ export type CodexGatewayProviderStatus = {
   model?: string;
   modelCatalogPath?: string;
   modelProvider?: string;
+  managedByAiZeroToken?: boolean;
   authType?: "none" | "bearer_token" | "env_key";
   envKey?: string;
   catalogModels?: CodexCatalogModelInput[];
@@ -101,6 +103,10 @@ const MANAGED_MODEL_MARKER_PREFIX = "# AI Zero Token managed Codex model ";
 const MANAGED_PROVIDER_MARKER_PREFIX = "# AI Zero Token managed Codex provider state ";
 const MANAGED_CATALOG_MARKER_PREFIX = "# AI Zero Token managed Codex model catalog ";
 const MANAGED_CATALOG_RELATIVE_PATH = path.join("model-catalogs", "ai-zero-token-models.json");
+const CONFIG_MUTATION_LOCK = ".ai-zero-token-config.lock";
+const CONFIG_MUTATION_TRANSITION = "transition.json";
+const CONFIG_MUTATION_LOCK_TIMEOUT_MS = 30_000;
+const CONFIG_MUTATION_LOCK_STALE_MS = 120_000;
 const FALLBACK_CODEX_INSTRUCTIONS = [
   "You are Codex, a coding agent. Work directly in the user's workspace and continue until the requested outcome is genuinely handled.",
   "Use the available tools when useful, preserve unrelated user changes, and communicate important progress and results clearly.",
@@ -933,7 +939,7 @@ function normalizeCodexCatalogModels(
       throw new Error(`Codex 模型 ${id} 的显示名称格式错误。`);
     }
     const contextWindow = candidate.contextWindow;
-    if (typeof contextWindow !== "undefined" && (!Number.isInteger(contextWindow) || contextWindow < 8_192 || contextWindow > 4_000_000)) {
+    if (typeof contextWindow !== "undefined" && (!Number.isInteger(contextWindow) || contextWindow < 1 || contextWindow > 4_000_000)) {
       throw new Error(`Codex 模型 ${id} 的上下文长度格式错误。`);
     }
     const reasoningEfforts = candidate.reasoningEfforts
@@ -949,13 +955,9 @@ function normalizeCodexCatalogModels(
       ...(reasoningEfforts ? { reasoningEfforts } : {}),
       ...(inputModalities?.length ? { inputModalities } : {}),
     };
-    const existingIndex = normalized.findIndex((item) => item.id === id);
-    if (existingIndex >= 0) continue;
+    if (seen.has(id)) continue;
     seen.add(id);
     normalized.push(next);
-    if (normalized.length >= 200) {
-      break;
-    }
   }
 
   if (selectedModel && !normalized.some((candidate) => candidate.id === selectedModel)) {
@@ -1018,7 +1020,7 @@ function buildCodexCatalogEntry(
   return {
     slug: model.id,
     display_name: model.displayName || formatCodexModelDisplayName(model.id),
-    description: "Verified Responses API model configured by AI Zero Token.",
+    description: "User-selected API model configured by AI Zero Token.",
     ...(reasoningEfforts.length > 0 ? { default_reasoning_level: reasoningEfforts.includes("medium") ? "medium" : reasoningEfforts[0] } : {}),
     supported_reasoning_levels: reasoningEfforts.map((effort) => ({ effort, description: reasoningDescriptions[effort] })),
     shell_type: "unified_exec",
@@ -1107,6 +1109,7 @@ async function readManagedCodexModelCatalog(catalogPath: string | undefined): Pr
         : [];
       models.push({
         id,
+        ...(typeof item.context_window === "number" && Number.isInteger(item.context_window) && item.context_window > 0 && item.context_window <= 4_000_000 ? { contextWindow: item.context_window } : {}),
         ...(displayName ? { displayName } : {}),
         ...(levels.length ? { reasoningEfforts: levels } : {}),
         ...(inputModalities.length ? { inputModalities } : {}),
@@ -1122,7 +1125,7 @@ export async function getCodexGatewayProviderStatus(params?: {
   providerId?: string;
 }): Promise<CodexGatewayProviderStatus> {
   const requestedProviderId = params?.providerId?.trim();
-  const providerId = requestedProviderId || DEFAULT_CODEX_PROVIDER_ID;
+  let providerId = requestedProviderId || DEFAULT_CODEX_PROVIDER_ID;
   validateProviderId(providerId);
 
   const configPath = getCodexConfigPath();
@@ -1139,6 +1142,8 @@ export async function getCodexGatewayProviderStatus(params?: {
   }
 
   const modelProvider = parseRootModelProvider(raw);
+  const managedProvider = parseManagedProviderMarker(raw)?.managed;
+  if (!requestedProviderId && (modelProvider?.startsWith("azt_external_") || modelProvider === "azt_gateway")) providerId = modelProvider;
   const model = parseRootModel(raw);
   const modelCatalogPath = parseRootModelCatalogPath(raw);
   if (providerId === OPENAI_CODEX_PROVIDER_ID) {
@@ -1153,6 +1158,7 @@ export async function getCodexGatewayProviderStatus(params?: {
         model,
         modelCatalogPath,
         modelProvider,
+        managedByAiZeroToken: managedProvider === OPENAI_CODEX_PROVIDER_ID,
         authType: "none",
       };
     }
@@ -1169,6 +1175,7 @@ export async function getCodexGatewayProviderStatus(params?: {
         model,
         modelCatalogPath,
         modelProvider,
+        managedByAiZeroToken: managedProvider === LEGACY_CODEX_PROVIDER_ID,
         authType: legacyTable.authType,
         envKey: legacyTable.envKey,
         ...(catalogModels.length ? { catalogModels } : {}),
@@ -1187,6 +1194,7 @@ export async function getCodexGatewayProviderStatus(params?: {
     model,
     modelCatalogPath,
     modelProvider,
+    managedByAiZeroToken: managedProvider === providerId,
     authType: table.authType,
     envKey: table.envKey,
     ...(catalogModels.length ? { catalogModels } : {}),
@@ -1278,14 +1286,193 @@ export async function applyProfileToCodexAuth(profile: OAuthProfile): Promise<Ap
   };
 }
 
-export async function applyGatewayToCodexProviderConfig(params: {
+type ApplyProviderConfigParams = {
   baseUrl: string;
   providerId?: string;
   kind?: "codex_gateway" | "openai_compatible";
   bearerToken?: string;
   model?: string;
   catalogModels?: CodexCatalogModelInput[];
-}): Promise<ApplyCodexGatewayProviderResult> {
+  replaceCatalogModels?: boolean;
+  displayName?: string;
+};
+
+let configMutationQueue: Promise<unknown> = Promise.resolve();
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
+  }
+}
+
+async function reclaimStaleConfigLock(lockPath: string): Promise<boolean> {
+  let info: { token?: unknown; pid?: unknown; host?: unknown; createdAt?: unknown } | undefined;
+  let ownerRaw = "";
+  let age = 0;
+  try {
+    const [raw, stats] = await Promise.all([
+      fs.readFile(path.join(lockPath, "owner.json"), "utf8").catch(() => ""),
+      fs.stat(lockPath),
+    ]);
+    ownerRaw = raw;
+    age = Date.now() - stats.mtimeMs;
+    if (raw) {
+      try { info = JSON.parse(raw) as typeof info; } catch { info = undefined; }
+    }
+  } catch (error) {
+    if (isMissingFileError(error)) return true;
+    return false;
+  }
+
+  const sameHost = info?.host === os.hostname();
+  const pid = typeof info?.pid === "number" && Number.isSafeInteger(info.pid) && info.pid > 0 ? info.pid : undefined;
+  const ownerAlive = sameHost && pid !== undefined && processIsAlive(pid);
+  const ownerDead = sameHost && pid !== undefined && !ownerAlive;
+  if (ownerAlive) return false;
+  if (!ownerDead && age < CONFIG_MUTATION_LOCK_STALE_MS) return false;
+
+  // Reclaim and release both take the same transition claim. Without it, two
+  // reclaimers can inspect an old lock, then one can accidentally rename the
+  // fresh replacement acquired after the other reclaimer removes it.
+  const transitionPath = path.join(lockPath, CONFIG_MUTATION_TRANSITION);
+  const transitionToken = randomUUID();
+  try {
+    await fs.writeFile(transitionPath, JSON.stringify({ token: transitionToken, ownerToken: info?.token, pid: process.pid, host: os.hostname() }), { flag: "wx", mode: 0o600 });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return true;
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+    throw error;
+  }
+
+  const stalePath = `${lockPath}.stale-${randomUUID()}`;
+  try {
+    const currentOwnerRaw = await fs.readFile(path.join(lockPath, "owner.json"), "utf8").catch((error) => {
+      if (isMissingFileError(error)) return "";
+      throw error;
+    });
+    if (currentOwnerRaw !== ownerRaw) {
+      const transition = JSON.parse(await fs.readFile(transitionPath, "utf8")) as { token?: unknown };
+      if (transition.token === transitionToken) await fs.rm(transitionPath, { force: true });
+      return false;
+    }
+    await fs.rename(lockPath, stalePath);
+    await fs.rm(stalePath, { recursive: true, force: true });
+    return true;
+  } catch (error) {
+    if (isMissingFileError(error)) return true;
+    try {
+      const transition = JSON.parse(await fs.readFile(transitionPath, "utf8")) as { token?: unknown };
+      if (transition.token === transitionToken) await fs.rm(transitionPath, { force: true });
+    } catch { /* The directory may already have been removed. */ }
+    return false;
+  }
+}
+
+async function acquireConfigMutationLock(): Promise<() => Promise<void>> {
+  const root = getCodexHomeDir();
+  const lockPath = path.join(root, CONFIG_MUTATION_LOCK);
+  const token = randomUUID();
+  const startedAt = Date.now();
+  await fs.mkdir(root, { recursive: true });
+
+  while (true) {
+    try {
+      await fs.mkdir(lockPath, { mode: 0o700 });
+      try {
+        await fs.writeFile(path.join(lockPath, "owner.json"), JSON.stringify({ token, pid: process.pid, host: os.hostname(), createdAt: Date.now() }), { mode: 0o600 });
+      } catch (error) {
+        await fs.rm(lockPath, { recursive: true, force: true });
+        throw error;
+      }
+      return async () => {
+        const transitionToken = randomUUID();
+        const transitionPath = path.join(lockPath, CONFIG_MUTATION_TRANSITION);
+        const startedAt = Date.now();
+        while (true) {
+          try {
+            await fs.writeFile(transitionPath, JSON.stringify({ token: transitionToken, ownerToken: token, pid: process.pid, host: os.hostname() }), { flag: "wx", mode: 0o600 });
+            const owner = JSON.parse(await fs.readFile(path.join(lockPath, "owner.json"), "utf8")) as { token?: unknown };
+            if (owner.token === token) await fs.rm(lockPath, { recursive: true, force: true });
+            else {
+              const transition = JSON.parse(await fs.readFile(transitionPath, "utf8")) as { token?: unknown };
+              if (transition.token === transitionToken) await fs.rm(transitionPath, { force: true });
+            }
+            return;
+          } catch (error) {
+            if (isMissingFileError(error)) return;
+            if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+            if (Date.now() - startedAt >= CONFIG_MUTATION_LOCK_TIMEOUT_MS) {
+              throw new Error("Codex 配置锁正在由另一个进程回收，请稍后重试。");
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          }
+        }
+      };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      if (await reclaimStaleConfigLock(lockPath)) continue;
+      if (Date.now() - startedAt >= CONFIG_MUTATION_LOCK_TIMEOUT_MS) {
+        throw new Error("Codex 配置正在被另一个 AI Zero Token 进程修改，请稍后重试。");
+      }
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+  }
+}
+
+/** Keep the managed catalog and config together, including the caller's final store commit. */
+export function withCodexProviderConfigTransaction<T>(operation: (config: {
+  apply: typeof applyProviderConfig;
+  remove: typeof removeProviderConfig;
+}) => Promise<T>): Promise<T> {
+  const run = configMutationQueue.then(async () => {
+    const releaseLock = await acquireConfigMutationLock();
+    try {
+      const paths = [getCodexConfigPath(), path.join(getCodexHomeDir(), MANAGED_CATALOG_RELATIVE_PATH)];
+      const snapshots = await Promise.all(paths.map(async (target) => {
+        try {
+          return { target, content: await fs.readFile(target), mode: (await fs.stat(target)).mode & 0o777 };
+        } catch (error) {
+          if (!isMissingFileError(error)) throw error;
+          return { target, content: undefined, mode: 0o600 };
+        }
+      }));
+      try {
+        return await operation({ apply: applyProviderConfig, remove: removeProviderConfig });
+      } catch (error) {
+        const restores = await Promise.allSettled(snapshots.map(async ({ target, content, mode }) => {
+          if (content === undefined) {
+            await fs.rm(target, { force: true });
+            return;
+          }
+          const temporary = `${target}.restore-${randomUUID()}`;
+          try {
+            await fs.writeFile(temporary, content, { mode });
+            await fs.rename(temporary, target);
+          } finally {
+            await fs.rm(temporary, { force: true });
+          }
+        }));
+        if (restores.some((result) => result.status === "rejected")) {
+          throw new Error("Codex 配置写入失败，且恢复未完成。请检查目录权限并使用配置备份恢复。", { cause: error });
+        }
+        throw error;
+      }
+    } finally {
+      await releaseLock();
+    }
+  });
+  configMutationQueue = run.catch(() => undefined);
+  return run;
+}
+
+export function applyGatewayToCodexProviderConfig(params: ApplyProviderConfigParams): Promise<ApplyCodexGatewayProviderResult> {
+  return withCodexProviderConfigTransaction(({ apply }) => apply(params));
+}
+
+async function applyProviderConfig(params: ApplyProviderConfigParams): Promise<ApplyCodexGatewayProviderResult> {
   const providerId = params.providerId?.trim() || DEFAULT_CODEX_PROVIDER_ID;
   validateProviderId(providerId);
   const kind = params.kind ?? "codex_gateway";
@@ -1322,21 +1509,23 @@ export async function applyGatewayToCodexProviderConfig(params: {
   }
 
   const existingProvider = parseGatewayProviderTable(raw, providerId);
-  const reusableStoredToken = kind === "openai_compatible" && urlsHaveSameProviderBase(existingProvider.baseUrl, baseUrl)
+  const reusableStoredToken = (kind === "openai_compatible" || providerId === "azt_gateway") && urlsHaveSameProviderBase(existingProvider.baseUrl, baseUrl)
     ? existingProvider.bearerToken
     : undefined;
-  const bearerToken = params.bearerToken?.trim() || reusableStoredToken;
+  const bearerToken = params.bearerToken !== undefined ? params.bearerToken.trim() || undefined : reusableStoredToken;
   if (kind === "openai_compatible" && !bearerToken) {
     throw new Error("请填写外部 API Token。");
   }
 
-  const existingCatalogModels = kind === "openai_compatible" && urlsHaveSameProviderBase(existingProvider.baseUrl, baseUrl)
+  const existingCatalogModels = kind === "openai_compatible" && !params.replaceCatalogModels && urlsHaveSameProviderBase(existingProvider.baseUrl, baseUrl)
     ? await readManagedCodexModelCatalog(parseRootModelCatalogPath(raw))
     : [];
   const incomingCatalogModels = params.catalogModels ?? [];
   const incomingIds = new Set(incomingCatalogModels.map((item) => item.id.trim()));
   const catalogModels = kind === "openai_compatible"
-    ? normalizeCodexCatalogModels([...incomingCatalogModels, ...existingCatalogModels.filter((item) => !incomingIds.has(item.id))], model)
+    ? normalizeCodexCatalogModels(params.replaceCatalogModels
+      ? incomingCatalogModels
+      : [...incomingCatalogModels, ...existingCatalogModels.filter((item) => !incomingIds.has(item.id))], model)
     : [];
   const catalogWrite = catalogModels.length > 0
     ? await writeManagedCodexModelCatalog(catalogModels, model)
@@ -1344,13 +1533,11 @@ export async function applyGatewayToCodexProviderConfig(params: {
 
   const providerOptions = kind === "openai_compatible"
     ? {
-        displayName: "External API",
+        displayName: params.displayName?.trim() || "External API",
         bearerToken,
         model,
       }
-    : model
-      ? { model }
-      : undefined;
+    : { model, bearerToken };
   const providerConfigured = useOpenAIProvider
     ? applyOpenAIGatewayConfig(raw, baseUrl, model)
     : applyGatewayProviderConfig(raw, providerId, baseUrl, providerOptions);
@@ -1403,6 +1590,13 @@ export async function getReusableCodexProviderBearerToken(params: {
 }
 
 export async function removeGatewayFromCodexProviderConfig(params?: {
+  providerId?: string;
+  purgeProviderDefinition?: boolean;
+}): Promise<RemoveCodexGatewayProviderResult> {
+  return withCodexProviderConfigTransaction(({ remove }) => remove(params));
+}
+
+async function removeProviderConfig(params?: {
   providerId?: string;
   purgeProviderDefinition?: boolean;
 }): Promise<RemoveCodexGatewayProviderResult> {

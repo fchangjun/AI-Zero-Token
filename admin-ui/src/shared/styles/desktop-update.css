@@ -1,0 +1,25 @@
+.desktop-update-card {
+  margin-bottom: 20px;
+  padding: 14px 18px;
+  border: 1px solid var(--border, rgba(128, 128, 128, .2));
+  border-radius: 14px;
+  background: var(--surface, rgba(128, 128, 128, .04));
+}
+.desktop-update-card.has-update { border-color: rgba(52, 160, 125, .5); }
+.desktop-update-row, .desktop-update-summary, .desktop-update-buttons, .desktop-update-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.desktop-update-row { justify-content: space-between; flex-wrap: wrap; }
+.desktop-update-summary { flex-wrap: wrap; font-size: 14px; }
+.desktop-update-version, .desktop-update-hint { opacity: .7; font-size: 13px; }
+.desktop-update-buttons { flex-wrap: wrap; }
+.desktop-update-warning { color: #b66a19; font-size: 13px; line-height: 1.6; margin: 12px 0 0; }
+.desktop-update-warning a { color: inherit; text-decoration: underline; }
+.desktop-update-hint { margin: 12px 0 0; line-height: 1.6; }
+.desktop-update-progress { margin-top: 12px; font-size: 13px; }
+.desktop-update-progress progress { flex: 1; min-width: 0; height: 8px; accent-color: #279b79; }
+.desktop-update-notes { margin-top: 12px; font-size: 13px; }
+.desktop-update-notes summary { cursor: pointer; opacity: .75; }
+.desktop-update-notes pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow-y: auto; font: inherit; line-height: 1.6; }

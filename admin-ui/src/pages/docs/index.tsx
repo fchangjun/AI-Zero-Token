@@ -54,7 +54,7 @@ export function DocsPage({
   const [activeTab, setActiveTab] = useState<DocsTab>("quick-start");
   const t = useT();
   const baseUrl = config?.baseUrl || "http://127.0.0.1:8787/v1";
-  const apiKey = "local";
+  const apiKey = config?.gatewayAccess?.enabled ? "YOUR_GATEWAY_API_KEY" : "local";
   const startCommand = "azt start";
   const sourceLines = skillMarkdown.split(/\r?\n/).length;
 
@@ -77,10 +77,10 @@ export function DocsPage({
 
   const quickStartSnippet = `baseURL = "${baseUrl}"\napiKey = "${apiKey}"`;
   const openAIExample = `import OpenAI from "openai";\n\nconst client = new OpenAI({\n  apiKey: "${apiKey}",\n  baseURL: "${baseUrl}",\n});`;
-  const curlExample = `curl ${baseUrl}/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${config?.settings.defaultModel || "gpt-5.4"}",\n    "messages": [{ "role": "user", "content": "Reply with OK only." }]\n  }'`;
-  const openClawSettings = `Provider: OpenAI compatible\nBase URL: ${baseUrl}\nAPI Key: ${apiKey}\nModel: ${config?.settings.defaultModel || "gpt-5.4"}\nChat endpoint: /chat/completions\nStreaming: enabled\nTools / function calling: enabled`;
-  const openClawToolExample = `curl ${baseUrl}/chat/completions \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${config?.settings.defaultModel || "gpt-5.4"}",\n    "stream": true,\n    "messages": [{ "role": "user", "content": "Call the weather tool for Shanghai." }],\n    "tools": [{\n      "type": "function",\n      "function": {\n        "name": "get_weather",\n        "description": "Get weather for a city.",\n        "parameters": {\n          "type": "object",\n          "properties": { "city": { "type": "string" } },\n          "required": ["city"]\n        }\n      }\n    }],\n    "tool_choice": "auto"\n  }'`;
-  const responsesExample = `curl ${baseUrl}/responses \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${config?.settings.defaultModel || "gpt-5.4"}",\n    "input": "Reply with OK only."\n  }'`;
+  const curlExample = `curl ${baseUrl}/chat/completions \\\n  -H "Authorization: Bearer ${apiKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${config?.status.defaultModel || "gpt-5.4"}",\n    "messages": [{ "role": "user", "content": "Reply with OK only." }]\n  }'`;
+  const openClawSettings = `Provider: OpenAI compatible\nBase URL: ${baseUrl}\nAPI Key: ${apiKey}\nModel: ${config?.status.defaultModel || "gpt-5.4"}\nChat endpoint: /chat/completions\nStreaming: enabled\nTools / function calling: enabled`;
+  const openClawToolExample = `curl ${baseUrl}/chat/completions \\\n  -H "Authorization: Bearer ${apiKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${config?.status.defaultModel || "gpt-5.4"}",\n    "stream": true,\n    "messages": [{ "role": "user", "content": "Call the weather tool for Shanghai." }],\n    "tools": [{\n      "type": "function",\n      "function": {\n        "name": "get_weather",\n        "description": "Get weather for a city.",\n        "parameters": {\n          "type": "object",\n          "properties": { "city": { "type": "string" } },\n          "required": ["city"]\n        }\n      }\n    }],\n    "tool_choice": "auto"\n  }'`;
+  const responsesExample = `curl ${baseUrl}/responses \\\n  -H "Authorization: Bearer ${apiKey}" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "model": "${config?.status.defaultModel || "gpt-5.4"}",\n    "input": "Reply with OK only."\n  }'`;
 
   async function copyDoc() {
     const ok = await copyText(skillMarkdown);
@@ -119,6 +119,7 @@ export function DocsPage({
         <div className="docs-summary-item">
           <span>{t("docs.apiKeyLabel")}</span>
           <strong>{apiKey}</strong>
+          {config?.gatewayAccess?.enabled && <a href="#providers/gateway/overview">{t("docs.gatewayKeyHint")}</a>}
         </div>
         <div className="docs-summary-item">
           <span>{t("docs.startCommandLabel")}</span>
@@ -185,10 +186,10 @@ export function DocsPage({
                     <strong>{baseUrl}</strong>
                     <Copy size={14} />
                   </button>
-                  <button className="docs-mini-copy" type="button" onClick={() => void copyText(apiKey).then((ok) => setStatus(ok ? t("docs.copyApiKeyDone") : t("docs.copyApiKeyFailed")))}>
+                  <button className="docs-mini-copy" type="button" onClick={() => config?.gatewayAccess?.enabled ? window.location.assign("#providers/gateway/overview") : void copyText(apiKey).then((ok) => setStatus(ok ? t("docs.copyApiKeyDone") : t("docs.copyApiKeyFailed")))}>
                     <span>{t("docs.apiKeyLabel")}</span>
-                    <strong>{apiKey}</strong>
-                    <Copy size={14} />
+                    <strong>{config?.gatewayAccess?.enabled ? t("docs.manageGatewayKey") : apiKey}</strong>
+                    {config?.gatewayAccess?.enabled ? <ArrowRight size={14} /> : <Copy size={14} />}
                   </button>
                 </div>
                 <pre className="docs-code-sample">

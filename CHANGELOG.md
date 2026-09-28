@@ -1,5 +1,21 @@
 # Changelog
 
+## 2.0.16 - 2026-09-28
+
+- Added macOS in-app updates with background release checks, native notifications, download progress/cancellation, and install-and-restart. Official DMGs are verified against GitHub SHA-256 metadata, architecture, version, and the existing ad-hoc signing policy. A detached installer retains the previous app until the new gateway and UI confirm startup, and restores it if replacement or startup fails.
+- Split Models & Services into Connect External API and Serve API. Moved account management, model settings, service port, and rotation policies into the account-pool service; old account links redirect to the new page.
+- Added optional API access keys with Bearer validation, rotation, private storage, and local-only key management. Local Codex gateway credentials update with key changes; external provider selection and API serving remain independent.
+- Restricted management endpoints to loopback even when model API authentication is disabled, including percent-encoded route variants, preventing remote account export and configuration changes. Serialized local Codex connection setup with key rotation across processes so concurrent updates cannot restore an expired key or take over an unrelated local provider.
+- Fixed a curl streaming race where fast responses could lose their response headers and incorrectly return HTTP 502 in the desktop runtime.
+- Adapted the legacy Codex compact endpoint to the current Responses compaction trigger, preserving opaque encrypted output and returning JSON with token usage. Incomplete or invalid upstream compactions now fail explicitly, and retained user history is bounded to avoid immediate re-compaction.
+- Updated fresh-install fallback models and model-discovery client version; model caches now respect `CODEX_HOME`. Existing model selections remain governed by the live catalog.
+- Fixed desktop shutdown leaving a windowless process after closing the gateway. Quit waits for shutdown, resumes on the next event-loop turn, and blocks window reopening while quitting.
+- Kept pending usage writes until gateway shutdown completes.
+- Added a dedicated Models & Services page for managing multiple external API services, with automatic model discovery or manual model IDs, capability tags, inspection history, and background inspection progress.
+- Separated model discovery, capability checks, and Codex selection. Every discovered model remains selectable regardless of inspection status; Codex uses one service and its exact selected model list at a time. Capability inspection is capped at 20 explicitly selected models per batch so a single action cannot fan out into unbounded billable requests.
+- Preserved successful capabilities during transient failures and imported legacy external-provider settings and inspection history once. Edited credentials take effect in Codex after applying the service again.
+- Made Codex provider and catalog changes transactional, restoring the previous configuration on write failure, and added isolated integration tests and a local acceptance preview.
+
 ## 2.0.15 - 2026-09-22
 
 - Fixed Codex image uploads for compatible external text models by probing a real image input and writing image capability only after that probe succeeds.

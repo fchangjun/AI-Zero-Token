@@ -57,12 +57,12 @@ export function TesterPage(props: {
     const fallback = endpointOrder.find((item) => props.config?.supportedEndpoints.some((endpointItem) => endpointItem.path === item));
     const nextEndpoint = props.config.supportedEndpoints.some((item) => item.path === endpoint) ? endpoint : fallback || "/v1/models";
     setEndpoint(nextEndpoint);
-    setRequestBody(buildExample(nextEndpoint, props.config.settings.defaultModel, t));
+    setRequestBody(buildExample(nextEndpoint, props.config.status.defaultModel, t));
   }, [props.config, t]);
 
   function changeEndpoint(nextEndpoint: string) {
     setEndpoint(nextEndpoint);
-    setRequestBody(buildExample(nextEndpoint, props.config?.settings.defaultModel || "gpt-5.4", t));
+    setRequestBody(buildExample(nextEndpoint, props.config?.status.defaultModel || "", t));
     setPreviewImages([]);
   }
 
@@ -71,7 +71,7 @@ export function TesterPage(props: {
   }
 
   function copyRequest() {
-    copyText(requestBody || buildExample(endpoint, props.config?.settings.defaultModel || "gpt-5.4", t))
+    copyText(requestBody || buildExample(endpoint, props.config?.status.defaultModel || "", t))
       .then((ok) => props.setStatus(ok ? t("tester.copyRequestDone") : t("tester.copyRequestFailed")))
       .catch(() => props.setStatus(t("tester.copyRequestFailed")));
   }
@@ -100,6 +100,10 @@ export function TesterPage(props: {
     try {
       let payload: unknown = null;
       const options: RequestInit = { method: meta.method, headers: {} };
+      if (props.config?.gatewayAccess?.enabled && /^\/(?:codex\/)?v1\//.test(meta.path)) {
+        const access = await fetchJson<{ apiKey: string | null }>("/_gateway/admin/api-access");
+        if (access.apiKey) (options.headers as Record<string, string>).Authorization = `Bearer ${access.apiKey}`;
+      }
       if (meta.method !== "GET") {
         const parseStarted = performance.now();
         payload = requestBody.trim() ? JSON.parse(requestBody) : {};

@@ -20,7 +20,7 @@ AI Zero Token provides a local CLI, web console, and HTTP gateway that expose sa
 - Multi-account management in the web console.
 - Account JSON import/export, including ZIP batch import, selected batch export, and export audit indicators.
 - Apply a saved account to local Codex by backing up and updating `~/.codex/auth.json`.
-- `gpt-image-2` image generation and JSON image editing. Paid plans use the Codex Responses image tool; Free plans can optionally use the ChatGPT web image path from Settings.
+- `gpt-image-2` image generation and JSON image editing. Paid plans use the Codex Responses image tool; Free plans can optionally use the ChatGPT web image path under Serve API → Models.
 - Optional quota-exhaustion auto switch to the next saved API account, including accounts whose quota has not been synced yet, plus configurable quota refresh concurrency.
 - Optional upstream proxy configuration for OAuth, model refresh, and gateway forwarding.
 - Local model discovery from the Codex model cache, with manual network sync from the Codex backend.
@@ -47,7 +47,7 @@ http://127.0.0.1:8787
 http://127.0.0.1:8787/v1
 ```
 
-Use any non-empty API key value when a client requires one. Authentication is handled by the local gateway.
+API access is unauthenticated by default; clients may use `local` as a placeholder. After enabling an access key under Models & Services → Serve API → Overview, all model endpoints require `Authorization: Bearer <access-key>`.
 
 ## Desktop Preview
 
@@ -115,7 +115,7 @@ curl http://127.0.0.1:8787/v1/models
 ```bash
 curl http://127.0.0.1:8787/v1/responses \
   -H "content-type: application/json" \
-  -d '{"model":"gpt-5.4","input":"Reply with OK only."}'
+  -d '{"model":"gpt-6-luna","input":"Reply with OK only."}'
 ```
 
 ### Chat Completions
@@ -124,7 +124,7 @@ curl http://127.0.0.1:8787/v1/responses \
 curl http://127.0.0.1:8787/v1/chat/completions \
   -H "content-type: application/json" \
   -d '{
-    "model": "gpt-5.4",
+    "model": "gpt-6-luna",
     "messages": [
       {
         "role": "user",
@@ -140,7 +140,7 @@ For OpenClaw or other OpenAI-compatible coding clients, configure:
 Provider: OpenAI compatible
 Base URL: http://127.0.0.1:8787/v1
 API Key: local
-Model: gpt-5.4
+Model: gpt-6-luna
 Streaming: enabled
 Tools / function calling: enabled
 ```
@@ -149,23 +149,31 @@ Tools / function calling: enabled
 
 Codex CLI/Desktop can also use the gateway as a custom Responses provider:
 
-Use the management console Settings page and choose the history mode before clicking "接管 Codex 请求". The default `openai` mode keeps Codex history in the native provider view; the `AI Zero Token` mode creates a separate provider/history bucket. "解除接管" restores the previous defaults but retains an inactive compatibility provider so existing conversations remain loadable; continuing an old conversation still contacts its original endpoint. You can also add the provider manually to `~/.codex/config.toml`:
+Models & Services now has two directions: Connect External API and Serve API. Serve API contains the service overview, existing accounts, model catalog, default model, Free-account image setting, and rotation policy. Existing account files are reused, and old `#accounts` links redirect to the account pool.
 
-For a company relay or another OpenAI-compatible API, choose `外部 API`, enter its Base URL and token, then click `自动检测并接管`. The app reads `/models`, verifies each candidate with Responses SSE, a function-call/function-output round trip, and a real image-input request, selects a verified default, and writes every verified model with its actual input modalities to a managed `model_catalog_json` so Codex can show them in its native model picker after restart. Discovery also probes `gpt-image-2`, `gpt-image-2.5-flare`, and `gpt-image-2.5-sunburst` through `/images/generations`, generating three minimal test images and consuming a small amount of real quota. Disconnecting keeps the last Base URL, token, verified catalog, and selected model locally; reconnecting to that exact normalized URL can use the saved result directly without another scan. Tokens and model caches are never reused for a different URL path, origin, or port.
+The overview provides local/LAN client configurations and a local Codex connection. API serving and Codex selection are independent: switching Codex to an external provider or disconnecting it leaves the account-pool API running. Connect another machine's AI Zero Token gateway from Connect External API → Remote AI Zero Token.
 
-Image generation probes are displayed separately from ordinary text-model capabilities: `gpt-image-2` is the mature general-purpose option focused on compatibility and stability; `gpt-image-2.5-flare` is positioned for fast generation and frequent iteration; and `gpt-image-2.5-sunburst` is positioned for detail, lighting, reference fidelity, and precise editing. Overall Images 2.5 improvements follow currently available launch descriptions. Because an official readable Flare/Sunburst comparison is not currently available, the UI explicitly identifies the per-variant positioning as a summary based on the model names and observed API behavior rather than presenting it as a verified official claim.
+Access keys are optional, take effect immediately, and are stored with `0600` permissions. When enabled, model endpoints require a Bearer key. Management operations always require loopback access, including when API authentication is disabled. LAN clients can call model APIs. An active local Codex connection is updated to the `azt_gateway` provider when the key changes; restart Codex to load that configuration. External and remote Codex connections remain independent. Other clients must update their keys after rotation.
+
+Without an access key, advanced compatibility settings offer the native `openai` or separate `AI Zero Token` provider. Manual configuration example:
+
+Manage company relays and other OpenAI-compatible APIs on the dedicated Models & Services page (`模型与服务`). Add a service with its name, Base URL, and token to fetch every model returned by `/models`, or enter model IDs manually when discovery is unavailable. Saving a service does not change the current Codex connection.
+
+Run individual or batch capability checks from the service details page. Checks cover streamed Responses, tool calls, tool results, reasoning levels, and image input. They send real requests and consume upstream quota; background checks continue when you leave the page. Temporary network or busy errors preserve previously confirmed capabilities and identify them as earlier results.
+
+Choose `接入 Codex`, select the models to display, and pick a default. Unchecked, busy, and incompatible models remain selectable; tags provide guidance. The app writes the selected service and its exact model catalog, with one active service at a time. Restart Codex to apply the selection. Reapply the connection after editing a service. Legacy external API settings and inspection history are imported automatically. Switching keeps other service records; deleting a service removes its configuration, which existing conversations may still need.
 
 ```toml
-model = "gpt-5.4"
+model = "gpt-6-luna"
 model_provider = "openai"
 openai_base_url = "http://127.0.0.1:8787/codex/v1"
 ```
 
 This keeps Codex on its native `openai` provider id and only replaces `openai_base_url`, so local conversation history remains in the same Codex history view.
 
-If you want Codex to show a separate `AI Zero Token` provider, choose that mode in Settings. It writes a `[model_providers.ai-zero-token]` block instead of `openai_base_url`.
+If you want Codex to show a separate `AI Zero Token` provider, choose that mode under Serve API → Overview → Local Codex → Advanced. It writes a `[model_providers.ai-zero-token]` block instead of `openai_base_url`.
 
-When a Codex request includes the `image_generation` tool, Plus, Team, Pro, and other paid plans keep using the Codex Responses image tool. If `Free account image generation` is enabled in Settings, Free plans use the ChatGPT web image path and receive a synthetic Codex-compatible Responses SSE stream. This handles the upstream service split where a Free account may still have ChatGPT image quota but not the Codex `image_generation` tool.
+When a Codex request includes the `image_generation` tool, Plus, Team, Pro, and other paid plans keep using the Codex Responses image tool. If `Free account image generation` is enabled under Serve API → Models, Free plans use the ChatGPT web image path and receive a synthetic Codex-compatible Responses SSE stream. This handles the upstream service split where a Free account may still have ChatGPT image quota but not the Codex `image_generation` tool.
 
 ### Image Generation
 
@@ -273,7 +281,7 @@ AI_ZERO_TOKEN_HOME=/path/to/home azt start
 
 The web console settings are persisted in the same local state directory. The quota auto-switch option is stored as `autoSwitch.enabled`; when enabled, the gateway uses the latest saved quota snapshot and moves API traffic away from the active account once that snapshot shows a quota window is exhausted. Accounts listed in `autoSwitch.excludedProfileIds` are excluded from automatic rotation and remain available for manual selection.
 
-The global quota refresh concurrency can be configured in the web console settings. The default is `16`; lower it if upstream rate limits increase, or raise it for larger local account pools.
+The global quota refresh concurrency can be configured under Serve API → Rotation. The default is `3`; lower it if upstream rate limits increase, or raise it for larger local account pools.
 
 The default request body limit is `128 MiB`, which is intended to make JSON base64 image references and Codex context-compaction requests practical for local workflows. The dedicated `/codex/v1/responses/compact` route is allowed at least `256 MiB`. You can override the default with:
 
@@ -283,7 +291,7 @@ AZT_BODY_LIMIT_MB=256 azt start
 
 ## Image Limits
 
-ChatGPT Images availability and limits are controlled by the upstream account. Plus, Team, Pro, and other paid plans use the Codex Responses `image_generation` tool. Free accounts only use the ChatGPT web image path when `Free account image generation` is enabled in Settings; otherwise they keep the original Codex image-tool path. Free limits are stricter than paid plans and are not published as fixed public numbers; if the web image path is also exhausted, the gateway surfaces the upstream response.
+ChatGPT Images availability and limits are controlled by the upstream account. Plus, Team, Pro, and other paid plans use the Codex Responses `image_generation` tool. Free accounts only use the ChatGPT web image path when `Free account image generation` is enabled under Serve API → Models; otherwise they keep the original Codex image-tool path. Free limits are stricter than paid plans and are not published as fixed public numbers; if the web image path is also exhausted, the gateway surfaces the upstream response.
 
 Paid-plan image requests use `gpt-5.4-mini` as the internal orchestration model and pass the requested image model, such as `gpt-image-2`, to the `image_generation` tool. Free-plan web image requests convert the same input to a ChatGPT web image task.
 

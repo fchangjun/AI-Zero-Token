@@ -41,6 +41,19 @@ export type ExternalProviderFilteredModel = {
   reason: "non_text_model";
 };
 
+export type ExternalProviderDiscoveredModel = {
+  id: string;
+  displayName?: string;
+  contextWindow?: number;
+};
+
+export type ExternalProviderDiscovery = {
+  baseUrl: string;
+  modelsEndpoint: string;
+  modelsUrl: string;
+  models: ExternalProviderDiscoveredModel[];
+};
+
 export type ExternalProviderInspection = {
   inspectionId?: string;
   providerId: string;
@@ -50,6 +63,7 @@ export type ExternalProviderInspection = {
   responsesEndpoint: string;
   imageGenerationEndpoint?: string;
   tokenSource: "provided" | "stored" | "none";
+  discoveredModels?: ExternalProviderDiscoveredModel[];
   discoveredCount: number;
   modelCount: number;
   candidateCount: number;
@@ -75,11 +89,20 @@ export class ExternalProviderInspectionError extends Error {
   }
 }
 
-type InspectExternalProviderParams = {
+export type InspectExternalProviderParams = {
   baseUrl: string;
   bearerToken?: string;
   providerId: string;
   tokenSource: ExternalProviderInspection["tokenSource"];
+};
+
+export type DiscoverExternalProviderModelsParams = Pick<
+  InspectExternalProviderParams,
+  "baseUrl" | "bearerToken"
+>;
+
+export type InspectExternalProviderModelsParams = InspectExternalProviderParams & {
+  modelIds: readonly string[];
 };
 
 type DiscoveredModel = {
@@ -192,6 +215,44 @@ function modelIdFromItem(value: unknown): string | undefined {
     return undefined;
   }
   return cleanModelId(value.id) ?? cleanModelId(value.model) ?? cleanModelId(value.name);
+}
+
+function cleanDisplayName(value: unknown): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const displayName = value.trim();
+  if (!displayName || displayName.length > 256 || /[\u0000-\u001f\u007f]/.test(displayName)) {
+    return undefined;
+  }
+  return displayName;
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return undefined;
+  }
+  return Math.trunc(value);
+}
+
+function discoveredModelMetadata(model: DiscoveredModel): ExternalProviderDiscoveredModel {
+  const raw = model.raw;
+  if (!raw) {
+    return { id: model.id };
+  }
+  const displayName = cleanDisplayName(raw.display_name)
+    ?? cleanDisplayName(raw.displayName)
+    ?? cleanDisplayName(raw.name);
+  const contextWindow = positiveInteger(raw.context_window)
+    ?? positiveInteger(raw.contextWindow)
+    ?? positiveInteger(raw.max_context_window)
+    ?? positiveInteger(raw.context_length)
+    ?? positiveInteger(raw.max_model_len);
+  return {
+    id: model.id,
+    ...(displayName && displayName !== model.id ? { displayName } : {}),
+    ...(contextWindow && contextWindow <= 4_000_000 ? { contextWindow } : {}),
+  };
 }
 
 function extractModelItems(value: unknown): unknown[] {
@@ -509,6 +570,21 @@ async function discoverModels(
   } finally {
     cleanup();
   }
+}
+
+export async function discoverExternalProviderModels(
+  params: DiscoverExternalProviderModelsParams,
+): Promise<ExternalProviderDiscovery> {
+  const baseUrl = normalizeOpenAICompatibleBaseUrl(params.baseUrl);
+  const bearerToken = params.bearerToken?.trim() || undefined;
+  const modelsEndpoint = endpointUrl(baseUrl, "models");
+  const discovered = await discoverModels(modelsEndpoint, bearerToken);
+  return {
+    baseUrl,
+    modelsEndpoint,
+    modelsUrl: modelsEndpoint,
+    models: discovered.map(discoveredModelMetadata),
+  };
 }
 
 function parseSseDataBlocks(buffer: string): { events: unknown[]; remainder: string } {
@@ -1101,6 +1177,92 @@ function chooseRecommendedModel(models: ExternalProviderModelProbe[]): string | 
     .sort((left, right) => right.score - left.score)[0]?.model.id;
 }
 
+function normalizeRequestedModels(modelIds: readonly string[]): DiscoveredModel[] {
+  const models: DiscoveredModel[] = [];
+  const seen = new Set<string>();
+  for (const value of modelIds) {
+    const id = cleanModelId(value);
+    if (!id) {
+      throw inspectionError("模型 ID 不能为空或包含无效字符。", "invalid_model_id", 400);
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    models.push({ id });
+  }
+  if (models.length === 0) {
+    throw inspectionError("至少需要指定一个待检测模型。", "empty_model_ids", 400);
+  }
+  if (models.length > MAX_MODELS_TO_PROBE) {
+    throw inspectionError(`一次最多检测 ${MAX_MODELS_TO_PROBE} 个模型。`, "too_many_model_ids", 400);
+  }
+  return models;
+}
+
+function buildInspectionResult(params: {
+  providerId: string;
+  baseUrl: string;
+  tokenSource: ExternalProviderInspection["tokenSource"];
+  discovered: ExternalProviderDiscoveredModel[];
+  models: ExternalProviderModelProbe[];
+  filteredModels?: ExternalProviderFilteredModel[];
+  truncatedCount?: number;
+  imageGenerationModels?: ExternalImageGenerationModelProbe[];
+  durationMs: number;
+}): ExternalProviderInspection {
+  const modelsEndpoint = endpointUrl(params.baseUrl, "models");
+  const responsesEndpoint = endpointUrl(params.baseUrl, "responses");
+  const summary = emptySummary();
+  for (const model of params.models) {
+    summary[model.status] += 1;
+  }
+  const models = params.models.map((model) => ({ ...model, message: model.error }));
+  return {
+    providerId: params.providerId,
+    baseUrl: params.baseUrl,
+    modelsEndpoint,
+    modelsUrl: modelsEndpoint,
+    responsesEndpoint,
+    ...(params.imageGenerationModels
+      ? {
+          imageGenerationEndpoint: endpointUrl(params.baseUrl, "images/generations"),
+          imageGenerationModels: params.imageGenerationModels,
+        }
+      : {}),
+    tokenSource: params.tokenSource,
+    discoveredModels: params.discovered,
+    discoveredCount: params.discovered.length,
+    modelCount: params.discovered.length,
+    candidateCount: params.models.length,
+    truncatedCount: params.truncatedCount ?? 0,
+    filteredModels: params.filteredModels ?? [],
+    models,
+    results: models.map((model) => ({ ...model })),
+    summary,
+    recommendedModel: chooseRecommendedModel(params.models),
+    durationMs: params.durationMs,
+  };
+}
+
+export async function inspectExternalProviderModels(
+  params: InspectExternalProviderModelsParams,
+): Promise<ExternalProviderInspection> {
+  const startedAt = performance.now();
+  const baseUrl = normalizeOpenAICompatibleBaseUrl(params.baseUrl);
+  const bearerToken = params.bearerToken?.trim() || undefined;
+  const requested = normalizeRequestedModels(params.modelIds);
+  const responsesEndpoint = endpointUrl(baseUrl, "responses");
+  const models = await mapWithConcurrency(requested, MODEL_PROBE_CONCURRENCY, (model) =>
+    probeModel(responsesEndpoint, model, bearerToken));
+  return buildInspectionResult({
+    providerId: params.providerId,
+    baseUrl,
+    tokenSource: params.tokenSource,
+    discovered: requested.map(discoveredModelMetadata),
+    models,
+    durationMs: roundMs(performance.now() - startedAt),
+  });
+}
+
 export async function inspectExternalProvider(
   params: InspectExternalProviderParams,
 ): Promise<ExternalProviderInspection> {
@@ -1122,29 +1284,15 @@ export async function inspectExternalProvider(
     mapWithConcurrency([...IMAGE_GENERATION_MODEL_IDS], IMAGE_GENERATION_MODEL_IDS.length, (modelId) =>
       probeImageGenerationModel(imageGenerationEndpoint, modelId, bearerToken)),
   ]);
-  const summary = emptySummary();
-  for (const model of models) {
-    summary[model.status] += 1;
-  }
-
-  return {
+  return buildInspectionResult({
     providerId: params.providerId,
     baseUrl,
-    modelsEndpoint,
-    modelsUrl: modelsEndpoint,
-    responsesEndpoint,
-    imageGenerationEndpoint,
     tokenSource: params.tokenSource,
-    discoveredCount: discovered.length,
-    modelCount: discovered.length,
-    candidateCount: candidates.length,
+    discovered: discovered.map(discoveredModelMetadata),
+    models,
     truncatedCount: Math.max(0, allCandidates.length - candidates.length),
     filteredModels,
-    models: models.map((model) => ({ ...model, message: model.error })),
-    results: models.map((model) => ({ ...model, message: model.error })),
     imageGenerationModels,
-    summary,
-    recommendedModel: chooseRecommendedModel(models),
     durationMs: roundMs(performance.now() - startedAt),
-  };
+  });
 }

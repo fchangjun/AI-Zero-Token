@@ -36,6 +36,7 @@ export function useAdminWorkspaceDerived(state: DerivedSource): WorkspaceDerived
       ? t("pageDescriptions.overviewActive", { profile: profileLabel(activeProfile, state.showEmails), plan: getPlanType(activeProfile) })
       : t("pageDescriptions.overviewEmpty"),
     accounts: t("pageDescriptions.accounts"),
+    providers: t("pageDescriptions.providers"),
     usage: t("pageDescriptions.usage"),
     tester: t("pageDescriptions.tester"),
     "image-bed": t("pageDescriptions.image-bed"),

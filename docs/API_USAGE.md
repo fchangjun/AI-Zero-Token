@@ -28,6 +28,8 @@ Most OpenAI-compatible clients still require a non-empty key value. Use a placeh
 local
 ```
 
+Enable an optional access key in **Models & Services → Serve API → Overview**. Once enabled, every `/v1/*` and `/codex/v1/*` model endpoint requires `Authorization: Bearer <access-key>`, including model discovery. Replace `local` in the examples below with this key. Missing or invalid keys return `401`. Rotating a key invalidates the old key immediately; update other clients after rotation. All management endpoints are local-only, even when API authentication is disabled. An API key grants model access only.
+
 ## Vibe Coding Settings
 
 Use these values in an OpenAI-compatible provider setup:
@@ -35,7 +37,7 @@ Use these values in an OpenAI-compatible provider setup:
 ```text
 API Base URL: http://127.0.0.1:8787/v1
 API Key: local
-Text model: gpt-5.4
+Text model: gpt-6-luna
 Image model: gpt-image-2
 ```
 
@@ -49,7 +51,7 @@ Use the OpenAI-compatible provider mode in OpenClaw:
 Provider: OpenAI compatible
 Base URL: http://127.0.0.1:8787/v1
 API Key: local
-Model: gpt-5.4
+Model: gpt-6-luna
 Chat endpoint: /chat/completions
 Streaming: enabled
 Tools / function calling: enabled
@@ -61,28 +63,28 @@ OpenClaw requests are visible in the management console request log when the cli
 
 ## Codex Custom Provider
 
-Codex CLI/Desktop can route model traffic through AI Zero Token by using a custom Responses provider in `~/.codex/config.toml`. The management console Settings page can write this automatically with "接管 Codex 请求" after you choose the history mode first. The default `openai` mode keeps the native Codex history view; the `AI Zero Token` mode creates a separate provider/history bucket.
+Use **Models & Services → Serve API → Overview → Local Codex** to connect Codex to this machine's account pool. Account management, models, default API model, and rotation policies are under Serve API. Use **Connect External API → Remote AI Zero Token** for another machine's gateway, including its access key when enabled.
 
-The Settings page also supports one-click takeover for an external OpenAI-compatible API. Enter the Base URL and bearer token under `外部 API`, then click `自动检测并接管`. The local-only inspection endpoint reads `/models` and marks a model ready only after two streamed Responses requests complete: a forced function call followed by its `function_call_output`. It then sends a 1×1 PNG through `input_image`; only models that complete that request are written with `input_modalities: ["text", "image"]`, while the others remain text-only. The inspection also probes `gpt-image-2`, `gpt-image-2.5-flare`, and `gpt-image-2.5-sunburst` through `/images/generations`, which creates three minimal test images. A verified default is written together with the custom provider, while every verified model is projected into a managed `model_catalog_json` for Codex's native model picker. Disabling takeover restores the previous root `model`, `model_provider`, and model catalog path. The inactive `ai-zero-token` provider definition and its credentials are retained so existing conversations that reference that provider remain loadable; continuing those conversations still sends their context to the original endpoint. The last verified catalog and selected model are also retained, so the exact same normalized Base URL can reconnect without probing again; a different origin, port, or path cannot reuse its token or cache. A separate explicit purge removes the compatibility definition and makes those conversations unavailable until the provider is restored.
+For external OpenAI-compatible providers, add a service under **Connect External API**, discover or manually enter models, optionally inspect capabilities, then choose models to expose in Codex. Discovery, inspection, and activation are separate actions. Every listed model remains selectable; capability statuses are advisory. Only one provider is active in the local Codex configuration, while the account-pool API continues serving other clients.
 
-The management UI keeps those three generation probes in their own section and explains their intended tradeoffs: the mature general-purpose `gpt-image-2`, the speed-oriented `gpt-image-2.5-flare`, and the quality-oriented `gpt-image-2.5-sunburst`. Overall Images 2.5 improvements are based on currently available launch descriptions. Per-variant wording is explicitly qualified as a summary based on model naming and observed API behavior until a readable official per-model comparison is available.
+When the local gateway key is enabled, the app writes a keyed `azt_gateway` provider and keeps the native Codex model catalog. Enabling, rotating, or disabling the key updates an active local gateway connection; restart Codex afterwards. API keys for external services and remote gateways are separate. Without gateway authentication, advanced compatibility settings retain the native `openai` or legacy `ai-zero-token` modes.
 
 Default history-preserving mode:
 
 ```toml
-model = "gpt-5.4"
+model = "gpt-6-luna"
 model_provider = "openai"
 openai_base_url = "http://127.0.0.1:8787/codex/v1"
 ```
 
-Codex sends `POST /codex/v1/responses` with `Accept: text/event-stream`; the gateway forwards that request to the active Codex OAuth account and streams upstream Responses SSE events back to Codex. Newer Codex versions also call `POST /codex/v1/responses/compact` for remote context compaction, and the gateway forwards that compact stream through the same account pool. The regular `/v1/*` routes remain OpenAI-compatible API routes for non-Codex clients.
+Codex sends `POST /codex/v1/responses` with `Accept: text/event-stream`; the gateway forwards that request to the active Codex OAuth account and streams upstream Responses SSE events back to Codex. Current Codex clients perform remote context compaction through this same route using a `compaction_trigger` input item. For older clients, `POST /codex/v1/responses/compact` adapts the request to that protocol and returns a JSON `response.compaction` object. Reuse its complete `output` array in the next request; encrypted compaction items are preserved unchanged. The regular `/v1/*` routes remain OpenAI-compatible API routes for non-Codex clients.
 
-For Codex `image_generation` tool requests, Plus, Team, Pro, and other paid plans use the Codex Responses image tool. If `Free account image generation` is enabled in Settings, Free plans use the ChatGPT web image path and receive a synthetic Codex-compatible Responses SSE stream, because Free accounts may have ChatGPT image quota while the Codex `image_generation` tool is unavailable upstream.
+For Codex `image_generation` tool requests, Plus, Team, Pro, and other paid plans use the Codex Responses image tool. If `Free account image generation` is enabled under Serve API → Models, Free plans use the ChatGPT web image path and receive a synthetic Codex-compatible Responses SSE stream, because Free accounts may have ChatGPT image quota while the Codex `image_generation` tool is unavailable upstream.
 
 Separate AI Zero Token provider mode:
 
 ```toml
-model = "gpt-5.4"
+model = "gpt-6-luna"
 model_provider = "ai-zero-token"
 
 [model_providers.ai-zero-token]
@@ -126,7 +128,7 @@ azt models --refresh
 curl http://127.0.0.1:8787/v1/responses \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.4",
+    "model": "gpt-6-luna",
     "input": "Reply with OK only."
   }'
 ```
@@ -137,7 +139,7 @@ curl http://127.0.0.1:8787/v1/responses \
 curl http://127.0.0.1:8787/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.4",
+    "model": "gpt-6-luna",
     "messages": [
       { "role": "user", "content": "Reply with OK only." }
     ]
@@ -150,7 +152,7 @@ Streaming chat completions:
 curl http://127.0.0.1:8787/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.4",
+    "model": "gpt-6-luna",
     "stream": true,
     "messages": [
       { "role": "user", "content": "Reply with OK only." }
@@ -164,7 +166,7 @@ Tool-call compatible request:
 curl http://127.0.0.1:8787/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gpt-5.4",
+    "model": "gpt-6-luna",
     "messages": [
       { "role": "user", "content": "What is the weather tool argument for Shanghai?" }
     ],
@@ -190,7 +192,7 @@ curl http://127.0.0.1:8787/v1/chat/completions \
 
 ## Images API
 
-Image requests are also routed by account plan. Plus, Team, Pro, and other paid plans use the Codex Responses `image_generation` tool. Free accounts use the ChatGPT web image path only when `Free account image generation` is enabled in Settings; otherwise they keep the original Codex image-tool path.
+Image requests are also routed by account plan. Plus, Team, Pro, and other paid plans use the Codex Responses `image_generation` tool. Free accounts use the ChatGPT web image path only when `Free account image generation` is enabled under Serve API → Models; otherwise they keep the original Codex image-tool path.
 
 ```bash
 curl http://127.0.0.1:8787/v1/images/generations \
@@ -234,7 +236,7 @@ const client = new OpenAI({
 });
 
 const response = await client.chat.completions.create({
-  model: "gpt-5.4",
+  model: "gpt-6-luna",
   messages: [
     { role: "user", content: "Reply with OK only." },
   ],

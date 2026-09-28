@@ -583,6 +583,7 @@ async function runCurlStream(
   let stderr = "";
   let closed = false;
   let exitCode = 0;
+  let headerReadSettled = false;
 
   const abort = () => {
     child.kill("SIGTERM");
@@ -604,7 +605,8 @@ async function runCurlStream(
     closed = true;
     exitCode = code ?? 1;
     init.signal?.removeEventListener("abort", abort);
-    void fs.unlink(headerPath).catch(() => undefined);
+    // A short response can finish before the header polling loop reads the file.
+    if (headerReadSettled) void fs.unlink(headerPath).catch(() => undefined);
     if (exitCode !== 0 && !init.signal?.aborted) {
       body.destroy(createHttpTransportError(
         stderr.trim() || `curl stream 请求失败，退出码 ${exitCode}（requestId=${requestId}）。`,
@@ -639,6 +641,9 @@ async function runCurlStream(
     void fs.unlink(headerPath).catch(() => undefined);
     body.destroy(error instanceof Error ? error : new Error(String(error)));
     throw error;
+  } finally {
+    headerReadSettled = true;
+    if (closed) void fs.unlink(headerPath).catch(() => undefined);
   }
   phases.waitForHeadersMs = performance.now() - startedAt - phases.spawnCurlMs;
   const timing = finalizeTiming(startedAt, phases);

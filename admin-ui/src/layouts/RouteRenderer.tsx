@@ -5,7 +5,7 @@ import { useT } from "@/i18n";
 const LaunchPage = lazy(() => import("@/pages/launch").then((module) => ({ default: module.LaunchPage })));
 const OverviewPage = lazy(() => import("@/pages/overview").then((module) => ({ default: module.OverviewPage })));
 const DocsPage = lazy(() => import("@/pages/docs").then((module) => ({ default: module.DocsPage })));
-const AccountsPage = lazy(() => import("@/pages/accounts").then((module) => ({ default: module.AccountsPage })));
+const ModelServicesPage = lazy(() => import("@/pages/providers/ModelServicesPage").then((module) => ({ default: module.ModelServicesPage })));
 const UsagePage = lazy(() => import("@/pages/usage").then((module) => ({ default: module.UsagePage })));
 const TesterPage = lazy(() => import("@/pages/tester").then((module) => ({ default: module.TesterPage })));
 const ImageBedPage = lazy(() => import("@/pages/image-bed").then((module) => ({ default: module.ImageBedPage })));
@@ -52,21 +52,11 @@ export function RouteRenderer({ workspace }: { workspace: UseAdminWorkspaceResul
     ) : activeRoute === "docs" ? (
       <DocsPage config={config} onRoute={workspace.goRoute} copyBaseUrl={workspace.copyBaseUrl} setStatus={workspace.setStatus} />
     ) : activeRoute === "accounts" ? (
-      <AccountsPage
-        config={config}
-        showEmails={workspace.showEmails}
-        busy={busy}
-        activeProfile={workspace.activeProfile}
-        codexAccountId={workspace.codexAccountId}
-        setAccountModalOpen={workspace.setAccountModalOpen}
-        setBusy={workspace.setBusy}
-        setConfig={workspace.setConfig}
-        setStatus={workspace.setStatus}
-        refreshConfig={refreshConfig}
-        logout={workspace.logout}
-      />
+      <ModelServicesPage workspace={workspace} />
     ) : activeRoute === "usage" ? (
       <UsagePage config={config} setStatus={workspace.setStatus} />
+    ) : activeRoute === "providers" ? (
+      <ModelServicesPage workspace={workspace} />
     ) : activeRoute === "tester" ? (
       <TesterPage
         config={config}

@@ -673,6 +673,8 @@ export class AuthService {
       reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
       inputModalities?: Array<"text" | "image">;
     }>;
+    replaceCatalogModels?: boolean;
+    displayName?: string;
     inspectionId?: string;
   }): Promise<ApplyCodexGatewayProviderResult> {
     if (params.inspectionId) {

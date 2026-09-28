@@ -2,6 +2,41 @@
 
 This project ships the desktop app with Electron. The desktop main process starts the existing local Fastify gateway and loads the React management UI served by that gateway.
 
+## macOS in-app updates (2.0.16+)
+
+Installed macOS builds check the official GitHub latest stable release 10 seconds after startup and every 30 minutes while running, including when the main window is closed. The tray menu and management UI also provide **Check for updates**. A new version produces an in-app panel and a native notification (subject to macOS notification settings). Checks do not download or install automatically.
+
+The user chooses **Download update**, sees progress, and can cancel during download. After verification and staging, **Install and restart** quits the app through the existing gateway shutdown flow. Accounts, settings, Codex configuration and usage data remain in their existing user directories. The gateway is briefly unavailable during installation/restart.
+
+### Packaging and release requirements
+
+- Continue to use `npm run dist:mac`. Keep ad-hoc signing and `hardenedRuntime: false` in both existing signing locations.
+- The updater uses the existing `AI Zero Token-{version}-mac-{arm64|x64}.dmg` assets. GitHub's dotted filename normalization is supported. No mac ZIP, blockmap, or `latest-mac.yml` is required for this custom updater.
+- Publish a stable `vX.Y.Z` GitHub Release with both DMGs fully uploaded. The matching asset must expose `state: uploaded`, a positive size, and `digest: sha256:…` through the GitHub Releases API. The uploader does not need an additional manifest. If GitHub has not supplied a digest, the UI offers manual installation and refuses automatic installation.
+- The updater only accepts downloads from this repository over HTTPS and redirects to GitHub's release CDN. It compares the downloaded byte count and SHA-256 with the authenticated HTTPS API response, then verifies the DMG, bundle ID, version, executable name, CPU architecture, and ad-hoc signatures of the app/Electron Framework. Hardened Runtime must remain disabled. Trust rests on the official GitHub repository and HTTPS; this is not Apple publisher authentication.
+- The build copies `preload.cjs` and `mac-update-helper.sh` into `dist/desktop/`; both must be present in `app.asar`. The main process copies the helper into a private update directory before executing it, so replacement cannot remove the running helper.
+- Existing users must manually install a version containing this updater once. Development runs (`electron .`), the browser console, npm/CLI, and Windows retain their existing manual update flow.
+
+### Installation and recovery
+
+The app must run from a writable local installation directory. Running from a DMG, App Translocation, or a symlink is refused; the UI links to manual installation. The updater does not elevate privileges, remove quarantine attributes, or change Gatekeeper settings. macOS may still require user action for an unnotarized app; if startup cannot complete, the previous app is restored.
+
+The new app is staged in a private `.azt-update-*` sibling directory on the same filesystem. The helper waits up to five minutes for the old process to exit, renames the old app to `previous.app`, moves the verified new app into place, and launches its executable. Only the expected app version/path, launched with the transaction's random token, can acknowledge startup. The React workspace sends that acknowledgement after the gateway configuration has loaded. The helper allows 90 seconds for this acknowledgement. A failed launch or missing acknowledgement terminates that specific new process and restores/relaunches the previous app. Once acknowledged, the helper deletes the old bundle and downloaded DMG.
+
+Update logs and `pending.json` are in the Electron user-data directory's `updates/` folder (normally `~/Library/Application Support/AI Zero Token/updates/`). Each `job-*` contains `install.log`, `relaunch.log`, and a `result` file. The pending record identifies the exact installation/staging paths. If interrupted recovery leaves `previous.app`, automatic installation stops and preserves it. After all related app/update processes have exited, restore that bundle to the recorded target path, or install the official DMG manually; remove the pending record only after recovery. Power loss during the two renames can require this manual recovery. Data-format migrations are outside the bundle rollback and must remain backward-compatible.
+
+### Verification
+
+```bash
+npm run typecheck
+npm run build
+bun test --preload ./tests/setup.ts ./tests/desktop-updater.test.ts ./tests/mac-update-helper.test.ts ./tests/version-service.test.ts
+npm run pack:dry
+npm run dist:mac
+```
+
+The helper tests operate only on disposable app fixtures. They cover waiting for the original process, successful acknowledgement, crashes, missing/incorrect acknowledgement, replacement failure, rollback/relaunch, literal special characters in paths, and preservation of unrelated paths. Release acceptance should additionally perform an installed-version-to-newer-release update on both Apple Silicon and Intel with SIP enabled, including a Gatekeeper-restricted installation and a non-writable target.
+
 ## 2.0.14 Release Notes
 
 Version `2.0.14` fixes macOS startup on standard SIP-enabled Macs:

@@ -131,12 +131,12 @@ export function useAdminWorkspaceActions(state: WorkspaceState): WorkspaceAction
   }, [state]);
 
   const goRoute = useCallback((route: AppRoute) => {
-    const nextHash = `#${route}`;
+    const nextHash = route === "accounts" ? "#providers/gateway/accounts" : `#${route}`;
     startTransition(() => {
-      state.setActiveRoute(route);
+      state.setActiveRoute(route === "accounts" ? "providers" : route);
     });
     if (window.location.hash !== nextHash) {
-      window.location.hash = route;
+      window.location.hash = nextHash;
     }
   }, [state]);
 

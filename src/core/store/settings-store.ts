@@ -11,7 +11,7 @@ export function createDefaultSettings(): GatewaySettings {
   return {
     version: 1,
     defaultProvider: "openai-codex",
-    defaultModel: "gpt-5.4",
+    defaultModel: "gpt-6-luna",
     networkProxy: {
       enabled: false,
       url: "",
@@ -138,6 +138,20 @@ export async function saveSettings(settings: GatewaySettings): Promise<void> {
   const nextSave = settingsSaveQueue.then(() => writeSettingsAtomic(settings), () => writeSettingsAtomic(settings));
   settingsSaveQueue = nextSave.catch(() => undefined);
   await nextSave;
+}
+
+export function mutateSettings(
+  mutation: (settings: GatewaySettings) => GatewaySettings | Promise<GatewaySettings>,
+): Promise<GatewaySettings> {
+  const run = async () => {
+    const current = await loadSettings();
+    const next = await mutation(current);
+    await writeSettingsAtomic(next);
+    return next;
+  };
+  const nextSave = settingsSaveQueue.then(run, run);
+  settingsSaveQueue = nextSave.then(() => undefined, () => undefined);
+  return nextSave;
 }
 
 export { getSettingsPath };

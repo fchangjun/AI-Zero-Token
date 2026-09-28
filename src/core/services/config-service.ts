@@ -3,9 +3,9 @@ import { getPreferredCodexModel, hasCodexModel } from "../models/openai-codex-mo
 import {
   createDefaultSettings,
   loadSettings,
+  mutateSettings,
   normalizeMilliseconds,
   normalizeQuotaSyncConcurrency,
-  saveSettings,
 } from "../store/settings-store.js";
 
 type NetworkProxyParams = {
@@ -88,37 +88,28 @@ export class ConfigService {
       throw new Error(`当前网关未找到可用模型: ${model}`);
     }
 
-    const settings = await this.getSettings();
-    const next = {
+    return mutateSettings((settings) => ({
       ...settings,
       defaultProvider: provider,
       defaultModel: model,
-    };
-    await saveSettings(next);
-    return next;
+    }));
   }
 
   async setNetworkProxy(params: NetworkProxyParams): Promise<GatewaySettings> {
-    const settings = await this.getSettings();
-    const next = {
+    return mutateSettings((settings) => ({
       ...settings,
       networkProxy: normalizeNetworkProxy(settings, params),
-    };
-    await saveSettings(next);
-    return next;
+    }));
   }
 
   async setAutoSwitch(params: { enabled?: boolean; excludedProfileIds?: string[] }): Promise<GatewaySettings> {
-    const settings = await this.getSettings();
-    const next = {
+    return mutateSettings((settings) => ({
       ...settings,
       autoSwitch: {
         enabled: params.enabled ?? settings.autoSwitch.enabled,
         excludedProfileIds: normalizeProfileIdList(params.excludedProfileIds, settings.autoSwitch.excludedProfileIds),
       },
-    };
-    await saveSettings(next);
-    return next;
+    }));
   }
 
   async setRuntimeConfig(params: {
@@ -129,22 +120,21 @@ export class ConfigService {
     captureRequestContentEnabled?: boolean;
     captureResponseProtocolEnabled?: boolean;
   }): Promise<GatewaySettings> {
-    const settings = await this.getSettings();
-    const captureRequestContentEnabled = params.captureRequestContentEnabled ?? settings.runtime.captureRequestContentEnabled;
-    const next = {
-      ...settings,
-      runtime: {
-        ...settings.runtime,
-        quotaSyncConcurrency: normalizeQuotaSyncConcurrency(params.quotaSyncConcurrency, settings.runtime.quotaSyncConcurrency),
-        codexRequestSerializationEnabled: params.codexRequestSerializationEnabled ?? settings.runtime.codexRequestSerializationEnabled,
-        codexRequestMinDelayMs: normalizeMilliseconds(params.codexRequestMinDelayMs, settings.runtime.codexRequestMinDelayMs, 0, 60_000),
-        codexRequestJitterMs: normalizeMilliseconds(params.codexRequestJitterMs, settings.runtime.codexRequestJitterMs, 0, 60_000),
-        captureRequestContentEnabled,
-        captureResponseProtocolEnabled: captureRequestContentEnabled && (params.captureResponseProtocolEnabled ?? settings.runtime.captureResponseProtocolEnabled),
-      },
-    };
-    await saveSettings(next);
-    return next;
+    return mutateSettings((settings) => {
+      const captureRequestContentEnabled = params.captureRequestContentEnabled ?? settings.runtime.captureRequestContentEnabled;
+      return {
+        ...settings,
+        runtime: {
+          ...settings.runtime,
+          quotaSyncConcurrency: normalizeQuotaSyncConcurrency(params.quotaSyncConcurrency, settings.runtime.quotaSyncConcurrency),
+          codexRequestSerializationEnabled: params.codexRequestSerializationEnabled ?? settings.runtime.codexRequestSerializationEnabled,
+          codexRequestMinDelayMs: normalizeMilliseconds(params.codexRequestMinDelayMs, settings.runtime.codexRequestMinDelayMs, 0, 60_000),
+          codexRequestJitterMs: normalizeMilliseconds(params.codexRequestJitterMs, settings.runtime.codexRequestJitterMs, 0, 60_000),
+          captureRequestContentEnabled,
+          captureResponseProtocolEnabled: captureRequestContentEnabled && (params.captureResponseProtocolEnabled ?? settings.runtime.captureResponseProtocolEnabled),
+        },
+      };
+    });
   }
 
   async getServerConfig(): Promise<{ host: string; port: number }> {
@@ -153,16 +143,13 @@ export class ConfigService {
   }
 
   async setServerConfig(params: { host?: string; port?: number }): Promise<GatewaySettings> {
-    const settings = await this.getSettings();
-    const next = {
+    return mutateSettings((settings) => ({
       ...settings,
       server: {
         host: params.host ?? settings.server.host,
         port: params.port ?? settings.server.port,
       },
-    };
-    await saveSettings(next);
-    return next;
+    }));
   }
 
   async updateSettings(params: {
@@ -180,80 +167,82 @@ export class ConfigService {
     image?: { freeAccountWebGenerationEnabled?: boolean };
     server?: { port: number };
   }): Promise<GatewaySettings> {
-    const settings = await this.getSettings();
-    let next: GatewaySettings = { ...settings };
-
     if (params.defaultModel) {
       if (!(await hasCodexModel(params.defaultModel))) {
         throw new Error(`当前网关未找到可用模型: ${params.defaultModel}`);
       }
-      next = {
-        ...next,
-        defaultProvider: "openai-codex",
-        defaultModel: params.defaultModel,
-      };
     }
 
-    if (params.networkProxy) {
-      next = {
-        ...next,
-        networkProxy: normalizeNetworkProxy(next, params.networkProxy),
-      };
-    }
+    return mutateSettings((settings) => {
+      let next: GatewaySettings = { ...settings };
 
-    if (params.autoSwitch) {
-      next = {
-        ...next,
-        autoSwitch: {
-          enabled: params.autoSwitch.enabled ?? next.autoSwitch.enabled,
-          excludedProfileIds: normalizeProfileIdList(params.autoSwitch.excludedProfileIds, next.autoSwitch.excludedProfileIds),
-        },
-      };
-    }
+      if (params.defaultModel) {
+        next = {
+          ...next,
+          defaultProvider: "openai-codex",
+          defaultModel: params.defaultModel,
+        };
+      }
 
-    if (params.runtime) {
-      const captureRequestContentEnabled = params.runtime.captureRequestContentEnabled ?? next.runtime.captureRequestContentEnabled;
-      next = {
-        ...next,
-        runtime: {
-          ...next.runtime,
-          quotaSyncConcurrency: normalizeQuotaSyncConcurrency(params.runtime.quotaSyncConcurrency, next.runtime.quotaSyncConcurrency),
-          codexRequestSerializationEnabled: params.runtime.codexRequestSerializationEnabled ?? next.runtime.codexRequestSerializationEnabled,
-          codexRequestMinDelayMs: normalizeMilliseconds(params.runtime.codexRequestMinDelayMs, next.runtime.codexRequestMinDelayMs, 0, 60_000),
-          codexRequestJitterMs: normalizeMilliseconds(params.runtime.codexRequestJitterMs, next.runtime.codexRequestJitterMs, 0, 60_000),
-          captureRequestContentEnabled,
-          captureResponseProtocolEnabled: captureRequestContentEnabled && (params.runtime.captureResponseProtocolEnabled ?? next.runtime.captureResponseProtocolEnabled),
-        },
-      };
-    }
+      if (params.networkProxy) {
+        next = {
+          ...next,
+          networkProxy: normalizeNetworkProxy(next, params.networkProxy),
+        };
+      }
 
-    if (params.image) {
-      next = {
-        ...next,
-        image: {
-          ...next.image,
-          freeAccountWebGenerationEnabled: params.image.freeAccountWebGenerationEnabled ?? next.image.freeAccountWebGenerationEnabled,
-        },
-      };
-    }
+      if (params.autoSwitch) {
+        next = {
+          ...next,
+          autoSwitch: {
+            enabled: params.autoSwitch.enabled ?? next.autoSwitch.enabled,
+            excludedProfileIds: normalizeProfileIdList(params.autoSwitch.excludedProfileIds, next.autoSwitch.excludedProfileIds),
+          },
+        };
+      }
 
-    if (params.server) {
-      next = {
-        ...next,
-        server: {
-          ...next.server,
-          port: params.server.port,
-        },
-      };
-    }
+      if (params.runtime) {
+        const captureRequestContentEnabled = params.runtime.captureRequestContentEnabled ?? next.runtime.captureRequestContentEnabled;
+        next = {
+          ...next,
+          runtime: {
+            ...next.runtime,
+            quotaSyncConcurrency: normalizeQuotaSyncConcurrency(params.runtime.quotaSyncConcurrency, next.runtime.quotaSyncConcurrency),
+            codexRequestSerializationEnabled: params.runtime.codexRequestSerializationEnabled ?? next.runtime.codexRequestSerializationEnabled,
+            codexRequestMinDelayMs: normalizeMilliseconds(params.runtime.codexRequestMinDelayMs, next.runtime.codexRequestMinDelayMs, 0, 60_000),
+            codexRequestJitterMs: normalizeMilliseconds(params.runtime.codexRequestJitterMs, next.runtime.codexRequestJitterMs, 0, 60_000),
+            captureRequestContentEnabled,
+            captureResponseProtocolEnabled: captureRequestContentEnabled && (params.runtime.captureResponseProtocolEnabled ?? next.runtime.captureResponseProtocolEnabled),
+          },
+        };
+      }
 
-    await saveSettings(next);
-    return next;
+      if (params.image) {
+        next = {
+          ...next,
+          image: {
+            ...next.image,
+            freeAccountWebGenerationEnabled: params.image.freeAccountWebGenerationEnabled ?? next.image.freeAccountWebGenerationEnabled,
+          },
+        };
+      }
+
+      if (params.server) {
+        next = {
+          ...next,
+          server: {
+            ...next.server,
+            port: params.server.port,
+          },
+        };
+      }
+
+      return next;
+    });
   }
 
   async resetSettings(): Promise<GatewaySettings> {
     const defaults = createDefaultSettings();
-    await saveSettings(defaults);
-    return defaults;
+    return mutateSettings(() => defaults);
   }
 }

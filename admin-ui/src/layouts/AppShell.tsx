@@ -5,14 +5,17 @@ import { RouteRenderer } from "./RouteRenderer";
 import type { UseAdminWorkspaceResult } from "@/hooks/useAdminWorkspace";
 import { useT } from "@/i18n";
 import { Download, Package, Sparkles } from "lucide-react";
+import { useDesktopUpdater } from "@/hooks/useDesktopUpdater";
+import { DesktopUpdatePanel } from "@/shared/components/DesktopUpdatePanel";
 
 const DESKTOP_RELEASES_URL = "https://github.com/fchangjun/AI-Zero-Token/releases";
 const NPM_UPDATE_COMMAND = "npm install -g ai-zero-token";
 
 export function AppShell({ workspace }: { workspace: UseAdminWorkspaceResult }) {
   const t = useT();
+  const updater = useDesktopUpdater(Boolean(workspace.config));
   const versionStatus = workspace.config?.versionStatus;
-  const desktopNeedsUpdate = versionStatus?.desktop.status === "update-available";
+  const desktopNeedsUpdate = !updater.supported && versionStatus?.desktop.status === "update-available";
   const npmNeedsUpdate = versionStatus?.npm.status === "update-available";
   const updateTitle = desktopNeedsUpdate && npmNeedsUpdate
     ? t("update.titleBoth")
@@ -34,6 +37,7 @@ export function AppShell({ workspace }: { workspace: UseAdminWorkspaceResult }) 
       <AppSidebar workspace={workspace} />
 
       <main className="main">
+        <DesktopUpdatePanel updater={updater} />
         {(desktopNeedsUpdate || npmNeedsUpdate) && (
           <section className="update-panel strong-update-panel">
             <div className="update-mark">

@@ -1,4 +1,4 @@
-import { app as electronApp, BrowserWindow, Menu, Tray, clipboard, dialog, nativeImage, screen, shell, type MessageBoxOptions } from "electron";
+import { app as electronApp, BrowserWindow, Menu, Tray, Notification, clipboard, dialog, ipcMain, nativeImage, net, screen, shell, type MessageBoxOptions } from "electron";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type { ProfileSummary } from "../core/types.js";
 import { startServer } from "../server/index.js";
+import { DesktopUpdater } from "./updater.js";
+import { MacUpdateInstaller } from "./mac-update-installer.js";
 
 type GatewayServer = Awaited<ReturnType<typeof startServer>>;
 type AccountPanelTab = "recommended" | "recent" | "all";
@@ -35,11 +37,14 @@ let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let accountPanelWindow: BrowserWindow | null = null;
 let isQuitting = false;
+let gatewayShutdownComplete = false;
 let isRestarting = false;
 let isRestartingCodex = false;
 let isAccountPanelBusy = false;
 let currentGatewayUrl: string | null = null;
 let currentAdminUrl: string | null = null;
+let desktopUpdater: DesktopUpdater | null = null;
+let updateInstaller: MacUpdateInstaller | null = null;
 
 const desktopDir = path.dirname(fileURLToPath(import.meta.url));
 const appIconPath = path.resolve(desktopDir, "../../build/icon.png");
@@ -490,6 +495,7 @@ function ensureTray(): void {
     tray?.popUpContextMenu(Menu.buildFromTemplate([
       { label: "打开快速切换", click: () => void showAccountPanel() },
       { label: "打开控制台", click: () => focusMainWindow() },
+      ...(process.platform === "darwin" ? [{ label: "检查更新", click: () => { focusMainWindow(); void desktopUpdater?.check(); } }] : []),
       { type: "separator" },
       { label: "退出", role: "quit" },
     ]));
@@ -957,6 +963,7 @@ async function createMainWindow(): Promise<void> {
     backgroundColor: "#050816",
     show: false,
     webPreferences: {
+      preload: path.join(desktopDir, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -1002,6 +1009,9 @@ async function createMainWindow(): Promise<void> {
 }
 
 function focusMainWindow(): void {
+  if (isQuitting) {
+    return;
+  }
   if (!mainWindow) {
     void createMainWindow().catch(handleStartupError);
     return;
@@ -1036,6 +1046,50 @@ function handleStartupError(error: unknown): void {
   electronApp.quit();
 }
 
+async function initializeDesktopUpdater(): Promise<void> {
+  if (process.platform !== "darwin") return;
+  updateInstaller = new MacUpdateInstaller({
+    target: path.resolve(process.execPath, "../../.."),
+    root: path.join(electronApp.getPath("userData"), "updates"),
+    arch: process.arch,
+    currentVersion: electronApp.getVersion(),
+  });
+  const recovered = electronApp.isPackaged ? await updateInstaller.recover(process.argv) : false;
+  desktopUpdater = new DesktopUpdater({
+    currentVersion: electronApp.getVersion(), arch: process.arch,
+    supported: electronApp.isPackaged && ["arm64", "x64"].includes(process.arch),
+    recovered, installer: updateInstaller,
+    fetcher: (url, init) => net.fetch(url, init),
+    onState: (state) => {
+      if (mainWindow && !mainWindow.isDestroyed() && isAllowedAppUrl(mainWindow.webContents.getURL())) mainWindow.webContents.send("desktop-update:state", state);
+    },
+    onAvailable: (release) => {
+      if (!Notification.isSupported()) return;
+      const notification = new Notification({ title: "AI Zero Token 有新版本", body: `${release.version} 已发布，点击查看更新。` });
+      notification.on("click", () => focusMainWindow());
+      notification.show();
+    },
+    quit: () => electronApp.quit(),
+  });
+  for (const [channel, action] of Object.entries({
+    state: () => desktopUpdater!.getState(),
+    // React acknowledges only after the local gateway has returned its workspace config.
+    ready: () => updateInstaller!.acknowledgeStartup(), check: () => desktopUpdater!.check(),
+    download: () => desktopUpdater!.download(), cancel: () => desktopUpdater!.cancel(), install: () => desktopUpdater!.install(),
+  })) {
+    ipcMain.handle(`desktop-update:${channel}`, (event) => {
+      // No update endpoint on the HTTP gateway. Only the trusted desktop's top-level UI may invoke the narrow bridge.
+      if (!mainWindow || !currentAdminUrl || event.sender !== mainWindow.webContents || event.senderFrame !== mainWindow.webContents.mainFrame || !isAllowedAppUrl(event.senderFrame.url)) {
+        throw new Error("Untrusted update request");
+      }
+      const senderUrl = new URL(event.senderFrame.url);
+      const adminUrl = new URL(currentAdminUrl);
+      if (senderUrl.origin !== adminUrl.origin || senderUrl.pathname !== adminUrl.pathname) throw new Error("Updates are only available from the desktop management page");
+      return action();
+    });
+  }
+}
+
 const hasSingleInstanceLock = electronApp.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
@@ -1045,7 +1099,8 @@ if (!hasSingleInstanceLock) {
     focusMainWindow();
   });
 
-  electronApp.whenReady().then(() => {
+  electronApp.whenReady().then(async () => {
+    await initializeDesktopUpdater();
     ensureTray();
     if (process.platform === "darwin") {
       electronApp.dock?.setIcon(appIconPath);
@@ -1055,7 +1110,8 @@ if (!hasSingleInstanceLock) {
       applicationVersion: electronApp.getVersion(),
       iconPath: appIconPath,
     });
-    return createMainWindow();
+    await createMainWindow();
+    desktopUpdater?.start();
   }).catch(handleStartupError);
 
   electronApp.on("activate", () => {
@@ -1071,18 +1127,30 @@ if (!hasSingleInstanceLock) {
   });
 
   electronApp.on("before-quit", (event) => {
-    if (!gatewayServer || isQuitting) {
+    if (gatewayShutdownComplete) {
       return;
     }
 
     event.preventDefault();
+    if (isQuitting) {
+      return;
+    }
     isQuitting = true;
-    void closeGatewayServer()
+    void (async () => {
+      await desktopUpdater?.stop().catch((error) => console.error("[desktop:update:stop]", error));
+      await closeGatewayServer();
+    })()
       .catch((error) => {
         console.error("[desktop:gateway:close]", error);
       })
       .finally(() => {
-        electronApp.quit();
+        // Leave the cancelled native quit event before starting another quit.
+        // Re-entering it from a Promise microtask can leave a windowless process.
+        setImmediate(() => {
+          gatewayShutdownComplete = true;
+          tray?.destroy();
+          electronApp.quit();
+        });
       });
   });
 }
