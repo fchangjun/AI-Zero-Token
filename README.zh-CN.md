@@ -8,6 +8,8 @@ AI Zero Token 是一个本地优先的 OpenAI 兼容网关，用于把 ChatGPT/C
 
 > 这是实验性质的本地工具，不是 OpenAI 官方产品，也不建议作为生产级多租户网关使用。
 
+> 第一次使用？请先阅读配有真实界面截图的 [中文使用指南](docs/GETTING_STARTED.zh-CN.md)。
+
 ## 功能
 
 - OpenAI 风格本地接口：
@@ -100,7 +102,7 @@ macOS 桌面端还会常驻菜单栏，提供快速账号面板。可以从菜�
 - 查看今日、本次启动和历史累计的本地用量统计。
 - 独立检查两个发布通道：桌面端只与 GitHub Releases 的同平台桌面构建比较，npm/CLI 只与 npm registry 比较；本地桌面版本更高时明确显示为“开发版 / 未发布”，不会误报更新。
 
-![AI Zero Token 管理页](docs/images/admin-dashboard.jpg)
+![AI Zero Token 桌面客户端](docs/images/getting-started/desktop-overview.jpg)
 
 ## API 使用
 

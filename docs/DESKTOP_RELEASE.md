@@ -189,6 +189,21 @@ At minimum, verify:
 - Desktop routes are registered through `admin-ui/src/routes/routes.tsx`.
 - The app renders cleanly at desktop sizes around `1180px x 760px` and above.
 
+## User guide maintenance
+
+The first-use documentation is [GETTING_STARTED.zh-CN.md](GETTING_STARTED.zh-CN.md), and its screenshots live under `docs/images/getting-started/`.
+
+Before every release, review the guide against the built UI and complete this checklist:
+
+- [ ] New or removed user-facing features are reflected in the guide; do not document planned or unverified behavior.
+- [ ] Renamed buttons, navigation paths, settings and endpoint examples match the current build.
+- [ ] Screenshots affected by a major layout or workflow change have been recaptured from the running project.
+- [ ] Screenshots use an isolated test state or the owner's approved masked desktop state, and contain no full email addresses, API keys, tokens, account credentials, private request content or unrelated local files.
+- [ ] Installation filenames and version-dependent instructions still match the GitHub Release artifacts.
+- [ ] Every local Markdown link and image reference in the guide resolves.
+
+Static screenshots are the default. Add or replace an animation only when a multi-step interaction is materially clearer in motion; if that flow changes, update the animation in the same release.
+
 ## Signing
 
 Unsigned builds are suitable for internal testing only. Public commercial distribution should use platform signing:
