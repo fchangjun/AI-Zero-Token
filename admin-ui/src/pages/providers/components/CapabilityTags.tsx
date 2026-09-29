@@ -59,7 +59,11 @@ export function CapabilityTags({ model, compact = false }: { model: ProviderMode
     }
     if (capabilities?.reasoningEfforts?.length) {
       const efforts = capabilities.reasoningEfforts;
-      tags.push(capabilityTag(`推理 ${efforts.length} 档 ✓`, tone, efforts.join(", ")));
+      tags.push(
+        <span className={`provider-capability-tag is-${tone} is-reasoning`} key="reasoning">
+          推理强度 {efforts.length} 档：{efforts.join(" / ")}
+        </span>,
+      );
     }
     if (typeof capabilities?.imageInput === "boolean") {
       tags.push(capabilityTag(capabilities.imageInput ? "图片输入 ✓" : "图片输入 ×", capabilities.imageInput ? tone : "danger"));

@@ -142,6 +142,7 @@ describe("account-pool API service", () => {
     expect(await readFile(getCodexConfigPath(), "utf8")).toBe(before);
     expect((await service.list()).activeProviderId).toBe(provider.id);
     expect((await app.inject({ url: "/v1/models", headers: { authorization: `Bearer ${apiKey}` } })).statusCode).toBe(200);
+    await service.deactivate(provider.id);
     await applyGatewayToCodexProviderConfig({ baseUrl: "http://192.168.1.20:8787/codex/v1", providerId: "azt_gateway", kind: "codex_gateway", bearerToken: "remote-key" });
     const remote = await readFile(getCodexConfigPath(), "utf8");
     expect((await access("rotate")).codexUpdated).toBe(false);
@@ -294,6 +295,44 @@ describe("account-pool API service", () => {
       expect(upstream).toHaveBeenCalledTimes(1);
       expect(nonStreaming).toHaveBeenCalledTimes(2);
     } finally { upstream.mockRestore(); nonStreaming.mockRestore(); }
+  });
+
+  test("Chat Completions preserves none and max reasoning efforts for streaming and JSON requests", async () => {
+    const forwardedEfforts: string[] = [];
+    const upstream = spyOn(httpClient, "requestText").mockImplementation(async init => {
+      forwardedEfforts.push(JSON.parse(init.body!).reasoning.effort);
+      const events = [
+        { type: "response.output_text.delta", delta: "OK" },
+        { type: "response.completed", response: { id: "resp_effort", status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "OK" }] }] } },
+      ];
+      return { status: 200, transport: "fetch", requestId: "effort-fixture", headers: { "content-type": "text/event-stream" }, body: events.map(event => `data: ${JSON.stringify(event)}\n\n`).join("") };
+    });
+    try {
+      for (const reasoning_effort of ["none", "max"]) {
+        for (const stream of [false, true]) {
+          const response = await app.inject({ method: "POST", url: "/v1/chat/completions", payload: { model: "gpt-6-astra", messages: [{ role: "user", content: "hello" }], reasoning_effort, stream } });
+          expect(response.statusCode).toBe(200);
+          expect(response.body).toContain("OK");
+          expect(response.headers["content-type"]).toContain(stream ? "text/event-stream" : "application/json");
+        }
+      }
+      const invalid = await app.inject({ method: "POST", url: "/v1/chat/completions", payload: { model: "gpt-6-astra", messages: [{ role: "user", content: "hello" }], reasoning_effort: "unknown" } });
+      expect(invalid.statusCode).toBe(400);
+      expect(forwardedEfforts).toEqual(["none", "none", "max", "max"]);
+    } finally { upstream.mockRestore(); }
+  });
+
+  test("Codex provider configuration retains every declared reasoning level", async () => {
+    const reasoningEfforts = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+    const response = await app.inject({ method: "POST", url: "/_gateway/admin/codex/configure-provider", payload: {
+      baseUrl: "https://gateway.example.test/v1", providerId: "effort-test", kind: "openai_compatible", bearerToken: "fixture-token", model: "gpt-6-astra",
+      catalogModels: [{ id: "gpt-6-astra", reasoningEfforts }],
+    } });
+    expect(response.statusCode).toBe(200);
+    const status = await getCodexGatewayProviderStatus();
+    expect(status.catalogModels).toEqual([expect.objectContaining({ id: "gpt-6-astra", reasoningEfforts })]);
+    const catalog = JSON.parse(await readFile(status.modelCatalogPath!, "utf8"));
+    expect(catalog.models[0].supported_reasoning_levels).toEqual(reasoningEfforts.map(effort => ({ effort, description: expect.any(String) })));
   });
 
   test("legacy compact uses the current Codex trigger and returns opaque JSON output with usage", async () => {

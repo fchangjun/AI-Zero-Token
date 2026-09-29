@@ -6,9 +6,17 @@ This project ships the desktop app with Electron. The desktop main process start
 
 Installed macOS builds check the official GitHub latest stable release 10 seconds after startup and every 30 minutes while running, including when the main window is closed. The tray menu and management UI also provide **Check for updates**. A new version produces an in-app panel and a native notification (subject to macOS notification settings). Checks do not download or install automatically.
 
-The user chooses **Download update**, sees progress, and can cancel during download. After verification and staging, **Install and restart** quits the app through the existing gateway shutdown flow. Accounts, settings, Codex configuration and usage data remain in their existing user directories. The gateway is briefly unavailable during installation/restart.
+Returning to the management window also checks when the last attempt was at least five minutes ago. Each new version sends one availability notification per app session. The in-app notice stays visible while browsing the console, even if system notifications are disabled. Clicking either notice opens an update dialog with the current/new versions, publication date, download size, and formatted release notes from the GitHub Release body. Notification clicks also open these details after recreating a closed window; the tray's **Check for updates** opens the same dialog.
+
+**Update now** starts the download. The dialog shows download, verification, and restart stages; users can cancel a download or close the dialog to keep working. When preparation finishes in the background, another notification opens the ready-to-install dialog. **Restart to finish updating** explicitly starts installation. Missing release notes have a fallback link, and installation constraints provide a manual download action. Repeated background checks preserve a known update during temporary network failures and leave installation errors visible for recovery.
+
+When no update is available, the entry lives quietly in the sidebar. **Later** dismisses the notice for that version during this app session; the sidebar still opens the update, and a newer version or completed download brings the notice back. Native desktop builds show the desktop update channel without additional npm update prompts.
+
+**Restart to finish updating** quits the app through the existing gateway shutdown flow. Accounts, settings, Codex configuration and usage data remain in their existing user directories. The gateway is briefly unavailable during installation/restart.
 
 ### Packaging and release requirements
+
+Write user-facing release highlights and fixes in the GitHub Release body; these are the in-app upgrade notes. Prefer short headings and bullet points, and explain any required user action. Do not replace the notes with only a compare link or an asset list.
 
 - Continue to use `npm run dist:mac`. Keep ad-hoc signing and `hardenedRuntime: false` in both existing signing locations.
 - The updater uses the existing `AI Zero Token-{version}-mac-{arm64|x64}.dmg` assets. GitHub's dotted filename normalization is supported. No mac ZIP, blockmap, or `latest-mac.yml` is required for this custom updater.
@@ -30,7 +38,8 @@ Update logs and `pending.json` are in the Electron user-data directory's `update
 ```bash
 npm run typecheck
 npm run build
-bun test --preload ./tests/setup.ts ./tests/desktop-updater.test.ts ./tests/mac-update-helper.test.ts ./tests/version-service.test.ts
+bun test --preload ./tests/setup.ts ./tests/desktop-updater.test.ts ./tests/desktop-release-notes.test.tsx ./tests/mac-update-helper.test.ts ./tests/version-service.test.ts
+./node_modules/.bin/electron scripts/desktop-update-acceptance.cjs
 npm run pack:dry
 npm run dist:mac
 ```

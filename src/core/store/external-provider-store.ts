@@ -221,6 +221,9 @@ type ExternalProviderStore = {
 
 export type ExternalProviderStoreOptions = {
   path?: string;
+  /** Runs under the store lock, after validation and before the final atomic write. */
+  commitTransaction?: (plannedContent: string, commit: () => Promise<void>) => Promise<void>;
+  beforeMutation?: () => Promise<void>;
   /** Reject a delayed mutation if any part of the provider changed meanwhile. */
   expectedProviderVersion?: string;
   /** Reject delayed inspection results from an endpoint/token that is no longer current. */
@@ -601,9 +604,16 @@ async function mutateStore<T>(
     const storePath = options?.path ?? getExternalProviderStorePath();
     const releaseLock = await acquireStoreMutationLock(storePath);
     try {
+      if (options?.beforeMutation) await options.beforeMutation();
+      else if (await fs.stat(path.join(getStateDir(), "codex-switch-state.json.pending")).then(() => true, (error) => {
+        if (isMissingFileError(error)) return false;
+        throw error;
+      })) throw new Error("上次 Codex 切换尚未完成，请先重试接管或解除接管以恢复，再修改服务资料。");
       const store = await readStore(options);
       result = await mutation(store);
-      await writeStore(store, options);
+      const commit = () => writeStore(store, options);
+      if (options?.commitTransaction) await options.commitTransaction(`${JSON.stringify(store, null, 2)}\n`, commit);
+      else await commit();
     } finally {
       await releaseLock();
     }
@@ -803,10 +813,31 @@ export async function commitExternalProviderActivation(
     provider.defaultModelId = normalizedDefaultModelId;
     const activation = buildExternalProviderActivation(provider);
     await applyActivation?.(activation);
+    if (options?.commitTransaction) provider.codexProviderId = "azt_active";
     for (const item of store.providers) item.activeForCodex = item.id === providerId;
     provider.codexNeedsApply = false;
     provider.updatedAt = Date.now();
     store.activeProviderId = providerId;
+    return toPublicExternalProvider(provider);
+  }, options);
+}
+
+/** Remove one active provider from Codex while preserving its saved service and model selection. */
+export async function commitExternalProviderDeactivation(
+  providerId: string,
+  removeFromCodex: (provider: ExternalProviderRecord) => Promise<void>,
+  options?: ExternalProviderStoreOptions,
+): Promise<PublicExternalProvider> {
+  return mutateStore(async (store) => {
+    const provider = requireProvider(store, providerId);
+    if (store.activeProviderId !== providerId || !provider.activeForCodex) {
+      throw new Error(`API 服务 ${provider.name} 当前未接入 Codex。`);
+    }
+    await removeFromCodex(structuredClone(provider));
+    provider.activeForCodex = false;
+    provider.codexNeedsApply = false;
+    provider.updatedAt = Date.now();
+    delete store.activeProviderId;
     return toPublicExternalProvider(provider);
   }, options);
 }

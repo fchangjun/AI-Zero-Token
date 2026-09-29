@@ -1,3 +1,6 @@
+import type { ReasoningEffort } from "../../../../src/core/models/reasoning-effort";
+export type { ReasoningEffort } from "../../../../src/core/models/reasoning-effort";
+
 export type ProviderInspectionStatus =
   | "ready"
   | "busy"
@@ -9,8 +12,6 @@ export type ProviderInspectionStatus =
   | "skipped"
   | "pending"
   | "unknown";
-
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export type ProviderModelCapabilities = {
   responsesStreaming?: boolean;
@@ -60,6 +61,7 @@ export type ApiProvider = {
   lastSyncedAt?: number | string;
   activeForCodex: boolean;
   codexNeedsApply?: boolean;
+  codexSwitchWarning?: string;
   inspectionJob?: { status: "running" | "completed" | "failed"; total: number; completed: number; error?: string };
   defaultModelId?: string;
   tokenConfigured: boolean;

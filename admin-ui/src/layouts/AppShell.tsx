@@ -16,7 +16,7 @@ export function AppShell({ workspace }: { workspace: UseAdminWorkspaceResult }) 
   const updater = useDesktopUpdater(Boolean(workspace.config));
   const versionStatus = workspace.config?.versionStatus;
   const desktopNeedsUpdate = !updater.supported && versionStatus?.desktop.status === "update-available";
-  const npmNeedsUpdate = versionStatus?.npm.status === "update-available";
+  const npmNeedsUpdate = !updater.supported && versionStatus?.npm.status === "update-available";
   const updateTitle = desktopNeedsUpdate && npmNeedsUpdate
     ? t("update.titleBoth")
     : desktopNeedsUpdate
@@ -34,7 +34,7 @@ export function AppShell({ workspace }: { workspace: UseAdminWorkspaceResult }) 
 
   return (
     <div className="app-shell">
-      <AppSidebar workspace={workspace} />
+      <AppSidebar workspace={workspace} updater={updater} />
 
       <main className="main">
         <DesktopUpdatePanel updater={updater} />

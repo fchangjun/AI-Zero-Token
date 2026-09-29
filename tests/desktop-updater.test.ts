@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -40,6 +40,11 @@ describe("trusted desktop releases", () => {
       const release = manifest(); Object.assign(release.assets[0], patch);
       expect(() => selectMacRelease(release, "2.0.16", "arm64")).toThrow();
     }
+  });
+  test("passes release notes and valid publication dates to the update details", () => {
+    const release = selectMacRelease({ ...manifest(), body: "## Improvements\n- A clearer update flow", published_at: "2026-09-30T09:00:00Z" }, "2.0.16", "arm64");
+    expect(release).toMatchObject({ notes: "## Improvements\n- A clearer update flow", publishedAt: "2026-09-30T09:00:00Z", size: payload.length });
+    expect(selectMacRelease({ ...manifest(), published_at: "invalid" }, "2.0.16", "arm64")?.publishedAt).toBeUndefined();
   });
   test("rejects asset URLs outside the exact official repository and release", () => {
     for (const url of ["https://evil.example/update.dmg", "http://github.com/update.dmg", manifest().assets[0].browser_download_url.replace("fchangjun", "attacker"), manifest().assets[0].browser_download_url.replace("/v2.0.17/", "/v2.0.18/")]) {
@@ -97,12 +102,92 @@ async function service(overrides: Partial<UpdateInstaller> = {}, fetchOverride?:
   let requests = 0;
   const updater = new DesktopUpdater({ currentVersion: "2.0.16", arch: "arm64", supported, installer,
     fetcher: fetchOverride ?? (async (url) => { requests += 1; return url.includes("api.github.com") ? Response.json(manifest()) : new Response(payload); }),
-    onAvailable: () => events.push("notify"), onState: (state) => events.push(state.phase), quit: () => events.push("quit"),
+    onAvailable: () => events.push("notify"), onReady: () => events.push("notify-ready"), onState: (state) => events.push(state.phase), quit: () => events.push("quit"),
   });
   return { updater, events, job, requests: () => requests };
 }
 
 describe("update lifecycle", () => {
+  test("notification details survive window recreation and do not download until requested", async () => {
+    const { updater, events, requests } = await service();
+    await updater.check();
+    updater.openDetails();
+    // A recreated renderer reads the main-process state, including the outstanding open request.
+    expect(updater.getState()).toMatchObject({ detailsOpen: true, version: "2.0.17", releaseNotes: "Release notes", downloadSize: payload.length });
+    expect(requests()).toBe(1);
+    expect(events).not.toContain("preflight");
+    await updater.check();
+    expect(updater.getState().detailsOpen).toBe(true);
+    updater.closeDetails();
+    expect(updater.getState().detailsOpen).toBe(false);
+    await updater.download();
+    expect(events.filter((event) => event === "notify-ready")).toHaveLength(1);
+    expect(updater.getState()).toMatchObject({ phase: "ready", detailsOpen: false });
+    expect(events).not.toContain("quit");
+    updater.openDetails();
+    expect(updater.getState()).toMatchObject({ phase: "ready", detailsOpen: true });
+    await updater.stop();
+  });
+  test("foreground checks wait five minutes between attempts and keep manual checks available", async () => {
+    const now = spyOn(Date, "now").mockReturnValue(1_000_000);
+    const { updater, requests, events } = await service();
+    try {
+      await updater.checkIfStale();
+      now.mockReturnValue(1_299_999);
+      await updater.checkIfStale();
+      expect(requests()).toBe(1);
+      now.mockReturnValue(1_300_000);
+      await updater.checkIfStale();
+      expect(requests()).toBe(2);
+      await updater.check();
+      expect(requests()).toBe(3);
+      expect(events.filter((event) => event === "notify")).toHaveLength(1);
+    } finally { now.mockRestore(); await updater.stop(); }
+  });
+  test("deferring an update stays quiet until a newer release or a completed download", async () => {
+    let version = "2.0.17";
+    const { updater } = await service({}, async (url) => url.includes("api.github.com") ? Response.json(manifest(version)) : new Response(payload));
+    await updater.check(); updater.openDetails(); updater.dismissNotice();
+    expect(updater.getState()).toMatchObject({ detailsOpen: false, noticeDismissed: true });
+    await updater.check();
+    expect(updater.getState().noticeDismissed).toBe(true);
+    version = "2.0.18";
+    await updater.check();
+    expect(updater.getState()).toMatchObject({ version, noticeDismissed: false });
+    updater.dismissNotice();
+    await updater.download();
+    expect(updater.getState()).toMatchObject({ phase: "ready", noticeDismissed: false });
+    await updater.stop();
+  });
+  test("failed background checks preserve the known update and do not repeat notifications", async () => {
+    let online = true;
+    const { updater, events } = await service({}, async () => {
+      if (!online) throw new Error("offline");
+      return Response.json(manifest());
+    });
+    await updater.check();
+    online = false;
+    await updater.check(true);
+    expect(updater.getState()).toMatchObject({ phase: "available", version: "2.0.17" });
+    expect(updater.getState().errorCode).toBeUndefined();
+    expect(events.filter((event) => event === "notify")).toHaveLength(1);
+    online = true;
+    await updater.check(true);
+    expect(events.filter((event) => event === "notify")).toHaveLength(1);
+    await updater.stop();
+  });
+  test("foreground checks leave preparation failures visible even after the cooldown", async () => {
+    const now = spyOn(Date, "now").mockReturnValue(1_000_000);
+    const { updater, events, requests } = await service({ prepare: async () => { throw new Error("cannot mount"); } });
+    try {
+      await updater.check(); await updater.download();
+      now.mockReturnValue(2_000_000);
+      await updater.checkIfStale();
+      expect(requests()).toBe(2);
+      expect(updater.getState()).toMatchObject({ phase: "error", errorCode: "prepare-failed" });
+      expect(events).not.toContain("notify-ready");
+    } finally { now.mockRestore(); await updater.stop(); }
+  });
   test("coalesces checks/downloads, notifies once, and only installs after verification", async () => {
     const { updater, events, requests } = await service();
     await updater.install(); expect(events).not.toContain("quit");

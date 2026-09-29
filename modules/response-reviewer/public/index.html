@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>AZT · Response Reviewer</title></head>
+<body>
+<div id="response-reviewer-app">
+  <header class="reviewer-header">
+    <div>
+      <div class="reviewer-eyebrow">AI Zero Token · Response Reviewer</div>
+      <h1 id="responseTitle">选择一条回复开始审阅</h1>
+    </div>
+    <div id="saveStatus" class="reviewer-status" role="status">本地保存</div>
+  </header>
+
+  <main class="reviewer-layout">
+    <section class="response-column" aria-label="Codex 回复">
+      <section id="workspaceBar" class="workspace-bar" aria-label="任务项目目录" hidden>
+        <div class="workspace-copy">
+          <div class="reviewer-eyebrow">Task workspace</div>
+          <div id="workspaceSummary" class="workspace-summary"></div>
+          <p id="workspaceNote" class="workspace-note"></p>
+        </div>
+        <button id="changeWorkspace" type="button" class="secondary-action">
+          更改目录
+        </button>
+        <form id="workspaceForm" class="workspace-form" hidden>
+          <label for="workspacePath">项目目录的绝对路径</label>
+          <div class="workspace-form-row">
+            <input
+              id="workspacePath"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="/absolute/project/path"
+            />
+            <button type="submit" class="primary-action">保存</button>
+            <button id="cancelWorkspace" type="button" class="secondary-action">取消</button>
+          </div>
+          <p id="workspaceFormNote">保存后会作为文件访问边界，并重新校验回复中的文件。</p>
+        </form>
+      </section>
+
+      <nav id="reviewTabs" class="review-tabs" aria-label="审阅对象" hidden>
+        <button
+          id="responseTab"
+          type="button"
+          class="review-tab is-active"
+          data-target-type="response"
+          aria-pressed="true"
+        >
+          回复
+        </button>
+        <div id="fileTabs" class="file-tabs"></div>
+      </nav>
+
+      <div id="emptyState" class="empty-state">
+        <h2>还没有载入回复</h2>
+        <p>从 Codex 回复下方点击 Review，或者通过 Response Reviewer Skill 导入一条回复。</p>
+        <div id="recentResponses" class="recent-responses"></div>
+      </div>
+
+      <div id="reviewSurface" class="review-surface" hidden>
+        <article id="responseText" class="response-text" aria-label="回复正文"></article>
+
+        <section id="filePanel" class="file-panel" aria-label="文件内容" hidden>
+          <header class="file-panel-header">
+            <div>
+              <div class="reviewer-eyebrow">Project file · 只读审阅</div>
+              <h2 id="fileTitle">文件</h2>
+            </div>
+            <div id="fileMeta" class="file-meta"></div>
+          </header>
+          <p id="fileHint" class="file-hint">
+            点击行号选择一行，按住 Shift 点击可选择一个区间；也可以直接框选代码。
+          </p>
+          <div id="fileLoading" class="file-loading" hidden>正在读取文件…</div>
+          <div id="fileCode" class="file-code" role="list"></div>
+        </section>
+      </div>
+    </section>
+
+    <aside class="annotation-column" aria-label="Annotations">
+      <div class="annotation-heading">
+        <div>
+          <div class="reviewer-eyebrow">Annotations</div>
+          <h2><span id="annotationCount">0</span> 条待处理</h2>
+        </div>
+      </div>
+
+      <form id="annotationForm" class="annotation-form">
+        <div id="selectionTarget" class="selection-target">回复整体</div>
+        <div id="selectedQuote" class="selected-quote">未选择原文，将添加整体意见</div>
+
+        <fieldset class="annotation-kind">
+          <legend>批注类型</legend>
+          <label>
+            <input type="radio" name="annotationKind" value="comment" checked />
+            <span>评论</span>
+          </label>
+          <label>
+            <input type="radio" name="annotationKind" value="suggestion" />
+            <span>建议替换</span>
+          </label>
+        </fieldset>
+
+        <label id="annotationCommentLabel" for="annotationComment">审阅意见</label>
+        <textarea
+          id="annotationComment"
+          rows="3"
+          placeholder="写下希望修改、补充或核对的地方…"
+        ></textarea>
+        <button id="addAnnotation" type="submit" class="primary-action">添加批注</button>
+      </form>
+
+      <ol id="annotationList" class="annotation-list"></ol>
+
+      <div class="review-actions">
+        <button id="copyPrompt" type="button" class="secondary-action">
+          复制指令
+        </button>
+        <button id="insertIntoCodex" type="button" class="primary-action" title="放入对应 Codex 任务的输入框，不会发送">
+          放入对话框
+        </button>
+      </div>
+    </aside>
+  </main>
+
+  <div id="toast" class="reviewer-toast" role="status" hidden></div>
+</div>
+
+<link rel="stylesheet" href="/styles.css" />
+<script type="module" src="/app.js"></script>
+</body></html>

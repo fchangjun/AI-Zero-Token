@@ -8,6 +8,10 @@ export type DesktopUpdateState = {
   version?: string;
   releaseNotes?: string;
   releaseUrl?: string;
+  publishedAt?: string;
+  downloadSize?: number;
+  detailsOpen?: boolean;
+  noticeDismissed?: boolean;
   checkedAt?: number;
   percent?: number;
   errorCode?: UpdateErrorCode;
@@ -21,6 +25,9 @@ export type DesktopUpdateBridge = {
   download(): Promise<DesktopUpdateState>;
   cancel(): Promise<DesktopUpdateState>;
   install(): Promise<DesktopUpdateState>;
+  openDetails(): Promise<DesktopUpdateState>;
+  closeDetails(): Promise<DesktopUpdateState>;
+  dismissNotice(): Promise<DesktopUpdateState>;
   onState(callback: (state: DesktopUpdateState) => void): () => void;
 };
 

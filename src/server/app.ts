@@ -1,3 +1,4 @@
+import { REASONING_EFFORTS, isReasoningEffort } from "../core/models/reasoning-effort.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import { networkInterfaces } from "node:os";
@@ -10,6 +11,8 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
+import { assertCodexStopped } from "../core/services/codex-switch-runtime.js";
+import { registerToolRoutes } from "./tool-routes.js";
 import { configureLocalGatewayForCodex, gatewayKeyMatches, getGatewayAccessStatus, isLocalGatewayUrl, KEYED_GATEWAY_PROVIDER_ID, readGatewayAccess, updateGatewayAccess } from "../core/services/gateway-access-service.js";
 import type { ChatResult, OAuthProfile, ProfileSummary } from "../core/types.js";
 import { isTransientHttpError, requestText } from "../core/providers/http-client.js";
@@ -212,7 +215,7 @@ const chatCompletionsBodySchema = z
     tool_choice: z.unknown().optional(),
     response_format: z.unknown().optional(),
     parallel_tool_calls: z.boolean().optional(),
-    reasoning_effort: z.enum(["minimal", "low", "medium", "high", "xhigh"]).optional(),
+    reasoning_effort: z.enum(REASONING_EFFORTS).optional(),
     store: z.boolean().optional(),
     temperature: z.number().optional(),
     top_p: z.number().optional(),
@@ -316,7 +319,7 @@ const codexProviderConfigSchema = z.object({
     id: z.string().min(1).max(256),
     displayName: z.string().min(1).max(256).optional(),
     contextWindow: z.number().int().min(1).max(4_000_000).optional(),
-    reasoningEfforts: z.array(z.enum(["minimal", "low", "medium", "high", "xhigh"])).max(5).optional(),
+    reasoningEfforts: z.array(z.enum(REASONING_EFFORTS)).max(REASONING_EFFORTS.length).optional(),
     inputModalities: z.array(z.enum(["text", "image"])).min(1).max(2).optional(),
   })).max(200).optional(),
   inspectionId: z.string().uuid().optional(),
@@ -848,7 +851,7 @@ function normalizeChatToolChoice(toolChoice: unknown): unknown {
 }
 
 function normalizeReasoningEffort(value: unknown): string | undefined {
-  if (value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh") {
+  if (isReasoningEffort(value)) {
     return value;
   }
 
@@ -2219,6 +2222,9 @@ export function createApp(params?: {
   bodyLimit?: number;
   onRestart?: () => void | Promise<void>;
   onRestartCodex?: () => void | Promise<void>;
+  onPrepareCodexSwitch?: () => Promise<void>;
+  onCompleteCodexSwitch?: () => Promise<void>;
+  onStartCodexWithReviewer?: (cdpPort: number) => Promise<{ started: boolean; cancelled?: boolean }>;
 }) {
   const defaultBodyLimit = params?.bodyLimit ?? DEFAULT_ROUTE_BODY_LIMIT_BYTES;
   const codexCompactBodyLimit = Math.max(defaultBodyLimit, CODEX_COMPACT_BODY_LIMIT_BYTES);
@@ -2236,7 +2242,11 @@ export function createApp(params?: {
         .catch((error) => done(error as Error));
     },
   );
-  const ctx = createGatewayContext();
+  const ctx = createGatewayContext({ codexSwitchRuntime: { assertStopped: assertCodexStopped, prepare: params?.onPrepareCodexSwitch } });
+  async function completeCodexSwitch(): Promise<string | undefined> {
+    try { await params?.onCompleteCodexSwitch?.(); return undefined; }
+    catch { return "服务设置已切换，但 Codex 未能自动打开，请手动打开客户端。"; }
+  }
   app.addHook("onRequest", (request, reply, done) => {
     // The callback is only continued for authorized requests, including in Bun's HTTP adapter.
     void (async () => {
@@ -2270,6 +2280,7 @@ export function createApp(params?: {
     })().catch(done);
   });
   const gatewayRequestLogs: GatewayRequestLog[] = [];
+  registerToolRoutes(app, { onStartCodexWithReviewer: params?.onStartCodexWithReviewer });
   const pendingUsageWrites = new Set<Promise<void>>();
   app.addHook("onClose", async () => { await Promise.allSettled([...pendingUsageWrites]); });
   const codexResponseProfileBindings = new Map<string, { profileId: string; accountId: string; seenAt: number }>();
@@ -2972,7 +2983,7 @@ export function createApp(params?: {
       reply.code(404);
       return { error: { type: "not_found", message: "没有找到这个 API 服务。" } };
     }
-    return { deleted: true };
+    return { deleted: true, codexSwitchWarning: await completeCodexSwitch() };
   });
 
   app.post("/_gateway/admin/providers/:id/sync", async (request, reply) => {
@@ -3014,12 +3025,24 @@ export function createApp(params?: {
       reply.code(400);
       return { error: { type: "validation_error", message: bodyParsed.success ? "API 服务 ID 格式错误" : bodyParsed.error.issues[0]?.message ?? "请求体格式错误" } };
     }
+    const provider = await ctx.externalProviderService.activate(paramsParsed.data.id, bodyParsed.data.modelIds, bodyParsed.data.defaultModelId);
+    return { provider: { ...provider, codexSwitchWarning: await completeCodexSwitch() } };
+  });
+
+  app.post("/_gateway/admin/providers/:id/deactivate", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) {
+      reply.code(403);
+      return { error: { type: "local_access_required", message: "Codex 解除接入只能从本机管理页执行。" } };
+    }
+    const parsed = externalProviderParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      reply.code(400);
+      return { error: { type: "validation_error", message: "API 服务 ID 格式错误" } };
+    }
+    const provider = await ctx.externalProviderService.deactivate(parsed.data.id);
     return {
-      provider: await ctx.externalProviderService.activate(
-        paramsParsed.data.id,
-        bodyParsed.data.modelIds,
-        bodyParsed.data.defaultModelId,
-      ),
+      provider: { ...provider, codexSwitchWarning: await completeCodexSwitch() },
+      config: await buildAdminConfig(request),
     };
   });
 

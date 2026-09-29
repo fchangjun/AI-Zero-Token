@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Info, Loader2, Search } from "lucide-react";
+import { ArrowLeft, Check, Info, Loader2, Search, Unplug } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ApiProvider, ProviderModel } from "../types";
 import { CapabilityTags } from "./CapabilityTags";
@@ -18,8 +18,10 @@ export function CodexActivation(props: {
   provider: ApiProvider;
   activeProvider: ApiProvider | null;
   saving: boolean;
+  disconnecting: boolean;
   onBack: () => void;
   onActivate: (modelIds: string[], defaultModelId: string) => void;
+  onDeactivate: () => void;
 }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [defaultModelId, setDefaultModelId] = useState("");
@@ -71,7 +73,7 @@ export function CodexActivation(props: {
   const switching = props.activeProvider && props.activeProvider.id !== props.provider.id;
   return (
     <div className="provider-codex-view">
-      <button className="providers-back" type="button" onClick={props.onBack} disabled={props.saving}><ArrowLeft size={15} />返回 {props.provider.name}</button>
+      <button className="providers-back" type="button" onClick={props.onBack} disabled={props.saving || props.disconnecting}><ArrowLeft size={15} />返回 {props.provider.name}</button>
       <div className="providers-page-head is-codex">
         <div><span className="providers-page-kicker">Codex 接入</span><h1>将 {props.provider.name} 接入 Codex</h1><p>从该服务返回的全部模型中勾选。同一时间只接入一个模型服务。</p></div>
       </div>
@@ -83,7 +85,7 @@ export function CodexActivation(props: {
           <div className="is-target"><span>准备切换至</span><strong>{props.provider.name}</strong></div>
         </section>
       )}
-      {switching && <div className="providers-notice"><Info size={16} />切换后会保留 {props.activeProvider?.name} 服务及模型记录。新的接入配置在重启 Codex 后生效。</div>}
+      {switching && <div className="providers-notice"><Info size={16} />切换后，本地新旧对话使用 {props.provider.name}，并保留 {props.activeProvider?.name} 的服务资料。请先等待当前回复结束；桌面版会尝试重新打开 Codex。</div>}
 
       <section className="providers-surface provider-codex-surface">
         <div className="provider-codex-head">
@@ -101,7 +103,7 @@ export function CodexActivation(props: {
               <option value="incompatible">不兼容（{props.provider.models.filter((model) => matchesFilter(model, "incompatible")).length}）</option>
             </select>
           </div>
-          <button className="btn-secondary" type="button" onClick={toggleVisible} disabled={props.saving || !visibleModels.length}>{allVisibleSelected ? "取消选择筛选结果" : "全选筛选结果"}</button>
+          <button className="btn-secondary" type="button" onClick={toggleVisible} disabled={props.saving || props.disconnecting || !visibleModels.length}>{allVisibleSelected ? "取消选择筛选结果" : "全选筛选结果"}</button>
         </div>
         <div className="provider-codex-filter-summary" role="status">
           当前显示 {visibleModels.length} 个模型{hiddenSelectedCount > 0 && ` · 另有 ${hiddenSelectedCount} 个已选模型被筛选隐藏，保存时会保留`}
@@ -117,7 +119,7 @@ export function CodexActivation(props: {
               const checked = selectedIds.has(model.id);
               return (
                 <label className={`provider-codex-row ${checked ? "is-selected" : ""}`} key={model.id}>
-                  <input type="checkbox" checked={checked} disabled={props.saving} onChange={() => toggleModel(model.id)} />
+                  <input type="checkbox" checked={checked} disabled={props.saving || props.disconnecting} onChange={() => toggleModel(model.id)} />
                   <span className="provider-checkbox">{checked && <Check size={13} />}</span>
                   <span className="provider-codex-model"><strong>{model.name || model.id}</strong>{model.name && model.name !== model.id && <small>{model.id}</small>}</span>
                   <span><InspectionStatusBadge status={model.inspection.status} title={model.inspection.message} /></span>
@@ -131,7 +133,7 @@ export function CodexActivation(props: {
 
         <div className="provider-default-row">
           <div><strong>默认模型</strong><span>Codex 切换到这个服务后优先使用</span></div>
-          <select aria-label="默认模型" value={defaultModelId} onChange={(event) => setDefaultModelId(event.target.value)} disabled={!selectedModels.length || props.saving}>
+          <select aria-label="默认模型" value={defaultModelId} onChange={(event) => setDefaultModelId(event.target.value)} disabled={!selectedModels.length || props.saving || props.disconnecting}>
             {!selectedModels.length && <option value="">请先选择模型</option>}
             {selectedModels.map((model) => <option value={model.id} key={model.id}>{model.name || model.id}</option>)}
           </select>
@@ -140,8 +142,12 @@ export function CodexActivation(props: {
 
       <div className="providers-selection-note"><Info size={15} />勾选只控制模型是否显示在 Codex 中；实际调用结果取决于上游服务。</div>
       <div className="provider-codex-footer">
-        <span>已选择 {selectedIds.size} 个模型 · 需要重启 Codex 才会更新模型选择器</span>
-        <div><button className="btn-secondary" type="button" onClick={props.onBack} disabled={props.saving}>返回模型列表</button><button className="btn-primary" type="button" disabled={!selectedIds.size || !defaultModelId || props.saving} onClick={() => props.onActivate([...selectedIds], defaultModelId)}>{props.saving && <Loader2 className="provider-spin" size={15} />}{switching ? `确认切换到 ${props.provider.name}` : props.provider.activeForCodex ? "保存 Codex 模型" : `接入 ${props.provider.name}`}</button></div>
+        <span>已选择 {selectedIds.size} 个模型 · 切换前请结束当前回复，CLI/IDE 需完全退出</span>
+        <div>
+          <button className="btn-secondary" type="button" onClick={props.onBack} disabled={props.saving || props.disconnecting}>返回模型列表</button>
+          {props.provider.activeForCodex && <button className="btn-danger" type="button" disabled={props.saving || props.disconnecting} onClick={props.onDeactivate}>{props.disconnecting ? <Loader2 className="provider-spin" size={15} /> : <Unplug size={15} />}解除接入</button>}
+          <button className="btn-primary" type="button" disabled={!selectedIds.size || !defaultModelId || props.saving || props.disconnecting} onClick={() => props.onActivate([...selectedIds], defaultModelId)}>{props.saving && <Loader2 className="provider-spin" size={15} />}{switching ? `确认切换到 ${props.provider.name}` : props.provider.activeForCodex ? "保存 Codex 模型" : `接入 ${props.provider.name}`}</button>
+        </div>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import { isReasoningEffort, type ReasoningEffort } from "../models/reasoning-effort.js";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
@@ -5,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { OAuthProfile } from "../types.js";
+import { getStateDir } from "./state-paths.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -69,7 +71,7 @@ export type CodexCatalogModelInput = {
   id: string;
   displayName?: string;
   contextWindow?: number;
-  reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+  reasoningEfforts?: ReasoningEffort[];
   inputModalities?: Array<"text" | "image">;
 };
 
@@ -92,13 +94,14 @@ export type RemoveCodexGatewayProviderResult = {
   credentialsRetained?: boolean;
 };
 
-function getCodexHomeDir(): string {
-  return process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
+export function getCodexHomeDir(): string {
+  return path.resolve(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"));
 }
 
 const OPENAI_CODEX_PROVIDER_ID = "openai";
 const LEGACY_CODEX_PROVIDER_ID = "ai-zero-token";
 const DEFAULT_CODEX_PROVIDER_ID = OPENAI_CODEX_PROVIDER_ID;
+export const ACTIVE_CODEX_PROVIDER_ID = "azt_active";
 const MANAGED_MODEL_MARKER_PREFIX = "# AI Zero Token managed Codex model ";
 const MANAGED_PROVIDER_MARKER_PREFIX = "# AI Zero Token managed Codex provider state ";
 const MANAGED_CATALOG_MARKER_PREFIX = "# AI Zero Token managed Codex model catalog ";
@@ -398,7 +401,7 @@ function findFirstTableLine(lines: string[]): number {
   return index === -1 ? lines.length : index;
 }
 
-function parseRootString(raw: string, key: string): string | undefined {
+export function parseRootString(raw: string, key: string): string | undefined {
   const lines = raw.split(/\r?\n/);
   const firstTableLine = findFirstTableLine(lines);
   const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*(.+)$`);
@@ -1009,12 +1012,14 @@ function buildCodexCatalogEntry(
   baseInstructions: string,
 ): Record<string, unknown> {
   const contextWindow = model.contextWindow ?? 128_000;
-  const reasoningDescriptions: Record<string, string> = {
+  const reasoningDescriptions: Record<ReasoningEffort, string> = {
+    none: "No reasoning",
     minimal: "Minimal reasoning for the fastest responses",
     low: "Fast responses with lighter reasoning",
     medium: "Balanced speed and reasoning",
     high: "Deeper reasoning",
     xhigh: "Extra deep reasoning",
+    max: "Maximum reasoning",
   };
   const reasoningEfforts = model.reasoningEfforts ?? [];
   return {
@@ -1102,7 +1107,7 @@ async function readManagedCodexModelCatalog(catalogPath: string | undefined): Pr
       const levels = Array.isArray(item.supported_reasoning_levels)
         ? item.supported_reasoning_levels
           .map((level) => isRecord(level) && typeof level.effort === "string" ? level.effort : undefined)
-          .filter((effort): effort is "minimal" | "low" | "medium" | "high" | "xhigh" => effort === "minimal" || effort === "low" || effort === "medium" || effort === "high" || effort === "xhigh")
+          .filter(isReasoningEffort)
         : [];
       const inputModalities = Array.isArray(item.input_modalities)
         ? item.input_modalities.filter((modality): modality is "text" | "image" => modality === "text" || modality === "image")
@@ -1143,7 +1148,7 @@ export async function getCodexGatewayProviderStatus(params?: {
 
   const modelProvider = parseRootModelProvider(raw);
   const managedProvider = parseManagedProviderMarker(raw)?.managed;
-  if (!requestedProviderId && (modelProvider?.startsWith("azt_external_") || modelProvider === "azt_gateway")) providerId = modelProvider;
+  if (!requestedProviderId && (modelProvider?.startsWith("azt_external_") || modelProvider === "azt_gateway" || modelProvider === ACTIVE_CODEX_PROVIDER_ID)) providerId = modelProvider;
   const model = parseRootModel(raw);
   const modelCatalogPath = parseRootModelCatalogPath(raw);
   if (providerId === OPENAI_CODEX_PROVIDER_ID) {
@@ -1427,9 +1432,7 @@ export function withCodexProviderConfigTransaction<T>(operation: (config: {
   apply: typeof applyProviderConfig;
   remove: typeof removeProviderConfig;
 }) => Promise<T>): Promise<T> {
-  const run = configMutationQueue.then(async () => {
-    const releaseLock = await acquireConfigMutationLock();
-    try {
+  return withCodexProviderConfigLock(async () => {
       const paths = [getCodexConfigPath(), path.join(getCodexHomeDir(), MANAGED_CATALOG_RELATIVE_PATH)];
       const snapshots = await Promise.all(paths.map(async (target) => {
         try {
@@ -1460,12 +1463,77 @@ export function withCodexProviderConfigTransaction<T>(operation: (config: {
         }
         throw error;
       }
-    } finally {
-      await releaseLock();
-    }
+  });
+}
+
+/** Shared by the legacy config editor and the durable config/database switch. */
+export function withCodexProviderConfigLock<T>(operation: () => Promise<T>, allowPendingSwitch = false): Promise<T> {
+  const run = configMutationQueue.then(async () => {
+    const releaseLock = await acquireConfigMutationLock();
+    try {
+      if (!allowPendingSwitch && await fileExists(path.join(getStateDir(), "codex-switch-state.json.pending"))) {
+        throw new Error("上次 Codex 切换尚未完成，请先通过模型与服务重试接管或解除接管以恢复。");
+      }
+      return await operation();
+    } finally { await releaseLock(); }
   });
   configMutationQueue = run.catch(() => undefined);
   return run;
+}
+
+export type NativeCodexSettings = { model?: string; effort?: string; catalog?: string };
+
+export function readNativeCodexSettings(raw: string): NativeCodexSettings {
+  const restored = restoreManagedRootModelCatalog(restoreManagedRootModel(restoreManagedRootProvider(raw).raw).raw).raw;
+  if ((parseRootModelProvider(restored) ?? "openai") !== "openai") return {};
+  return {
+    model: parseRootModel(restored),
+    effort: parseRootString(restored, "model_reasoning_effort"),
+    catalog: parseRootModelCatalogPath(restored),
+  };
+}
+
+/** Build the complete write set before the switch journal or any target file is changed. */
+export async function buildCodexSwitchFiles(
+  raw: string,
+  native: NativeCodexSettings,
+  target?: ApplyProviderConfigParams,
+): Promise<{ config: string; catalog?: string }> {
+  if (parseRootString(raw, "profile")) throw new Error("当前启用了 Codex 配置 profile，请先取消 profile 覆盖再切换服务。");
+  let next = removeRootString(raw, "openai_base_url").raw;
+  const setOptional = (text: string, key: string, value: string | undefined) => value === undefined
+    ? removeRootString(text, key).raw : upsertRootString(text, key, value);
+  if (target) {
+    const baseUrl = normalizeCodexProviderBaseUrl(target.baseUrl, "openai_compatible");
+    const token = target.bearerToken?.trim();
+    if (!token || /[\r\n]/.test(token)) throw new Error("请填写有效的外部 API Token。");
+    const models = normalizeCodexCatalogModels(target.catalogModels, target.model);
+    if (!target.model || !models.length) throw new Error("请先选择第三方默认模型。");
+    const efforts = models.find((model) => model.id === target.model)?.reasoningEfforts ?? [];
+    const oldEffort = parseRootString(raw, "model_reasoning_effort");
+    const effort = efforts.find((value) => value === oldEffort) ?? (efforts.includes("medium") ? "medium" : efforts[0]);
+    next = applyGatewayProviderConfig(next, ACTIVE_CODEX_PROVIDER_ID, baseUrl, {
+      displayName: target.displayName, bearerToken: token, model: target.model,
+    });
+    next = next.replace(`[model_providers.${ACTIVE_CODEX_PROVIDER_ID}]`, `[model_providers.${ACTIVE_CODEX_PROVIDER_ID}]\nrequires_openai_auth = false`);
+    next = upsertManagedRootModelCatalog(next, path.join(getCodexHomeDir(), MANAGED_CATALOG_RELATIVE_PATH));
+    next = setOptional(next, "model_reasoning_effort", effort);
+    const instructions = await loadCodexCatalogInstructions(target.model);
+    return { config: next, catalog: `${JSON.stringify({ models: models.map((model, index) => buildCodexCatalogEntry(model, index, instructions)) }, null, 2)}\n` };
+  }
+  next = removeManagedCatalogMarker(removeManagedModelMarker(removeManagedProviderMarker(next)));
+  next = upsertRootModelProvider(next, "openai");
+  next = setOptional(next, "model", native.model);
+  next = setOptional(next, "model_reasoning_effort", native.effort);
+  next = setOptional(next, "model_catalog_json", native.catalog);
+  // Retain the alias for historical metadata, but strip its active credentials.
+  const lines = next.split(/\r?\n/);
+  let activeTable = false;
+  next = lines.filter((line) => {
+    if (/^\s*\[/.test(line)) activeTable = line.trim() === `[model_providers.${ACTIVE_CODEX_PROVIDER_ID}]`;
+    return !activeTable || !/^\s*(experimental_bearer_token|env_key)\s*=/.test(line);
+  }).join("\n");
+  return { config: next };
 }
 
 export function applyGatewayToCodexProviderConfig(params: ApplyProviderConfigParams): Promise<ApplyCodexGatewayProviderResult> {
@@ -1504,6 +1572,9 @@ async function applyProviderConfig(params: ApplyProviderConfigParams): Promise<A
   }
 
   const useOpenAIProvider = providerId === OPENAI_CODEX_PROVIDER_ID;
+  if (providerId === ACTIVE_CODEX_PROVIDER_ID || parseRootModelProvider(raw) === ACTIVE_CODEX_PROVIDER_ID) {
+    throw new Error("当前使用统一会话接管，请在模型与服务中切换；接入账号池前请先解除第三方接管。");
+  }
   if (kind === "openai_compatible" && useOpenAIProvider) {
     throw new Error("外部 API Token 需要写入独立 Codex provider，不能使用 openai_base_url 模式。");
   }
@@ -1602,6 +1673,7 @@ async function removeProviderConfig(params?: {
 }): Promise<RemoveCodexGatewayProviderResult> {
   const providerId = params?.providerId?.trim() || DEFAULT_CODEX_PROVIDER_ID;
   validateProviderId(providerId);
+  if (providerId === ACTIVE_CODEX_PROVIDER_ID) throw new Error("请在模型与服务中解除接管，以同时恢复已有会话。");
 
   const configPath = getCodexConfigPath();
   let raw = "";
@@ -1628,7 +1700,9 @@ async function removeProviderConfig(params?: {
     ? restoreManagedRootModelCatalog(modelRestored)
     : { raw: modelRestored, restored: false };
   const retainedProvider = parseGatewayProviderTable(catalogRestored.raw, providerId);
-  const providerDefinitionRetained = providerId === LEGACY_CODEX_PROVIDER_ID
+  // Existing threads persist their provider ID. Keep custom definitions and
+  // credentials resolvable when disconnecting; only an explicit purge deletes them.
+  const providerDefinitionRetained = providerId !== OPENAI_CODEX_PROVIDER_ID
     && !params?.purgeProviderDefinition
     && retainedProvider.exists;
   const credentialsRetained = providerDefinitionRetained && retainedProvider.authType !== "none";

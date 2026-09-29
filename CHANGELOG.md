@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.0.17 - 2026-09-30
+
+- Improved macOS desktop updates with a persistent update notice and a release-notes dialog showing versions, publication date, and download size. System notifications and tray checks open the dialog, including after the main window was closed. Downloads show progress, support background preparation, and prompt for restart when ready.
+- Recheck for updates when returning to the desktop after five minutes, without repeating availability notifications or hiding installation errors. Release notes render headings, lists, and safe links instead of raw Markdown.
+- Keep the normal update entry in the sidebar, let users defer a version without repeated prompts, and show one desktop update flow without npm/CLI notices. Refined the dialog layout, bilingual copy, keyboard focus, and narrow-window presentation.
+- Added an optional Response Reviewer tool with a local review workspace, annotations, history, and read-only import of legacy review data. The service and experimental Codex review-button integration are disabled by default; file access requires an explicitly selected workspace, and revision requests are not sent automatically.
+- Made external Codex provider switching consistent for existing and archived local threads, using one shared third-party provider and restoring native model preferences when disconnected. Added configuration/database backups, durable recovery records, concurrent-writer guards, and model/reasoning compatibility checks without rewriting conversation JSONL or replacing native login credentials.
+- Preserved the `none` and `max` reasoning levels throughout compatible requests and Codex catalogs, retried transient reasoning-probe failures once, and retained previously confirmed capabilities when inspection is temporarily unavailable.
+- Added a Chinese getting-started guide and isolated desktop, reviewer, and Codex provider-switch acceptance checks.
+
 ## 2.0.16 - 2026-09-28
 
 - Added macOS in-app updates with background release checks, native notifications, download progress/cancellation, and install-and-restart. Official DMGs are verified against GitHub SHA-256 metadata, architecture, version, and the existing ad-hoc signing policy. A detached installer retains the previous app until the new gateway and UI confirm startup, and restores it if replacement or startup fails.

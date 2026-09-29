@@ -8,6 +8,9 @@ if (process.isMainFrame && process.platform === "darwin") {
     download: () => ipcRenderer.invoke("desktop-update:download"),
     cancel: () => ipcRenderer.invoke("desktop-update:cancel"),
     install: () => ipcRenderer.invoke("desktop-update:install"),
+    openDetails: () => ipcRenderer.invoke("desktop-update:open-details"),
+    closeDetails: () => ipcRenderer.invoke("desktop-update:close-details"),
+    dismissNotice: () => ipcRenderer.invoke("desktop-update:dismiss-notice"),
     onState: (callback) => {
       const listener = (_event, state) => callback(state);
       ipcRenderer.on("desktop-update:state", listener);

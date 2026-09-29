@@ -223,7 +223,7 @@ describe("OpenAI-compatible provider inspection", () => {
       expect(result.discoveredCount).toBe(2);
       expect(result.results.map((model) => model.id)).toEqual(["model-a", "model-b"]);
       expect(result.results.every((model) => model.status === "ready")).toBe(true);
-      expect(server.requests.filter((request) => request.url === "/v1/responses")).toHaveLength(16);
+      expect(server.requests.filter((request) => request.url === "/v1/responses")).toHaveLength(20);
       expect(server.requests.filter((request) => request.url === "/v1/images/generations")).toHaveLength(3);
 
       await liveServers.pop()?.close();
@@ -257,7 +257,7 @@ describe("OpenAI-compatible provider inspection", () => {
         responsesStreaming: true,
         functionCalling: true,
         functionCallOutput: true,
-        reasoningEfforts: ["minimal", "low", "medium", "high", "xhigh"],
+        reasoningEfforts: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
         inputModalities: ["text", "image"],
         imageInput: true,
       },
@@ -423,7 +423,7 @@ describe("OpenAI-compatible provider inspection", () => {
       if (recorded.url === "/v1/models") {
         sendJson(response, {
           data: [
-            { id: "declared", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }] },
+            { id: "declared", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }, { effort: "max" }, { effort: "none" }, { effort: "unknown" }] },
             { id: "probed" },
           ],
         });
@@ -432,7 +432,7 @@ describe("OpenAI-compatible provider inspection", () => {
       const body = parseJsonBody(recorded);
       if (body.reasoning) {
         const reasoning = body.reasoning as { effort?: string };
-        if (body.model === "probed" && (reasoning.effort === "low" || reasoning.effort === "high")) {
+        if (body.model === "probed" && ["none", "low", "high", "max"].includes(reasoning.effort ?? "")) {
           sendSse(response, [
             { type: "response.output_text.delta", delta: "OK" },
             { type: "response.completed", response: { status: "completed" } },
@@ -446,13 +446,51 @@ describe("OpenAI-compatible provider inspection", () => {
     });
 
     const result = await inspect(server.origin);
-    expect(result.results.find((model) => model.id === "declared")?.capabilities.reasoningEfforts).toEqual(["low", "high"]);
-    expect(result.results.find((model) => model.id === "probed")?.capabilities.reasoningEfforts).toEqual(["low", "high"]);
+    expect(result.results.find((model) => model.id === "declared")?.capabilities.reasoningEfforts).toEqual(["low", "high", "max", "none"]);
+    expect(result.results.find((model) => model.id === "probed")?.capabilities.reasoningEfforts).toEqual(["none", "low", "high", "max"]);
     const declaredReasoningRequests = server.requests
       .filter((request) => request.url === "/v1/responses")
       .map(parseJsonBody)
       .filter((body) => body.model === "declared" && body.reasoning);
     expect(declaredReasoningRequests).toHaveLength(0);
+    const probedReasoningRequests = server.requests
+      .filter((request) => request.url === "/v1/responses")
+      .map(parseJsonBody)
+      .filter((body) => body.model === "probed" && body.reasoning);
+    expect(probedReasoningRequests.map((body) => (body.reasoning as { effort: string }).effort))
+      .toEqual(["none", "minimal", "low", "medium", "high", "xhigh", "max"]);
+  });
+
+  test("retries transient reasoning failures once without silently dropping supported levels", async () => {
+    const attempts = new Map<string, number>();
+    const server = await startTestServer((_request, response, recorded) => {
+      if (recorded.url === "/v1/models") {
+        sendJson(response, { data: [{ id: "recovers" }, { id: "still-busy" }] });
+        return;
+      }
+      const body = parseJsonBody(recorded);
+      const effort = (body.reasoning as { effort?: string } | undefined)?.effort;
+      if (effort === "medium") {
+        const model = String(body.model);
+        const attempt = (attempts.get(model) ?? 0) + 1;
+        attempts.set(model, attempt);
+        if (model === "still-busy" || attempt === 1) {
+          sendJson(response, { error: { message: "temporarily overloaded" } }, 429);
+          return;
+        }
+      }
+      sendSuccessfulProbeRound(response, recorded);
+    });
+    const result = await inspect(server.origin);
+    expect(result.results.find((model) => model.id === "recovers")).toMatchObject({
+      status: "ready",
+      capabilities: { reasoningEfforts: ["none", "minimal", "low", "medium", "high", "xhigh", "max"] },
+    });
+    expect(result.results.find((model) => model.id === "still-busy")).toMatchObject({
+      status: "busy", statusCode: 429, error: "temporarily overloaded",
+    });
+    expect(attempts.get("recovers")).toBe(2);
+    expect(attempts.get("still-busy")).toBe(2);
   });
 
   test("blocks a cross-origin redirect before forwarding Authorization", async () => {
@@ -515,7 +553,7 @@ describe("Codex provider configuration lifecycle", () => {
     expect(restored).toContain('model = "previous-model"');
     expect(restored).toContain('model_provider = "previous-provider"');
     expect(restored).toContain("[model_providers.previous-provider]");
-    expect(restored).not.toContain("[model_providers.external-test]");
+    expect(restored).toContain("[model_providers.external-test]");
     expect(restored).not.toContain("AI Zero Token managed Codex model");
     expect(restored).not.toContain("AI Zero Token managed Codex provider state");
   });
@@ -752,6 +790,51 @@ describe("Codex provider configuration lifecycle", () => {
     expect(purged.providerDefinitionRetained).toBe(false);
     expect(await readFile(configPath, "utf8")).not.toContain("[model_providers.ai-zero-token]");
   });
+
+  test.each(["azt_external_3eee0376_3959_4461_9cab_97316b4d481e", "azt_gateway"])(
+    "deactivating independent provider %s keeps existing thread configuration resolvable",
+    async (providerId) => {
+      const codexHome = await mkdtemp(join(tmpdir(), "azt-codex-disconnect-test-"));
+      temporaryDirectories.push(codexHome);
+      process.env.CODEX_HOME = codexHome;
+      const configPath = join(codexHome, "config.toml");
+      await writeFile(configPath, 'model = "previous-model"\n');
+      const sessionPath = join(codexHome, "existing-session.jsonl");
+      const session = JSON.stringify({ type: "session_meta", payload: { model_provider: providerId } }) + "\n";
+      await writeFile(sessionPath, session);
+
+      await applyGatewayToCodexProviderConfig({
+        providerId,
+        kind: providerId === "azt_gateway" ? "codex_gateway" : "openai_compatible",
+        baseUrl: "https://gateway.example.test/v1",
+        bearerToken: "history-test-token",
+        model: "chosen-model",
+      });
+      const before = Bun.TOML.parse(await readFile(configPath, "utf8"));
+      const result = await removeGatewayFromCodexProviderConfig({ providerId });
+      expect(result).toMatchObject({ removed: true, providerDefinitionRetained: true, credentialsRetained: true });
+
+      const disconnected = await readFile(configPath, "utf8");
+      const config = Bun.TOML.parse(disconnected);
+      const savedProvider = JSON.parse(await readFile(sessionPath, "utf8")).payload.model_provider;
+      expect(config.model_providers[savedProvider]).toEqual(before.model_providers[providerId]);
+      expect(config.model_provider).toBeUndefined();
+      expect(config.model).toBe("previous-model");
+      expect(config.model_catalog_json).toBeUndefined();
+      expect(await readFile(sessionPath, "utf8")).toBe(session);
+      expect(await getCodexGatewayProviderStatus({ providerId })).toMatchObject({ exists: true, active: false });
+
+      expect(await removeGatewayFromCodexProviderConfig({ providerId })).toMatchObject({
+        removed: false, providerDefinitionRetained: true, credentialsRetained: true,
+      });
+      expect(await readFile(configPath, "utf8")).toBe(disconnected);
+
+      const purged = await removeGatewayFromCodexProviderConfig({ providerId, purgeProviderDefinition: true });
+      expect(purged).toMatchObject({ removed: true, providerDefinitionRetained: false, credentialsRetained: false });
+      expect(await readFile(configPath, "utf8")).not.toContain("history-test-token");
+      expect(await getCodexGatewayProviderStatus({ providerId })).toMatchObject({ exists: false, active: false });
+    },
+  );
 
   test("does not reuse a token or catalog across external provider Base URLs", async () => {
     const codexHome = await mkdtemp(join(tmpdir(), "azt-codex-provider-scope-test-"));

@@ -40,6 +40,7 @@ export function useAdminWorkspaceDerived(state: DerivedSource): WorkspaceDerived
     usage: t("pageDescriptions.usage"),
     tester: t("pageDescriptions.tester"),
     "image-bed": t("pageDescriptions.image-bed"),
+    tools: t("pageDescriptions.tools"),
     docs: t("pageDescriptions.docs"),
     network: t("pageDescriptions.network"),
     logs: t("pageDescriptions.logs"),

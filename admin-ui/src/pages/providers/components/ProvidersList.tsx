@@ -1,4 +1,4 @@
-import { ArrowRight, Boxes, Plus, Search, ServerCog } from "lucide-react";
+import { ArrowRight, Boxes, Loader2, Plus, Search, ServerCog, Unplug } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { ApiProvider } from "../types";
 import { CodexStatusBadge, ConnectionStatusBadge } from "./StatusBadge";
@@ -37,6 +37,8 @@ export function ProvidersList(props: {
   onOpenRemote: () => void;
   onOpen: (provider: ApiProvider) => void;
   onOpenCodex: (provider: ApiProvider) => void;
+  onDeactivate: (provider: ApiProvider) => void;
+  disconnecting: boolean;
 }) {
   const [search, setSearch] = useState("");
   const activeProvider = props.activeProvider;
@@ -65,7 +67,10 @@ export function ProvidersList(props: {
             <div><strong>{activeProvider.name}</strong><span className="provider-status-badge is-success">已接入</span></div>
             <p>默认模型 {activeProvider.defaultModelId || "尚未设置"} · {activeProvider.kind === "account_pool" ? activeProvider.remoteGateway ? "通过远程网关调用" : `${activeProvider.accountCount} 个本机账号 · 使用 Codex 模型目录` : `${activeProvider.models.filter((model) => model.selectedForCodex).length} 个模型显示在 Codex 中`}</p>
           </div>
-          <button className="btn-secondary" type="button" onClick={() => props.onOpenCodex(activeProvider)}>管理接入</button>
+          <div className="provider-active-actions">
+            <button className="btn-secondary" type="button" onClick={() => props.onOpenCodex(activeProvider)} disabled={props.disconnecting}>管理接入</button>
+            <button className="btn-danger" type="button" onClick={() => props.onDeactivate(activeProvider)} disabled={props.disconnecting}>{props.disconnecting ? <Loader2 className="provider-spin" size={15} /> : <Unplug size={15} />}解除接入</button>
+          </div>
         </section>
       )}
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Response Reviewer"
+  short_description: "Open a local workspace for reviewing Codex responses."
+  default_prompt: "Open Response Reviewer for this task."

@@ -1,3 +1,5 @@
+import type { ReasoningEffort } from "../../../src/core/models/reasoning-effort";
+
 export type QuotaSnapshot = {
   capturedAt?: number;
   sourceRequestId?: string;
@@ -234,7 +236,7 @@ export type AdminConfig = {
       catalogModels?: Array<{
         id: string;
         displayName?: string;
-        reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+        reasoningEfforts?: ReasoningEffort[];
         inputModalities?: Array<"text" | "image">;
       }>;
     };
@@ -252,7 +254,7 @@ export type AdminConfig = {
       catalogModels?: Array<{
         id: string;
         displayName?: string;
-        reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+        reasoningEfforts?: ReasoningEffort[];
         inputModalities?: Array<"text" | "image">;
       }>;
     };

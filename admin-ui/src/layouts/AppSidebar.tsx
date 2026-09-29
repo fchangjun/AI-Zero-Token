@@ -1,21 +1,23 @@
 import appMark from "@/assets/app-mark.svg";
-import { Code2, Copy, Download, ExternalLink, Globe } from "lucide-react";
+import { ArrowUpCircle, Code2, Copy, Download, ExternalLink, Globe, RefreshCw } from "lucide-react";
 import type { UseAdminWorkspaceResult } from "@/hooks/useAdminWorkspace";
+import type { useDesktopUpdater } from "@/hooks/useDesktopUpdater";
 import { useLocale, useT } from "@/i18n";
 import type { Locale } from "@/i18n";
 
 const DESKTOP_RELEASES_URL = "https://github.com/fchangjun/AI-Zero-Token/releases";
 
-export function AppSidebar({ workspace }: { workspace: UseAdminWorkspaceResult }) {
+export function AppSidebar({ workspace, updater }: { workspace: UseAdminWorkspaceResult; updater: ReturnType<typeof useDesktopUpdater> }) {
   const t = useT();
   const { locale, setLocale } = useLocale();
   const { routes, activeRoute, goRoute, config, copyBaseUrl, setContactOpen } = workspace;
   const isOnline = Boolean(config?.status.loggedIn);
   const versionStatus = config?.versionStatus;
   const desktopVersion = versionStatus?.desktop;
-  const versionTone = desktopVersion?.status === "update-available" ? "orange" : desktopVersion?.status === "error" ? "red" : desktopVersion?.status === "ahead" ? "blue" : "green";
+  const nativeState = updater.supported ? updater.state : null;
+  const versionTone = nativeState ? nativeState.version ? "blue" : "green" : desktopVersion?.status === "update-available" ? "orange" : desktopVersion?.status === "error" ? "red" : desktopVersion?.status === "ahead" ? "blue" : "green";
   const versionLabel =
-    desktopVersion?.status === "update-available"
+    nativeState ? t(`update.phases.${nativeState.phase}`) : desktopVersion?.status === "update-available"
       ? t("sidebar.versionUpdateAvailable")
       : desktopVersion?.status === "error"
         ? t("sidebar.versionCheckFailed")
@@ -68,21 +70,29 @@ export function AppSidebar({ workspace }: { workspace: UseAdminWorkspaceResult }
         <div className="sidebar-meta-grid">
           <div className="sidebar-meta">
             <span>{t("sidebar.currentDesktopVersion")}</span>
-            <strong>{desktopVersion?.currentVersion || t("common.na")}</strong>
+            <strong>{nativeState?.currentVersion || desktopVersion?.currentVersion || t("common.na")}</strong>
           </div>
           <div className="sidebar-meta">
             <span>{t("sidebar.latestDesktopVersion")}</span>
-            <strong>{desktopVersion?.latestVersion || t("common.na")}</strong>
+            <strong>{nativeState ? nativeState.version || (nativeState.phase === "up-to-date" ? nativeState.currentVersion : t("common.na")) : desktopVersion?.latestVersion || t("common.na")}</strong>
           </div>
-          <div className="sidebar-meta">
+          {!updater.supported && <div className="sidebar-meta">
             <span>{t("sidebar.currentNpmVersion")}</span>
             <strong>{versionStatus?.npm.currentVersion || t("common.na")}</strong>
-          </div>
-          <div className="sidebar-meta">
+          </div>}
+          {!updater.supported && <div className="sidebar-meta">
             <span>{t("sidebar.latestNpmVersion")}</span>
             <strong>{versionStatus?.npm.latestVersion || t("common.na")}</strong>
-          </div>
+          </div>}
         </div>
+        {updater.supported && <button className={`desktop-update-entry ${nativeState?.version ? "has-update" : ""}`} type="button" onClick={() => {
+          void updater.action("openDetails");
+          if (!nativeState?.version) void updater.action("check");
+        }}>
+          {nativeState?.version ? <ArrowUpCircle size={15} /> : <RefreshCw size={14} />}
+          <span>{t(nativeState?.phase === "ready" ? "update.viewReady" : nativeState?.version ? "update.viewDetails" : "update.checkNative")}</span>
+          {nativeState?.version && <span className="desktop-update-entry-dot" />}
+        </button>}
       </section>
 
       <section className="service-card sidebar-links">

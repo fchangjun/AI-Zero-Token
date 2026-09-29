@@ -1,0 +1,48 @@
+.azt-tools { display: grid; gap: 20px; max-width: 1440px; margin: 0 auto; }
+.azt-tool-card { min-width: 0; padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-sm); }
+.azt-tool-heading { display: flex; align-items: flex-start; gap: 16px; }
+.azt-tool-heading > div { flex: 1; }
+.azt-tool-heading h2 { margin: 5px 0 8px; font-size: 24px; }
+.azt-tool-heading p { margin: 0; color: var(--text-muted); line-height: 1.7; }
+.azt-tool-icon { display: grid; place-items: center; flex-shrink: 0; width: 52px; height: 52px; border-radius: 14px; color: var(--brand); background: var(--brand-soft); }
+.azt-tool-kicker { color: var(--brand); font-size: 11px; font-weight: 700; letter-spacing: .12em; }
+.azt-tool-status { padding: 6px 10px; border-radius: 20px; white-space: nowrap; font-size: 12px; background: var(--panel-soft); color: var(--text-muted); }
+.azt-tool-status.is-running { background: var(--green-soft); color: #15803d; }
+.azt-tool-actions, .azt-tool-card h3, .azt-tool-notice { display: flex; align-items: center; gap: 10px; }
+.azt-tool-actions { flex-wrap: wrap; margin-top: 22px; }
+.azt-tool-button-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.azt-tool-card h3 { margin: 0 0 20px; font-size: 16px; }
+.azt-tool-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.azt-tool-toggle { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 20px; font-size: 14px; cursor: pointer; }
+.azt-tool-toggle input { margin: 3px 0 0; accent-color: var(--brand); }
+.azt-tool-toggle small { display: block; color: var(--text-muted); font-size: 12px; margin-top: 6px; line-height: 1.7; }
+.azt-tool-field { display: grid; gap: 8px; font-size: 13px; margin: 20px 0 12px; }
+.azt-tools input:not([type="checkbox"]) { border: 1px solid var(--line-strong); background: var(--panel); color: var(--text); border-radius: 8px; padding: 10px 12px; min-width: 0; max-width: 100%; }
+.azt-tool-field input[type="number"] { max-width: 150px; }
+.azt-tool-muted, .azt-tool-details { font-size: 12px; color: var(--text-muted); line-height: 1.75; }
+.azt-tool-details { margin-top: 20px; border-top: 1px solid var(--line); padding-top: 16px; }
+.azt-tool-details summary { color: var(--text-soft); cursor: pointer; }
+.azt-tools code { display: block; font-size: 12px; overflow-wrap: anywhere; background: var(--panel-soft); padding: 10px; border-radius: 8px; line-height: 1.7; user-select: text; }
+.azt-tool-alert, .azt-tool-notice { border-radius: 10px; padding: 14px 18px; font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.azt-tool-alert { background: var(--red-soft); color: #b91c1c; }
+.azt-tool-notice { background: var(--green-soft); color: #15803d; }
+.azt-tool-warning { font-size: 12px; color: #b45309; line-height: 1.7; }
+.azt-tool-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 18px; }
+.azt-tool-history-heading h3 { margin: 0; }
+.azt-tool-history { list-style: none; padding: 0; margin: 0; max-height: 400px; overflow-y: auto; }
+.azt-tool-history li + li { border-top: 1px solid var(--line); }
+.azt-tool-history button { border: none; padding: 14px 6px; display: flex; justify-content: space-between; gap: 18px; text-align: left; background: transparent; width: 100%; color: var(--text); }
+.azt-tool-history button:hover { background: var(--panel-soft); }
+.azt-tool-history button > div { min-width: 0; flex: 1; }
+.azt-tool-history strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.azt-tool-history small { display: block; color: var(--text-muted); overflow-wrap: anywhere; font-size: 11px; margin-top: 6px; }
+.azt-tool-history button > span { font-size: 12px; text-align: right; flex-shrink: 0; }
+.azt-tool-empty { padding: 26px 10px; text-align: center; color: var(--text-muted); font-size: 13px; line-height: 1.8; }
+.azt-tools button:disabled { opacity: .5; cursor: not-allowed; }
+.azt-tool-workbench { display: grid; grid-template-rows: auto minmax(0, 1fr); height: min(850px, 88vh); min-height: 450px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.azt-tool-workbench header { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.azt-tool-workbench header > span { flex: 1; color: var(--text-muted); font-size: 12px; }
+.azt-tool-workbench header button { display: flex; align-items: center; gap: 6px; padding: 6px; border: 0; background: transparent; color: var(--text-soft); font-size: 12px; }
+.azt-tool-workbench iframe { width: 100%; height: 100%; border: 0; }
+@media (max-width: 1000px) { .azt-tool-columns { grid-template-columns: 1fr; } }
+@media (max-width: 600px) { .azt-tool-card { padding: 18px; } .azt-tool-icon { display: none; } .azt-tool-history-heading { align-items: stretch; flex-direction: column; } .azt-tool-workbench header > span { display: none; } }

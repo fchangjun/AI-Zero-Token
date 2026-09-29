@@ -11,6 +11,7 @@ export type UpdateRelease = {
   version: string;
   notes: string;
   releaseUrl: string;
+  publishedAt?: string;
   downloadUrl: string;
   size: number;
   sha256?: string;
@@ -51,6 +52,7 @@ export function selectMacRelease(value: unknown, currentVersion: string, arch: s
     version,
     notes: typeof release.body === "string" ? release.body.slice(0, 16_000) : "",
     releaseUrl: `${RELEASES_URL}/tag/${encodeURIComponent(tag)}`,
+    publishedAt: typeof release.published_at === "string" && Number.isFinite(Date.parse(release.published_at)) ? release.published_at : undefined,
     downloadUrl: url.href,
     size: asset.size,
     sha256: digest,

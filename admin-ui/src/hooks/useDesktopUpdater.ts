@@ -25,7 +25,7 @@ export function useDesktopUpdater(workspaceReady: boolean) {
     }
   }, [bridge, workspaceReady]);
 
-  async function action(name: "check" | "download" | "cancel" | "install") {
+  async function action(name: "check" | "download" | "cancel" | "install" | "openDetails" | "closeDetails" | "dismissNotice") {
     if (!bridge) return;
     setBridgeError(false);
     // State events are authoritative; an older in-flight command must not overwrite newer progress.

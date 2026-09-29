@@ -1,3 +1,5 @@
+import type { ReasoningEffort } from "../models/reasoning-effort.js";
+
 import {
   clearStore,
   getActiveProfile,
@@ -670,7 +672,7 @@ export class AuthService {
       id: string;
       displayName?: string;
       contextWindow?: number;
-      reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+      reasoningEfforts?: ReasoningEffort[];
       inputModalities?: Array<"text" | "image">;
     }>;
     replaceCatalogModels?: boolean;

@@ -5,13 +5,17 @@ import {
 } from "../providers/openai-compatible/inspect.js";
 import {
   getCodexGatewayProviderStatus,
-  withCodexProviderConfigTransaction,
   getCodexAuthStatus,
   getReusableCodexProviderBearerToken,
+  ACTIVE_CODEX_PROVIDER_ID,
+  withCodexProviderConfigLock,
 } from "../store/codex-auth-store.js";
+import { CodexProviderSwitch, hasPendingCodexSwitch, type ThirdPartySwitchTarget } from "./codex-provider-switch.js";
+import type { CodexSwitchRuntime } from "./codex-switch-runtime.js";
 import { listExternalProviderInspectionHistory } from "../store/external-provider-inspection-history.js";
 import {
   commitExternalProviderActivation,
+  commitExternalProviderDeactivation,
   hasImportedLegacyExternalProvider,
   createExternalProvider,
   deleteExternalProviderWithCodex,
@@ -100,6 +104,9 @@ function inspectionModelIds(
 
 export class ExternalProviderService {
   private migrationPromise: Promise<void> | undefined;
+  private switcher: CodexProviderSwitch;
+
+  constructor(runtime?: CodexSwitchRuntime) { this.switcher = new CodexProviderSwitch(runtime); }
 
   private async migrateLegacyProviderOnce(): Promise<void> {
     if (!this.migrationPromise) {
@@ -204,11 +211,18 @@ export class ExternalProviderService {
   async delete(providerId: string): Promise<boolean> {
     return mutate(async () => {
       await this.migrateLegacyProviderOnce();
-      const deleted = await withCodexProviderConfigTransaction(async ({ remove }) => {
+      let wasActive = false;
+      const deleted = await withCodexProviderConfigLock(async () => {
         return deleteExternalProviderWithCodex(providerId, async (provider) => {
-          await remove({ providerId: provider.codexProviderId ?? codexProviderId(provider.id), purgeProviderDefinition: true });
+          const actual = await getCodexGatewayProviderStatus();
+          wasActive = provider.activeForCodex && actual.active
+            && actual.providerId === (provider.codexProviderId ?? codexProviderId(provider.id));
+          // Historical definitions remain resolvable. An inactive service never owns azt_active.
+        }, {
+          beforeMutation: () => this.switcher.recover(),
+          commitTransaction: (content, commit) => wasActive ? this.switcher.commit(undefined, content, commit) : commit(),
         });
-      });
+      }, true);
       if (deleted) {
         inspectionJobs.delete(providerId);
       }
@@ -298,17 +312,21 @@ export class ExternalProviderService {
       const ids = [...new Set(modelIds.map((id) => id.trim()))];
       if (!ids.includes(defaultModelId)) throw serviceError("默认模型必须包含在 Codex 显示模型中。");
       try {
-        return await withCodexProviderConfigTransaction(async ({ apply }) => {
+        let target: ThirdPartySwitchTarget;
+        return await withCodexProviderConfigLock(async () => {
           return commitExternalProviderActivation(providerId, ids, defaultModelId, async (activation) => {
-            await apply({
+            if (!activation.defaultModel) throw serviceError("请先选择第三方默认模型。");
+            target = {
               baseUrl: activation.baseUrl,
-              providerId: activation.codexProviderId ?? codexProviderId(activation.providerId),
-              kind: "openai_compatible", bearerToken: activation.bearerToken,
+              bearerToken: activation.bearerToken,
               model: activation.defaultModel, catalogModels: activation.catalogModels,
-              replaceCatalogModels: true, displayName: activation.providerName,
-            });
+              displayName: activation.providerName,
+            };
+          }, {
+            beforeMutation: () => this.switcher.recover(),
+            commitTransaction: (content, commit) => this.switcher.commit(target, content, commit),
           });
-        });
+        }, true);
       } catch (error) {
         if (error instanceof Error && error.message === `没有找到 API 服务: ${providerId}`) {
           throw serviceError(error.message, 404);
@@ -325,12 +343,42 @@ export class ExternalProviderService {
     }, providerId);
   }
 
+  async deactivate(providerId: string): Promise<PublicExternalProvider> {
+    return mutate(async () => {
+      await this.migrateLegacyProviderOnce();
+      try {
+        return await withCodexProviderConfigLock(async () => {
+          return commitExternalProviderDeactivation(providerId, async (provider) => {
+            const actual = await getCodexGatewayProviderStatus();
+            if (!actual.active || actual.providerId !== (provider.codexProviderId ?? codexProviderId(provider.id))) {
+              throw serviceError(`API 服务 ${provider.name} 当前未接入 Codex。`, 409);
+            }
+          }, {
+            beforeMutation: () => this.switcher.recover(),
+            commitTransaction: (content, commit) => this.switcher.commit(undefined, content, commit),
+          });
+        }, true);
+      } catch (error) {
+        if (error instanceof Error && error.message === `没有找到 API 服务: ${providerId}`) {
+          throw serviceError(error.message, 404);
+        }
+        if (error instanceof Error && error.message.endsWith("当前未接入 Codex。")) {
+          throw serviceError(error.message, 409);
+        }
+        throw error;
+      }
+    }, providerId);
+  }
+
   private async withActualCodexStatus(providers: PublicExternalProvider[]): Promise<PublicExternalProvider[]> {
     const actual = await getCodexGatewayProviderStatus();
+    const pending = await hasPendingCodexSwitch();
     return providers.map((provider) => ({
       ...provider,
       inspectionJob: inspectionJobs.get(provider.id),
-      activeForCodex: actual.active && actual.providerId === (provider.codexProviderId ?? codexProviderId(provider.id)),
+      codexNeedsApply: pending || provider.codexNeedsApply,
+      activeForCodex: !pending && actual.active && actual.providerId === (provider.codexProviderId ?? codexProviderId(provider.id))
+        && (actual.providerId !== ACTIVE_CODEX_PROVIDER_ID || provider.activeForCodex),
     }));
   }
 

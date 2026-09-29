@@ -10,14 +10,15 @@ import { RequestDiagnosticService } from "./services/request-diagnostic-service.
 import { VersionService } from "./services/version-service.js";
 import { UsageService } from "./services/usage-service.js";
 import { ExternalProviderService } from "./services/external-provider-service.js";
+import type { CodexSwitchRuntime } from "./services/codex-switch-runtime.js";
 
-export function createGatewayContext() {
+export function createGatewayContext(params?: { codexSwitchRuntime?: CodexSwitchRuntime }) {
   const configService = new ConfigService();
   const authService = new AuthService(configService);
   const modelService = new ModelService(configService, authService);
   const versionService = new VersionService();
   const usageService = new UsageService();
-  const externalProviderService = new ExternalProviderService();
+  const externalProviderService = new ExternalProviderService(params?.codexSwitchRuntime);
   const networkDetectService = new NetworkDetectService();
   const githubImageBedService = new GithubImageBedService();
   const requestThrottleService = new RequestThrottleService(configService);

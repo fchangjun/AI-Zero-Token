@@ -12,6 +12,7 @@ const ImageBedPage = lazy(() => import("@/pages/image-bed").then((module) => ({ 
 const NetworkDetectPage = lazy(() => import("@/pages/network-detect").then((module) => ({ default: module.NetworkDetectPage })));
 const SettingsPage = lazy(() => import("@/pages/settings").then((module) => ({ default: module.SettingsPage })));
 const LogsPage = lazy(() => import("@/pages/logs").then((module) => ({ default: module.LogsPage })));
+const ToolsPage = lazy(() => import("@/pages/tools").then((module) => ({ default: module.ToolsPage })));
 
 function RouteLoading() {
   const t = useT();
@@ -74,6 +75,8 @@ export function RouteRenderer({ workspace }: { workspace: UseAdminWorkspaceResul
       <ImageBedPage busy={busy} setBusy={workspace.setBusy} setStatus={workspace.setStatus} />
     ) : activeRoute === "network" ? (
       <NetworkDetectPage />
+    ) : activeRoute === "tools" ? (
+      <ToolsPage />
     ) : activeRoute === "settings" ? (
       <SettingsPage
         showEmails={workspace.showEmails}

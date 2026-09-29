@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "response-reviewer": {
+      "command": "node",
+      "args": ["./src/mcp-server.mjs"],
+      "cwd": "."
+    }
+  }
+}

@@ -45,6 +45,9 @@ export async function startServer(params?: {
   port?: number;
   onRestart?: () => void | Promise<void>;
   onRestartCodex?: () => void | Promise<void>;
+  onPrepareCodexSwitch?: () => Promise<void>;
+  onCompleteCodexSwitch?: () => Promise<void>;
+  onStartCodexWithReviewer?: (cdpPort: number) => Promise<{ started: boolean; cancelled?: boolean }>;
 }) {
   const bodyLimit = resolveBodyLimitBytes();
   const configService = new ConfigService();
@@ -61,6 +64,9 @@ export async function startServer(params?: {
       bodyLimit,
       onRestart: params?.onRestart,
       onRestartCodex: params?.onRestartCodex,
+      onPrepareCodexSwitch: params?.onPrepareCodexSwitch,
+      onCompleteCodexSwitch: params?.onCompleteCodexSwitch,
+      onStartCodexWithReviewer: params?.onStartCodexWithReviewer,
     });
 
     try {

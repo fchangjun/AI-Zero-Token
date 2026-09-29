@@ -1,3 +1,4 @@
+import { isReasoningEffort } from "../../../../src/core/models/reasoning-effort";
 import { fetchJson } from "@/shared/api";
 import type {
   ApiProvider,
@@ -7,7 +8,6 @@ import type {
   ProviderModelCapabilities,
   ProviderModelSource,
   ProvidersSnapshot,
-  ReasoningEffort,
 } from "./types";
 
 const PROVIDERS_ENDPOINT = "/_gateway/admin/providers";
@@ -15,7 +15,6 @@ const INSPECTION_STATUSES = new Set<ProviderInspectionStatus>([
   "ready", "busy", "unavailable", "incompatible", "auth_error",
   "transport_error", "timeout", "skipped", "pending", "unknown",
 ]);
-const REASONING_EFFORTS = new Set<ReasoningEffort>(["minimal", "low", "medium", "high", "xhigh"]);
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -43,7 +42,7 @@ function parseCapabilities(value: unknown): ProviderModelCapabilities | undefine
   const source = record(value);
   if (!Object.keys(source).length) return undefined;
   const efforts = Array.isArray(source.reasoningEfforts)
-    ? source.reasoningEfforts.filter((effort): effort is ReasoningEffort => typeof effort === "string" && REASONING_EFFORTS.has(effort as ReasoningEffort))
+    ? source.reasoningEfforts.filter(isReasoningEffort)
     : undefined;
   const inputModalities = Array.isArray(source.inputModalities)
     ? source.inputModalities.filter((modality): modality is "text" | "image" => modality === "text" || modality === "image")
@@ -117,6 +116,7 @@ export function normalizeProvider(value: unknown, activeProviderId?: string): Ap
     ...(textValue(source.defaultModelId) ? { defaultModelId: textValue(source.defaultModelId) } : {}),
     tokenConfigured: booleanValue(source.tokenConfigured),
     codexNeedsApply: booleanValue(source.codexNeedsApply),
+    codexSwitchWarning: textValue(source.codexSwitchWarning) || undefined,
     ...(["running", "completed", "failed"].includes(textValue(job.status)) ? { inspectionJob: {
       status: job.status as "running" | "completed" | "failed", total: numberValue(job.total) ?? 0,
       completed: numberValue(job.completed) ?? 0, error: textValue(job.error),
@@ -184,4 +184,8 @@ export async function inspectProvider(providerId: string, modelIds?: string[]): 
 
 export async function activateProvider(providerId: string, modelIds: string[], defaultModelId: string): Promise<ApiProvider | null> {
   return providerFromMutation(await fetchJson<unknown>(`${PROVIDERS_ENDPOINT}/${encodeURIComponent(providerId)}/activate`, jsonRequest("POST", { modelIds, defaultModelId })));
+}
+
+export async function deactivateProvider(providerId: string): Promise<ApiProvider | null> {
+  return providerFromMutation(await fetchJson<unknown>(`${PROVIDERS_ENDPOINT}/${encodeURIComponent(providerId)}/deactivate`, jsonRequest("POST")));
 }

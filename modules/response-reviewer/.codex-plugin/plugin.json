@@ -1,0 +1,27 @@
+{
+  "name": "response-reviewer",
+  "version": "0.2.0",
+  "description": "AI Zero Token managed local workspace for annotating Codex responses.",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AZT Response Reviewer",
+    "shortDescription": "Review long Codex responses without interrupting your reading flow.",
+    "longDescription": "Response Reviewer opens a local, project-aware review workspace where Codex responses can be selected, annotated, persisted, and turned into a structured revision request.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Open Response Reviewer",
+      "Review this response in Response Reviewer",
+      "Show my latest response annotations"
+    ]
+  },
+  "mcpServers": "./.mcp.json"
+}

@@ -1,8 +1,10 @@
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchJson } from "@/shared/api";
 import {
   activateProvider,
   createProvider,
+  deactivateProvider,
   deleteProvider,
   inspectProvider,
   listProviders,
@@ -160,7 +162,54 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
       await refresh(true);
       await onConfigChange?.();
       setView({ name: "detail", providerId: provider.id });
-      showSuccess(`${provider.name} 已接入 Codex。重启 Codex 后会更新模型选择器。`);
+      showSuccess(updated?.codexSwitchWarning ?? `${provider.name} 已接管。打开 Codex 后，本地新旧对话都使用该服务；不支持的模型已切换为该服务的默认模型。`);
+    } catch (error) {
+      showError(error);
+    } finally {
+      setAction(null);
+    }
+  }
+
+  async function removeCodex(provider: ApiProvider) {
+    const accountPool = provider.kind === "account_pool";
+    const detail = accountPool
+      ? "账号池 API 服务会继续运行，只有 Codex 接入会被解除。重启 Codex 后恢复原本的配置。"
+      : "本地新旧对话将恢复原生 Codex 服务。请先等待当前回复完成；桌面版会尝试关闭并重新打开 Codex。第三方服务、Key 和模型选择仍保存在 AZT。";
+    if (!window.confirm(`确定解除“${provider.name}”的 Codex 接入吗？\n\n${detail}`)) return;
+    setAction(`deactivate:${provider.id}`);
+    try {
+      let restartSupported = config?.codexRestartSupported;
+      let switchWarning: string | undefined;
+      if (accountPool) {
+        const result = await fetchJson<{ config: AdminConfig }>("/_gateway/admin/codex/remove-provider", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ providerId: config?.codex.gatewayProvider.providerId }),
+        });
+        onConfigUpdate(result.config);
+        restartSupported = result.config.codexRestartSupported;
+      } else {
+        const updated = await deactivateProvider(provider.id);
+        switchWarning = updated?.codexSwitchWarning;
+        setProviders((current) => current.map((item) => item.id === provider.id
+          ? { ...(updated ?? item), activeForCodex: false }
+          : item));
+      }
+      setActiveProviderId(undefined);
+      await refresh(true);
+      await onConfigChange?.();
+      setView(accountPool ? { name: "list" } : { name: "detail", providerId: provider.id });
+      showSuccess(accountPool
+        ? "已解除账号池的 Codex 接入。账号池 API 服务继续运行，重启 Codex 后恢复原配置。"
+        : switchWarning ?? `${provider.name} 已解除接管。本地新旧对话已恢复原生 Codex 设置，打开 Codex 即可继续。`);
+      if (accountPool && restartSupported && window.confirm("Codex 接入已解除，是否现在重启 Codex 客户端？")) {
+        try {
+          await fetchJson<{ ok: boolean; restarted?: boolean }>("/_gateway/admin/desktop/restart-codex", { method: "POST" });
+          showSuccess(`${provider.name} 已解除 Codex 接入，并已重启 Codex。`);
+        } catch (error) {
+          showError(new Error(`接入已解除，但 Codex 重启失败：${errorMessage(error)}`));
+        }
+      }
     } catch (error) {
       showError(error);
     } finally {
@@ -187,6 +236,8 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
           onAdd={openCreate}
           onOpen={(provider) => setView({ name: "detail", providerId: provider.id })}
           onOpenCodex={(provider) => { if (provider.kind === "account_pool") { if (provider.remoteGateway) setView({ name: "remote" }); else window.location.hash = "providers/gateway/overview"; } else setView({ name: "codex", providerId: provider.id }); }}
+          onDeactivate={(provider) => void removeCodex(provider)}
+          disconnecting={Boolean(activeProvider && action === `deactivate:${activeProvider.id}`)}
           onOpenRemote={() => setView({ name: "remote" })}
         />
       )}
@@ -208,8 +259,10 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
           provider={selectedProvider}
           activeProvider={activeProvider}
           saving={action === `activate:${selectedProvider.id}`}
+          disconnecting={action === `deactivate:${selectedProvider.id}`}
           onBack={() => setView({ name: "detail", providerId: selectedProvider.id })}
           onActivate={(modelIds, defaultModelId) => void applyCodex(selectedProvider, modelIds, defaultModelId)}
+          onDeactivate={() => void removeCodex(selectedProvider)}
         />
       )}
       <ProviderDrawer

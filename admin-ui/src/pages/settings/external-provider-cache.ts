@@ -1,3 +1,5 @@
+import type { ReasoningEffort } from "../../../../src/core/models/reasoning-effort";
+
 export type ExternalModelStatus =
   | "ready"
   | "busy"
@@ -17,7 +19,7 @@ export type ExternalModelInspectionResult = {
     responsesStreaming?: boolean;
     functionCalling?: boolean;
     functionCallOutput?: boolean;
-    reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+    reasoningEfforts?: ReasoningEffort[];
     inputModalities?: Array<"text" | "image">;
     imageInput?: boolean;
   };
@@ -57,7 +59,7 @@ export type ExternalInspectionHistoryEntry = {
 export type CodexCatalogModel = {
   id: string;
   displayName?: string;
-  reasoningEfforts?: Array<"minimal" | "low" | "medium" | "high" | "xhigh">;
+  reasoningEfforts?: ReasoningEffort[];
   inputModalities?: Array<"text" | "image">;
 };
 

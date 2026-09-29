@@ -19,6 +19,7 @@ export class DesktopUpdater {
   private timer?: ReturnType<typeof setInterval>;
   private startupTimer?: ReturnType<typeof setTimeout>;
   private lastNotified?: string;
+  private lastCheckAttempt?: number;
   private stopping = false;
   private job?: string;
 
@@ -31,12 +32,29 @@ export class DesktopUpdater {
     installer: UpdateInstaller;
     onState: (state: DesktopUpdateState) => void;
     onAvailable: (release: UpdateRelease) => void;
+    onReady?: (release: UpdateRelease) => void;
     quit: () => void;
   }) {
     this.state = { phase: options.supported ? "idle" : "unsupported", currentVersion: options.currentVersion, recovered: options.recovered };
   }
 
   getState(): DesktopUpdateState { return { ...this.state }; }
+
+  // Keep the requested view in the main process so notification clicks survive window recreation.
+  openDetails(): DesktopUpdateState {
+    if (this.options.supported) this.setState({ detailsOpen: true });
+    return this.getState();
+  }
+
+  closeDetails(): DesktopUpdateState {
+    this.setState({ detailsOpen: false });
+    return this.getState();
+  }
+
+  dismissNotice(): DesktopUpdateState {
+    this.setState({ noticeDismissed: true, detailsOpen: false });
+    return this.getState();
+  }
 
   private setState(patch: Partial<DesktopUpdateState>) {
     this.state = { ...this.state, ...patch };
@@ -45,8 +63,8 @@ export class DesktopUpdater {
 
   start(): void {
     if (!this.options.supported || this.timer) return;
-    this.startupTimer = setTimeout(() => { void this.check(); }, 10_000);
-    this.timer = setInterval(() => { void this.check(); }, 30 * 60_000);
+    this.startupTimer = setTimeout(() => { void this.checkIfStale(); }, 10_000);
+    this.timer = setInterval(() => { void this.checkIfStale(); }, 30 * 60_000);
     this.startupTimer.unref();
     this.timer.unref();
   }
@@ -56,20 +74,39 @@ export class DesktopUpdater {
     if (this.stopping || !this.options.supported) return Promise.resolve(this.getState());
     this.operation = action().catch((error: unknown) => {
       console.error("[desktop:update]", error);
-      this.setState({ phase: "error", errorCode: error instanceof UpdateError ? error.code : fallback, percent: undefined });
+      this.setState({ phase: "error", errorCode: error instanceof UpdateError ? error.code : fallback, percent: undefined, noticeDismissed: false });
     }).then(() => this.getState()).finally(() => { this.operation = null; });
     return this.operation;
   }
 
-  check(): Promise<DesktopUpdateState> {
+  checkIfStale(): Promise<DesktopUpdateState> {
+    // Returning to the app refreshes an old check without making every focus a network request.
+    // Keep download/install failures visible until the user chooses how to recover.
+    if ((this.lastCheckAttempt !== undefined && Date.now() - this.lastCheckAttempt < 5 * 60_000)
+      || (this.state.phase === "error" && this.state.errorCode !== "check-failed")) return Promise.resolve(this.getState());
+    return this.check(true);
+  }
+
+  check(background = false): Promise<DesktopUpdateState> {
     if (["ready", "installing"].includes(this.state.phase)) return Promise.resolve(this.getState());
     return this.run(async () => {
-      this.setState({ phase: "checking", errorCode: undefined });
-      const release = await fetchMacRelease(this.options.fetcher, this.options.currentVersion, this.options.arch, AbortSignal.timeout(20_000));
+      this.lastCheckAttempt = Date.now();
+      if (!background || !this.release) this.setState({ phase: "checking", errorCode: undefined });
+      let release: UpdateRelease | null;
+      try {
+        release = await fetchMacRelease(this.options.fetcher, this.options.currentVersion, this.options.arch, AbortSignal.timeout(20_000));
+      } catch (error) {
+        // A transient background check must not replace a known update with an error.
+        if (background && this.release) return;
+        throw error;
+      }
+      const versionChanged = release?.version !== this.release?.version;
       this.release = release;
       this.setState({
         phase: release ? "available" : "up-to-date", version: release?.version,
         releaseNotes: release?.notes, releaseUrl: release?.releaseUrl, checkedAt: Date.now(), percent: undefined,
+        publishedAt: release?.publishedAt, downloadSize: release?.size,
+        ...(versionChanged ? { noticeDismissed: false } : {}),
         errorCode: release && !release.sha256 ? "missing-digest" : undefined,
       });
       if (release && this.lastNotified !== release.version) {
@@ -85,7 +122,7 @@ export class DesktopUpdater {
       const release = this.release!;
       if (!release.sha256) throw new UpdateError("missing-digest", "Missing GitHub asset checksum");
       this.abort = new AbortController();
-      this.setState({ phase: "downloading", errorCode: undefined, percent: 0 });
+      this.setState({ phase: "downloading", errorCode: undefined, percent: 0, noticeDismissed: false });
       try {
         await this.options.installer.preflight(release.size);
         this.abort.signal.throwIfAborted();
@@ -98,7 +135,8 @@ export class DesktopUpdater {
         this.abort.signal.throwIfAborted();
         this.setState({ phase: "preparing", percent: undefined });
         await this.options.installer.prepare(this.job, release.version);
-        this.setState({ phase: "ready" });
+        this.setState({ phase: "ready", noticeDismissed: false });
+        this.options.onReady?.(release);
       } catch (error) {
         await this.options.installer.cleanup();
         await this.cleanupJob();

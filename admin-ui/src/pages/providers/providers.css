@@ -106,6 +106,7 @@
 .provider-active-copy > div { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin-top: 5px; }
 .provider-active-copy strong { font-size: 17px; line-height: 1.25; }
 .provider-active-copy p { margin: 5px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.provider-active-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 
 .providers-surface { overflow: hidden; }
 .providers-surface-head { min-height: 72px; padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
@@ -237,6 +238,7 @@
 
 .provider-capability-list { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-width: 0; }
 .provider-capability-tag { display: inline-flex; align-items: center; min-height: 24px; padding: 4px 9px; border: 1px solid transparent; border-radius: 999px; font-size: 10px; font-weight: 820; line-height: 1; white-space: nowrap; }
+.provider-capability-tag.is-reasoning { max-width: 100%; white-space: normal; line-height: 1.5; }
 .provider-capability-tag.is-success { color: #087f5b; background: #e8fbf2; border-color: #ccf3e0; box-shadow: inset 0 1px 0 rgba(255,255,255,.6); }
 .provider-capability-tag.is-danger { color: #c2413a; background: #fff0ef; border-color: #f9d7d4; }
 .provider-capability-tag.is-neutral { color: #64748b; background: #f3f5f8; border-color: #e6eaf0; }
@@ -359,11 +361,12 @@
   .provider-detail-danger { align-items: stretch; flex-direction: column; }
   .providers-search, .providers-search.is-wide { width: 100%; }
   .provider-active-card { grid-template-columns: auto minmax(0, 1fr); }
-  .provider-active-card > .btn-secondary { grid-column: 1 / -1; width: 100%; }
+  .provider-active-actions { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; }
   .provider-switch-card { align-items: stretch; flex-direction: column; }
   .provider-switch-arrow { transform: rotate(90deg); align-self: center; }
   .provider-default-row select { width: 100%; }
   .provider-codex-footer > div { width: 100%; display: grid; }
+  .provider-active-actions { grid-template-columns: 1fr; }
   .provider-drawer { width: 100vw; border-left: 0; }
 }
 

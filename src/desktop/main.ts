@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type { ProfileSummary } from "../core/types.js";
 import { startServer } from "../server/index.js";
+import { assertNoActiveCodexTurns } from "../core/services/codex-switch-runtime.js";
 import { DesktopUpdater } from "./updater.js";
 import { MacUpdateInstaller } from "./mac-update-installer.js";
 
@@ -40,11 +41,14 @@ let isQuitting = false;
 let gatewayShutdownComplete = false;
 let isRestarting = false;
 let isRestartingCodex = false;
+let reopenCodexAfterSwitch: string[] = [];
+let isStartingCodexWithReviewer = false;
 let isAccountPanelBusy = false;
 let currentGatewayUrl: string | null = null;
 let currentAdminUrl: string | null = null;
 let desktopUpdater: DesktopUpdater | null = null;
 let updateInstaller: MacUpdateInstaller | null = null;
+let updateNotification: Notification | null = null;
 
 const desktopDir = path.dirname(fileURLToPath(import.meta.url));
 const appIconPath = path.resolve(desktopDir, "../../build/icon.png");
@@ -53,9 +57,9 @@ const startupPageUrl = buildStartupPageUrl("正在启动本地网关");
 const accountPanelWidth = 420;
 const accountPanelHeight = 640;
 const execFileAsync = promisify(execFile);
-const codexAppPath = "/Applications/Codex.app";
+const codexBundleId = "com.openai.codex";
+const codexAppPaths = ["/Applications/Codex.app", "/Applications/ChatGPT.app"] as const;
 const codexQuitTimeoutMs = 3000;
-const codexKillTimeoutMs = 3000;
 const codexOpenTimeoutMs = 5000;
 
 electronApp.setName("AI Zero Token");
@@ -158,22 +162,18 @@ async function restartCodexApp(): Promise<void> {
 
   isRestartingCodex = true;
   try {
-    await runDesktopCommand("osascript", ["-e", 'tell application "Codex" to quit'], codexQuitTimeoutMs).catch((error) => {
+    await runDesktopCommand("osascript", ["-e", `tell application id "${codexBundleId}" to quit`], codexQuitTimeoutMs).catch((error) => {
       console.warn("[desktop:codex:quit]", error instanceof Error ? error.message : error);
     });
 
     const gracefullyExited = await waitForCodexMainProcess(false, 6000);
     if (!gracefullyExited) {
-      await runDesktopCommand("pkill", ["-TERM", "-x", "Codex"], codexKillTimeoutMs).catch((error) => {
-        console.warn("[desktop:codex:term]", error instanceof Error ? error.message : error);
-      });
+      await signalCodexProcesses("SIGTERM", "term");
       await waitForCodexMainProcess(false, 3000);
     }
 
     if (await isCodexMainProcessRunning()) {
-      await runDesktopCommand("pkill", ["-KILL", "-x", "Codex"], codexKillTimeoutMs).catch((error) => {
-        console.warn("[desktop:codex:kill]", error instanceof Error ? error.message : error);
-      });
+      await signalCodexProcesses("SIGKILL", "kill");
       const forceExited = await waitForCodexMainProcess(false, 3000);
       if (!forceExited) {
         throw new Error("旧 Codex 进程未能退出，请手动退出 Codex 后再打开。");
@@ -184,10 +184,81 @@ async function restartCodexApp(): Promise<void> {
 
     const started = await waitForCodexMainProcess(true, 12_000);
     if (!started) {
-      throw new Error("已发送启动命令，但未检测到 Codex 进程。请手动打开 Codex.app。");
+      throw new Error("已发送启动命令，但未检测到 Codex 客户端进程。请确认 Codex/ChatGPT 客户端已安装，或手动打开后重试。");
     }
   } finally {
     isRestartingCodex = false;
+  }
+}
+
+async function prepareCodexSwitch(): Promise<void> {
+  if (isRestartingCodex || isStartingCodexWithReviewer) throw new Error("Codex 正在启动或重启，请稍后再切换服务。");
+  if (process.platform !== "darwin") return;
+  const { stdout } = await execFileAsync("ps", ["-axo", "command="], { timeout: 2000, maxBuffer: 8 * 1024 * 1024 });
+  const runningApps = codexAppPaths.filter((appPath) => {
+    const executable = `${appPath}/Contents/MacOS/${path.basename(appPath, ".app")}`;
+    return stdout.split(/\r?\n/).some((line) => line.trim() === executable || line.trim().startsWith(`${executable} `));
+  });
+  if (!runningApps.length) return;
+  await assertNoActiveCodexTurns();
+  isRestartingCodex = true;
+  try {
+    for (const appPath of runningApps) await runDesktopCommand("osascript", ["-e", `tell application "${appPath}" to quit`], codexQuitTimeoutMs);
+    if (!await waitForCodexMainProcess(false, 8000)) throw new Error("Codex 尚未完全退出，未切换服务。请等待回复结束后手动退出再试。");
+    reopenCodexAfterSwitch = [...runningApps];
+  } finally { isRestartingCodex = false; }
+}
+
+async function completeCodexSwitch(): Promise<void> {
+  if (!reopenCodexAfterSwitch.length) return;
+  const paths = reopenCodexAfterSwitch;
+  reopenCodexAfterSwitch = [];
+  for (const appPath of paths) await runDesktopCommand("open", [appPath], codexOpenTimeoutMs);
+  if (!await waitForCodexMainProcess(true, 12_000)) throw new Error("设置已切换，但未检测到 Codex 启动，请手动打开客户端。");
+}
+
+async function startCodexWithReviewer(cdpPort: number): Promise<{ started: boolean; cancelled?: boolean }> {
+  if (process.platform !== "darwin") {
+    throw new Error("一键启动 Codex 接入目前仅支持 macOS。请在 Windows 或 Linux 上使用对应的 Codex 启动方式。");
+  }
+
+  if (!Number.isInteger(cdpPort) || cdpPort < 1024 || cdpPort > 65535) {
+    throw new Error("本机 CDP 端口必须是 1024 到 65535 之间的整数。");
+  }
+
+  if (isRestartingCodex || isStartingCodexWithReviewer) {
+    throw new Error("Codex 正在启动或重启，请稍候再试。");
+  }
+
+  isStartingCodexWithReviewer = true;
+  try {
+    if (await isCodexMainProcessRunning()) {
+      const shouldRestart = await confirmStartCodexWithReviewer(cdpPort);
+      if (!shouldRestart) {
+        return { started: false, cancelled: true };
+      }
+
+      await runDesktopCommand("osascript", ["-e", `tell application id "${codexBundleId}" to quit`], codexQuitTimeoutMs).catch((error) => {
+        console.warn("[desktop:codex:reviewer-quit]", error instanceof Error ? error.message : error);
+      });
+
+      const gracefullyExited = await waitForCodexMainProcess(false, 6000);
+      if (!gracefullyExited && await isCodexMainProcessRunning()) {
+        throw new Error("Codex 仍在运行，请先手动完全退出 Codex 后再试。为保护未保存内容，AZT 没有强制终止它。");
+      }
+    }
+
+    await openCodexApp([
+      "--remote-debugging-address=127.0.0.1",
+      `--remote-debugging-port=${cdpPort}`,
+    ]);
+    const started = await waitForCodexMainProcess(true, 12_000);
+    if (!started) {
+      throw new Error("已发送启动命令，但未检测到 Codex 客户端进程。请确认 Codex/ChatGPT 客户端已安装，或手动打开后重试。");
+    }
+    return { started: true };
+  } finally {
+    isStartingCodexWithReviewer = false;
   }
 }
 
@@ -198,22 +269,60 @@ async function runDesktopCommand(command: string, args: string[], timeoutMs: num
   });
 }
 
-async function openCodexApp(): Promise<void> {
+async function openCodexApp(args: string[] = []): Promise<void> {
+  const launchArgs = args.length ? ["--args", ...args] : [];
   try {
-    await runDesktopCommand("open", [codexAppPath], codexOpenTimeoutMs);
-  } catch {
-    await runDesktopCommand("open", ["-a", "Codex"], codexOpenTimeoutMs);
+    await runDesktopCommand("open", ["-b", codexBundleId, ...launchArgs], codexOpenTimeoutMs);
+    return;
+  } catch (bundleError) {
+    for (const appPath of codexAppPaths) {
+      try {
+        await runDesktopCommand("open", [appPath, ...launchArgs], codexOpenTimeoutMs);
+        return;
+      } catch {
+        // Try the next known app bundle before surfacing the original launch error.
+      }
+    }
+    throw bundleError;
   }
 }
 
 async function isCodexMainProcessRunning(): Promise<boolean> {
+  return (await getCodexMainProcessIds()).length > 0;
+}
+
+async function getCodexMainProcessIds(): Promise<number[]> {
   try {
-    await execFileAsync("pgrep", ["-x", "Codex"], {
+    const { stdout } = await execFileAsync("ps", ["-axo", "pid=,command="], {
       timeout: 1500,
+      env: { ...process.env, LC_ALL: "C", LANG: "C" },
     });
-    return true;
+    const processIds = new Set<number>();
+    for (const line of stdout.split(/\r?\n/)) {
+      const match = /^\s*(\d+)\s+(.+?)\s*$/.exec(line);
+      if (!match) continue;
+      const command = match[2];
+      const isMainProcess = codexAppPaths.some((appPath) => {
+        const appName = path.basename(appPath, ".app");
+        const executable = `${appPath}/Contents/MacOS/${appName}`;
+        return command === executable || command.startsWith(`${executable} `);
+      });
+      if (isMainProcess) processIds.add(Number(match[1]));
+    }
+    return [...processIds];
   } catch {
-    return false;
+    return [];
+  }
+}
+
+async function signalCodexProcesses(signal: "SIGTERM" | "SIGKILL", label: "term" | "kill"): Promise<void> {
+  const processIds = await getCodexMainProcessIds();
+  for (const processId of processIds) {
+    try {
+      process.kill(processId, signal);
+    } catch (error) {
+      console.warn(`[desktop:codex:${label}:${processId}]`, error instanceof Error ? error.message : error);
+    }
   }
 }
 
@@ -242,6 +351,21 @@ async function confirmRestartCodexApp(): Promise<boolean> {
   const parent = accountPanelWindow ?? mainWindow;
   const result = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
 
+  return result.response === 0;
+}
+
+async function confirmStartCodexWithReviewer(cdpPort: number): Promise<boolean> {
+  const options: MessageBoxOptions = {
+    type: "question",
+    buttons: ["退出并启动", "取消"],
+    defaultId: 0,
+    cancelId: 1,
+    title: "启动 Codex Reviewer 接入",
+    message: "需要完全退出并重新启动 Codex",
+    detail: `为了让 Codex 监听本机 CDP 端口 127.0.0.1:${cdpPort}，AZT 将先请求 Codex 正常退出，再重新启动。请先保存未完成内容。AZT 不会强制终止 Codex。`,
+  };
+  const parent = accountPanelWindow ?? mainWindow;
+  const result = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
   return result.response === 0;
 }
 
@@ -495,7 +619,7 @@ function ensureTray(): void {
     tray?.popUpContextMenu(Menu.buildFromTemplate([
       { label: "打开快速切换", click: () => void showAccountPanel() },
       { label: "打开控制台", click: () => focusMainWindow() },
-      ...(process.platform === "darwin" ? [{ label: "检查更新", click: () => { focusMainWindow(); void desktopUpdater?.check(); } }] : []),
+      ...(process.platform === "darwin" ? [{ label: "检查更新", click: () => { showUpdateDetails(); void desktopUpdater?.check(); } }] : []),
       { type: "separator" },
       { label: "退出", role: "quit" },
     ]));
@@ -941,6 +1065,9 @@ async function ensureGatewayServer(): Promise<GatewayServer> {
     ...resolvePreferredGatewayParams(),
     onRestart: restartGateway,
     onRestartCodex: restartCodexApp,
+    onPrepareCodexSwitch: prepareCodexSwitch,
+    onCompleteCodexSwitch: completeCodexSwitch,
+    onStartCodexWithReviewer: startCodexWithReviewer,
   });
   updateDesktopUrls(gatewayServer);
 
@@ -988,6 +1115,11 @@ async function createMainWindow(): Promise<void> {
     mainWindow = null;
   });
 
+  mainWindow.on("focus", () => {
+    const url = mainWindow?.webContents.getURL();
+    if (url && currentAdminUrl && new URL(url).origin === new URL(currentAdminUrl).origin) void desktopUpdater?.checkIfStale();
+  });
+
   mainWindow.once("ready-to-show", () => {
     if (mainWindow) {
       mainWindow.show();
@@ -1006,6 +1138,8 @@ async function createMainWindow(): Promise<void> {
 
   updateDesktopUrls(server);
   await mainWindow.loadURL(currentAdminUrl ?? createBrowserUrl(server.host, server.port));
+  // A recreated window was focused on the startup page, before its management URL was loaded.
+  if (desktopUpdater?.getState().phase !== "idle") void desktopUpdater?.checkIfStale();
 }
 
 function focusMainWindow(): void {
@@ -1020,7 +1154,27 @@ function focusMainWindow(): void {
   if (mainWindow.isMinimized()) {
     mainWindow.restore();
   }
+  mainWindow.show();
   mainWindow.focus();
+}
+
+function showUpdateDetails(): void {
+  desktopUpdater?.openDetails();
+  focusMainWindow();
+}
+
+function notifyDesktopUpdate(title: string, body: string): void {
+  // Notification permission/service failures must never change a successful update operation.
+  try {
+    if (!Notification.isSupported()) return;
+    updateNotification?.close();
+    const notification = new Notification({ title, body });
+    updateNotification = notification;
+    notification.on("click", showUpdateDetails);
+    notification.on("close", () => { if (updateNotification === notification) updateNotification = null; });
+    notification.on("failed", (_event, error) => console.warn("[desktop:update:notification]", error));
+    notification.show();
+  } catch (error) { console.warn("[desktop:update:notification]", error); }
 }
 
 async function closeGatewayServer(): Promise<void> {
@@ -1064,10 +1218,12 @@ async function initializeDesktopUpdater(): Promise<void> {
       if (mainWindow && !mainWindow.isDestroyed() && isAllowedAppUrl(mainWindow.webContents.getURL())) mainWindow.webContents.send("desktop-update:state", state);
     },
     onAvailable: (release) => {
-      if (!Notification.isSupported()) return;
-      const notification = new Notification({ title: "AI Zero Token 有新版本", body: `${release.version} 已发布，点击查看更新。` });
-      notification.on("click", () => focusMainWindow());
-      notification.show();
+      notifyDesktopUpdate("AI Zero Token 有新版本", `v${release.version} 已发布，点击查看升级记录并更新。`);
+    },
+    onReady: (release) => {
+      if (!mainWindow?.isFocused() || !desktopUpdater?.getState().detailsOpen) {
+        notifyDesktopUpdate("AI Zero Token 更新已就绪", `v${release.version} 已下载并校验，点击重启并完成更新。`);
+      }
     },
     quit: () => electronApp.quit(),
   });
@@ -1076,6 +1232,8 @@ async function initializeDesktopUpdater(): Promise<void> {
     // React acknowledges only after the local gateway has returned its workspace config.
     ready: () => updateInstaller!.acknowledgeStartup(), check: () => desktopUpdater!.check(),
     download: () => desktopUpdater!.download(), cancel: () => desktopUpdater!.cancel(), install: () => desktopUpdater!.install(),
+    "open-details": () => desktopUpdater!.openDetails(), "close-details": () => desktopUpdater!.closeDetails(),
+    "dismiss-notice": () => desktopUpdater!.dismissNotice(),
   })) {
     ipcMain.handle(`desktop-update:${channel}`, (event) => {
       // No update endpoint on the HTTP gateway. Only the trusted desktop's top-level UI may invoke the narrow bridge.

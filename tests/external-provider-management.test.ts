@@ -82,6 +82,60 @@ describe("managed external providers", () => {
     expect((await getCodexGatewayProviderStatus()).model).toBe("text-embedding-3-small");
   });
 
+  test("deactivates Codex without deleting the external service or its saved model selection", async () => {
+    const provider = await create();
+    await service.activate(provider.id, ["model-ready", "model-busy"], "model-ready");
+    const active = await getCodexGatewayProviderStatus();
+
+    const deactivated = await service.deactivate(provider.id);
+
+    expect(deactivated.activeForCodex).toBe(false);
+    expect(deactivated.defaultModelId).toBe("model-ready");
+    expect(deactivated.models.filter((model) => model.selectedForCodex).map((model) => model.id).sort())
+      .toEqual(["model-busy", "model-ready"]);
+    expect((await service.list()).activeProviderId).toBeUndefined();
+    expect(await service.get(provider.id)).toBeDefined();
+    expect((await getCodexGatewayProviderStatus()).active).toBe(false);
+    expect(await readFile(configPath, "utf8")).toContain('model_provider = "openai"');
+    expect(await getCodexGatewayProviderStatus({ providerId: active.providerId })).toMatchObject({
+      exists: true, active: false, baseUrl: fixture.baseUrl, authType: "none",
+    });
+    await expect(service.deactivate(provider.id)).rejects.toMatchObject({ statusCode: 409 });
+
+    await service.activate(provider.id, ["model-ready", "model-busy"], "model-ready");
+    expect(await getCodexGatewayProviderStatus()).toMatchObject({ providerId: active.providerId, active: true });
+    await service.deactivate(provider.id);
+    await service.delete(provider.id);
+    expect(await getCodexGatewayProviderStatus({ providerId: active.providerId })).toMatchObject({ exists: true, active: false, authType: "none" });
+  });
+
+  test("deactivation endpoint keeps the external service and rejects non-local writes", async () => {
+    const provider = await create();
+    await service.activate(provider.id, ["model-ready"], "model-ready");
+    const active = await getCodexGatewayProviderStatus();
+    const app = createApp();
+    try {
+      const remote = await app.inject({
+        method: "POST",
+        url: `/_gateway/admin/providers/${provider.id}/deactivate`,
+        remoteAddress: "192.168.1.2",
+      });
+      expect(remote.statusCode).toBe(403);
+
+      const response = await app.inject({ method: "POST", url: `/_gateway/admin/providers/${provider.id}/deactivate` });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().provider).toMatchObject({ id: provider.id, activeForCodex: false });
+      expect((await service.list()).providers.some((item) => item.id === provider.id)).toBe(true);
+      expect((await getCodexGatewayProviderStatus()).active).toBe(false);
+      expect(await getCodexGatewayProviderStatus({ providerId: active.providerId })).toMatchObject({
+        exists: true, active: false, authType: "none",
+      });
+      expect(response.body).not.toContain(token);
+    } finally {
+      await app.close();
+    }
+  });
+
   test("writes more than 200 selected models without silently truncating the catalog", async () => {
     const modelIds = Array.from({ length: 240 }, (_, index) => `model-${index}`);
     const provider = await service.create({ name: "Large catalog", baseUrl: fixture.baseUrl, apiToken: token, modelSource: "manual", manualModelIds: modelIds });
@@ -193,6 +247,8 @@ describe("managed external providers", () => {
     expect(snapshot.providers.filter((provider) => provider.activeForCodex).length).toBe(1);
     expect([first.id, second.id]).toContain(snapshot.activeProviderId);
     expect(await catalogIds()).toEqual([snapshot.activeProviderId === first.id ? "model-ready" : "model-busy"]);
+    await expect(applyGatewayToCodexProviderConfig({ baseUrl: "http://localhost:8787/codex/v1", providerId: "openai" })).rejects.toThrow("先解除第三方接管");
+    await service.deactivate(snapshot.activeProviderId!);
     await applyGatewayToCodexProviderConfig({ baseUrl: "http://localhost:8787/codex/v1", providerId: "openai" });
     expect((await service.list()).activeProviderId).toBeUndefined();
   });
@@ -307,6 +363,7 @@ describe("managed external providers", () => {
     const provider = await create();
     await service.activate(provider.id, ["model-ready"], "model-ready");
     const accountsBefore = await readFile(`${getStateDir()}/store.json`, "utf8");
+    await service.deactivate(provider.id);
     const app = createApp();
     try {
       const connected = await app.inject({ method: "POST", url: "/_gateway/admin/codex/configure-provider", payload: {
@@ -343,8 +400,7 @@ describe("managed external providers", () => {
   });
 
   test("a failed final store commit restores both Codex files", async () => {
-    const provider = await create();
-    await service.activate(provider.id, ["model-ready"], "model-ready");
+    await applyGatewayToCodexProviderConfig({ baseUrl: fixture.baseUrl, providerId: "legacy-control", kind: "openai_compatible", bearerToken: token, model: "model-ready" });
     const before = await readFile(configPath, "utf8");
     await expect(withCodexProviderConfigTransaction(async ({ apply }) => {
       await apply({ baseUrl: fixture.baseUrl, providerId: "other", kind: "openai_compatible", bearerToken: token, model: "model-busy" });
@@ -354,7 +410,7 @@ describe("managed external providers", () => {
     expect(await catalogIds()).toEqual(["model-ready"]);
   });
 
-  test("deletion restores the previous configuration; failed deletion preserves the service", async () => {
+  test("deletion restores native service; failed deletion preserves the active service", async () => {
     const provider = await create();
     await service.activate(provider.id, ["model-ready"], "model-ready");
     const temporary = `${configPath}.tmp-${process.pid}`;
@@ -363,7 +419,9 @@ describe("managed external providers", () => {
     expect((await service.get(provider.id))?.activeForCodex).toBe(true);
     await rm(temporary, { recursive: true });
     expect(await service.delete(provider.id)).toBe(true);
-    expect((await readFile(configPath, "utf8")).replace(/\n+/g, "\n")).toBe(originalConfig);
+    expect(await readFile(configPath, "utf8")).toContain('model_provider = "openai"');
+    expect(await readFile(configPath, "utf8")).toContain('[model_providers.original-provider]');
+    expect(await readFile(configPath, "utf8")).not.toContain(token);
     expect(await service.delete(provider.id)).toBe(false);
   });
 

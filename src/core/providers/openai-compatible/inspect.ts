@@ -1,3 +1,6 @@
+import { REASONING_EFFORTS, isReasoningEffort, type ReasoningEffort } from "../../models/reasoning-effort.js";
+export type { ReasoningEffort } from "../../models/reasoning-effort.js";
+
 export type ExternalProviderModelStatus =
   | "ready"
   | "busy"
@@ -6,7 +9,6 @@ export type ExternalProviderModelStatus =
   | "auth_error"
   | "transport_error";
 
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 export type InputModality = "text" | "image";
 
 export type ExternalProviderModelProbe = {
@@ -112,8 +114,8 @@ type DiscoveredModel = {
 
 function normalizeReasoningEffort(value: unknown): ReasoningEffort | undefined {
   if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase() as ReasoningEffort;
-  return REASONING_EFFORTS.includes(normalized) ? normalized : undefined;
+  const normalized = value.trim().toLowerCase();
+  return isReasoningEffort(normalized) ? normalized : undefined;
 }
 
 function declaredReasoningEfforts(model: DiscoveredModel): ReasoningEffort[] | undefined {
@@ -163,7 +165,6 @@ const MAX_MODELS_TO_PROBE = 200;
 const MODEL_PROBE_CONCURRENCY = 3;
 const MAX_REDIRECTS = 3;
 const PROBE_TOOL_NAME = "azt_provider_probe";
-const REASONING_EFFORTS: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh"];
 const IMAGE_GENERATION_MODEL_IDS = [
   "gpt-image-2",
   "gpt-image-2.5-flare",
@@ -852,16 +853,35 @@ async function runProbeRequest(params: {
   }
 }
 
+async function runReasoningProbe(
+  params: Parameters<typeof runProbeRequest>[0],
+  retry = true,
+): Promise<ProbeStreamResult> {
+  try {
+    const result = await runProbeRequest(params);
+    if (retry && (result.status === "busy" || result.status === "transport_error")) {
+      return runReasoningProbe(params, false);
+    }
+    return result;
+  } catch (error) {
+    if (retry && error instanceof ExternalProviderInspectionError
+      && (error.code === "request_timeout" || error.code === "transport_error")) {
+      return runReasoningProbe(params, false);
+    }
+    throw error;
+  }
+}
+
 async function probeReasoningEfforts(
   responsesEndpoint: string,
   model: DiscoveredModel,
   bearerToken: string | undefined,
-): Promise<ReasoningEffort[]> {
+): Promise<Pick<ProbeStreamResult, "status" | "statusCode" | "error"> & { efforts: ReasoningEffort[] }> {
   const declared = declaredReasoningEfforts(model);
-  if (declared) return declared;
+  if (declared) return { status: "ready", efforts: declared };
   const supported: ReasoningEffort[] = [];
   for (const effort of REASONING_EFFORTS) {
-    const result = await runProbeRequest({
+    const result = await runReasoningProbe({
       responsesEndpoint,
       bearerToken,
       mode: "text",
@@ -875,8 +895,12 @@ async function probeReasoningEfforts(
       },
     });
     if (result.status === "ready") supported.push(effort);
+    else if (result.status !== "incompatible") {
+      // A temporary failure cannot establish that a reasoning level is unsupported.
+      return { ...result, efforts: supported };
+    }
   }
-  return supported;
+  return { status: "ready", efforts: supported };
 }
 
 async function probeImageInput(
@@ -1089,23 +1113,23 @@ async function probeModel(
         stream: true,
       },
     });
-    const [reasoningEfforts, imageInput] = second.status === "ready"
+    const [reasoningProbe, imageInput] = second.status === "ready"
       ? await Promise.all([
           probeReasoningEfforts(responsesEndpoint, model, bearerToken),
           probeImageInput(responsesEndpoint, model, bearerToken).catch(() => false),
         ])
-      : [[], false];
+      : [{ ...second, efforts: [] }, false];
     return {
       id: model.id,
-      status: second.status,
+      status: reasoningProbe.status,
       latencyMs: roundMs(performance.now() - startedAt),
-      statusCode: second.statusCode,
-      error: second.status === "ready" ? undefined : second.error ?? "function_call_output 后续请求失败",
+      statusCode: reasoningProbe.statusCode ?? second.statusCode,
+      error: reasoningProbe.status === "ready" ? undefined : reasoningProbe.error ?? second.error ?? "function_call_output 后续请求失败",
       capabilities: {
         responsesStreaming: first.responsesStreaming && second.responsesStreaming,
         functionCalling: true,
         functionCallOutput: second.status === "ready",
-        reasoningEfforts,
+        reasoningEfforts: reasoningProbe.efforts,
         inputModalities: imageInput ? ["text", "image"] : ["text"],
         imageInput,
       },
