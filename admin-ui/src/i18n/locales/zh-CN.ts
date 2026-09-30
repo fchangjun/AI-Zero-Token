@@ -103,7 +103,9 @@ const zhCN = {
     },
     errors: {
       "check-failed": "检查失败，请检查网络后重试；新版本的安装包也可能尚未上传完成。",
-      "download-failed": "下载失败，请检查网络及磁盘空间后重试。当前版本未更改。",
+      "download-failed": "下载未完成，请重试或手动下载安装包。当前版本未更改。",
+      "download-network": "无法连接 GitHub 下载服务，或下载连接已中断。请检查网络/代理后重试，也可手动下载安装包。当前版本未更改。",
+      "download-write": "无法保存安装包，请检查更新目录的写入权限，或手动下载安装。当前版本未更改。",
       integrity: "安装包校验失败，已停止更新。请重新下载。",
       "missing-digest": "此版本的安装包还未准备好，请稍后重试，或前往发布页手动下载。",
       "install-location": "请先将应用从 DMG 拖入本机 Applications 目录，再打开并更新。",

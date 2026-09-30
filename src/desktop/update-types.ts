@@ -1,6 +1,6 @@
 export type UpdatePhase = "idle" | "checking" | "up-to-date" | "available" | "downloading" | "preparing" | "ready" | "installing" | "error" | "unsupported";
 
-export type UpdateErrorCode = "check-failed" | "download-failed" | "integrity" | "missing-digest" | "install-location" | "install-permission" | "disk-space" | "invalid-app" | "prepare-failed" | "install-failed" | "recovery-required";
+export type UpdateErrorCode = "check-failed" | "download-failed" | "download-network" | "download-write" | "integrity" | "missing-digest" | "install-location" | "install-permission" | "disk-space" | "invalid-app" | "prepare-failed" | "install-failed" | "recovery-required";
 
 export type DesktopUpdateState = {
   phase: UpdatePhase;

@@ -40,14 +40,16 @@ const electronCli = path.join(repoRoot, "node_modules", "electron", "cli.js");
 function spawnCommand(label, command, args, options = {}) {
   const child = spawn(command, args, {
     stdio: "inherit",
+    shell: false,
+    ...options,
+    // Apply overrides before merging env, otherwise options.env drops PATH,
+    // HOME and the caller's selected Codex/AZT data directories.
     env: {
       ...process.env,
       AZT_DEV_GATEWAY_URL: gatewayUrl,
       AZT_DEV_UI_PORT: uiPort,
       ...options.env,
     },
-    shell: false,
-    ...options,
   });
 
   children.add(child);

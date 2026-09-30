@@ -1,4 +1,4 @@
-import { app as electronApp, BrowserWindow, Menu, Tray, Notification, clipboard, dialog, ipcMain, nativeImage, net, screen, shell, type MessageBoxOptions } from "electron";
+import { app as electronApp, BrowserWindow, Menu, Tray, Notification, clipboard, dialog, ipcMain, nativeImage, screen, shell, type MessageBoxOptions } from "electron";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -9,6 +9,7 @@ import { startServer } from "../server/index.js";
 import { assertNoActiveCodexTurns } from "../core/services/codex-switch-runtime.js";
 import { DesktopUpdater } from "./updater.js";
 import { MacUpdateInstaller } from "./mac-update-installer.js";
+import { fetchDesktopUpdate } from "./update-fetch.js";
 
 type GatewayServer = Awaited<ReturnType<typeof startServer>>;
 type AccountPanelTab = "recommended" | "recent" | "all";
@@ -1213,7 +1214,7 @@ async function initializeDesktopUpdater(): Promise<void> {
     currentVersion: electronApp.getVersion(), arch: process.arch,
     supported: electronApp.isPackaged && ["arm64", "x64"].includes(process.arch),
     recovered, installer: updateInstaller,
-    fetcher: (url, init) => net.fetch(url, init),
+    fetcher: fetchDesktopUpdate,
     onState: (state) => {
       if (mainWindow && !mainWindow.isDestroyed() && isAllowedAppUrl(mainWindow.webContents.getURL())) mainWindow.webContents.send("desktop-update:state", state);
     },

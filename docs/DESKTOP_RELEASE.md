@@ -16,6 +16,8 @@ When no update is available, the entry lives quietly in the sidebar. **Later** d
 
 ### Packaging and release requirements
 
+Version 2.0.18 fixes Electron's manual-redirect download failure by exposing redirects through `net.request`, validating every destination before following it, and falling back to the exact official asset API when the initial GitHub download connection fails. Credentials and session cookies are omitted. Size and SHA-256 checks still apply. Users on 2.0.16/2.0.17 with failed downloads need one manual installation of 2.0.18.
+
 Write user-facing release highlights and fixes in the GitHub Release body; these are the in-app upgrade notes. Prefer short headings and bullet points, and explain any required user action. Do not replace the notes with only a compare link or an asset list.
 
 - Continue to use `npm run dist:mac`. Keep ad-hoc signing and `hardenedRuntime: false` in both existing signing locations.
@@ -40,6 +42,7 @@ npm run typecheck
 npm run build
 bun test --preload ./tests/setup.ts ./tests/desktop-updater.test.ts ./tests/desktop-release-notes.test.tsx ./tests/mac-update-helper.test.ts ./tests/version-service.test.ts
 ./node_modules/.bin/electron scripts/desktop-update-acceptance.cjs
+./node_modules/.bin/electron scripts/desktop-update-network-test.cjs --live
 npm run pack:dry
 npm run dist:mac
 ```

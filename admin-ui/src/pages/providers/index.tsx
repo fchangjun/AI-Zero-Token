@@ -1,4 +1,4 @@
-import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, Loader2, RefreshCw, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchJson } from "@/shared/api";
 import {
@@ -67,7 +67,7 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
   }, [inspecting, refresh]);
 
   useEffect(() => {
-    if (!feedback) return;
+    if (!feedback || feedback.tone === "error") return;
     const timer = window.setTimeout(() => setFeedback(null), 4_000);
     return () => window.clearTimeout(timer);
   }, [feedback]);
@@ -143,6 +143,7 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
   }
 
   async function applyCodex(provider: ApiProvider, modelIds: string[], defaultModelId: string) {
+    setFeedback(null);
     setAction(`activate:${provider.id}`);
     try {
       const updated = await activateProvider(provider.id, modelIds, defaultModelId);
@@ -176,6 +177,7 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
       ? "账号池 API 服务会继续运行，只有 Codex 接入会被解除。重启 Codex 后恢复原本的配置。"
       : "本地新旧对话将恢复原生 Codex 服务。请先等待当前回复完成；桌面版会尝试关闭并重新打开 Codex。第三方服务、Key 和模型选择仍保存在 AZT。";
     if (!window.confirm(`确定解除“${provider.name}”的 Codex 接入吗？\n\n${detail}`)) return;
+    setFeedback(null);
     setAction(`deactivate:${provider.id}`);
     try {
       let restartSupported = config?.codexRestartSupported;
@@ -273,7 +275,11 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
         onClose={() => { if (action !== "save") setDrawerOpen(false); }}
         onSave={saveProvider}
       />
-      {feedback && <div className={`provider-feedback is-${feedback.tone}`}>{feedback.tone === "error" && <AlertCircle size={16} />}{feedback.text}</div>}
+      {feedback && <div className={`provider-feedback is-${feedback.tone}`} role={feedback.tone === "error" ? "alert" : "status"}>
+        {feedback.tone === "error" && <AlertCircle size={16} />}
+        <span>{feedback.text}</span>
+        {feedback.tone === "error" && <button className="provider-icon-button" type="button" aria-label="关闭错误提示" onClick={() => setFeedback(null)}><X size={16} /></button>}
+      </div>}
     </section>
   );
 }

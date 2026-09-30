@@ -13,6 +13,7 @@ export type UpdateRelease = {
   releaseUrl: string;
   publishedAt?: string;
   downloadUrl: string;
+  assetApiUrl?: string;
   size: number;
   sha256?: string;
 };
@@ -54,6 +55,9 @@ export function selectMacRelease(value: unknown, currentVersion: string, arch: s
     releaseUrl: `${RELEASES_URL}/tag/${encodeURIComponent(tag)}`,
     publishedAt: typeof release.published_at === "string" && Number.isFinite(Date.parse(release.published_at)) ? release.published_at : undefined,
     downloadUrl: url.href,
+    assetApiUrl: typeof asset.id === "number" && Number.isSafeInteger(asset.id) && asset.id > 0
+      && asset.url === `https://api.github.com/repos/fchangjun/AI-Zero-Token/releases/assets/${asset.id}`
+      ? asset.url : undefined,
     size: asset.size,
     sha256: digest,
   };
@@ -88,10 +92,13 @@ export async function fetchMacRelease(fetcher: UpdateFetch, currentVersion: stri
 export async function fetchReleaseAsset(fetcher: UpdateFetch, url: string, signal: AbortSignal): Promise<Response> {
   for (let redirects = 0; redirects <= 5; redirects += 1) {
     const target = new URL(url);
-    if (target.protocol !== "https:" || target.username || target.password || target.port || !["github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"].includes(target.hostname)) {
+    const apiAsset = target.hostname === "api.github.com" && /^\/repos\/fchangjun\/AI-Zero-Token\/releases\/assets\/[1-9]\d*$/.test(target.pathname) && !target.search && !target.hash;
+    if (target.protocol !== "https:" || target.username || target.password || target.port || !(apiAsset || ["github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"].includes(target.hostname))) {
       throw new UpdateError("download-failed", "Untrusted download redirect");
     }
-    const response = await fetcher(target.href, { redirect: "manual", signal, credentials: "omit" });
+    const response = await fetcher(target.href, { redirect: "manual", signal, credentials: "omit",
+      ...(apiAsset ? { headers: { accept: "application/octet-stream", "x-github-api-version": "2022-11-28" } } : {}),
+    });
     if (![301, 302, 303, 307, 308].includes(response.status)) return response;
     await response.body?.cancel();
     const location = response.headers.get("location");
@@ -110,11 +117,20 @@ export async function downloadRelease(params: {
 }): Promise<void> {
   const { release, destination, fetcher, signal, onProgress } = params;
   if (!release.sha256) throw new UpdateError("missing-digest", "GitHub has not provided a SHA-256 digest for this asset");
-  const response = await fetchReleaseAsset(fetcher, release.downloadUrl, signal);
-  if (response.status !== 200 || !response.body) {
-    await response.body?.cancel();
-    throw new Error(`Download returned HTTP ${response.status}`);
+  let response: Response | undefined;
+  // GitHub's website and API can have different network availability. The optional
+  // API route is validated against this repository; the same size/hash checks apply.
+  for (const url of [release.downloadUrl, release.assetApiUrl].filter((value): value is string => Boolean(value))) {
+    signal.throwIfAborted();
+    try {
+      const candidate = await fetchReleaseAsset(fetcher, url, signal);
+      if (candidate.status === 200 && candidate.body) { response = candidate; break; }
+      await candidate.body?.cancel();
+    } catch (error) {
+      if (signal.aborted || error instanceof UpdateError) throw error;
+    }
   }
+  if (!response?.body) throw new UpdateError("download-network", "Could not download from the official GitHub release endpoints");
   const reader = response.body.getReader();
   let file: Awaited<ReturnType<typeof fs.open>> | undefined;
   let ownsFile = false;
@@ -127,7 +143,7 @@ export async function downloadRelease(params: {
     ownsFile = true;
     while (true) {
       signal.throwIfAborted();
-      const { value, done } = await reader.read();
+      const { value, done } = await reader.read().catch(() => { throw new UpdateError("download-network", "Update download connection interrupted"); });
       if (done) break;
       size += value.byteLength;
       if (size > release.size) throw new UpdateError("integrity", "Download exceeded the expected size");
@@ -145,6 +161,9 @@ export async function downloadRelease(params: {
     if (size !== release.size || hash.digest("hex") !== release.sha256) throw new UpdateError("integrity", "Downloaded DMG failed size or SHA-256 verification");
     await file.sync();
     complete = true;
+  } catch (error) {
+    if (error instanceof UpdateError || signal.aborted) throw error;
+    throw new UpdateError((error as NodeJS.ErrnoException).code === "ENOSPC" ? "disk-space" : "download-write", "Could not save the downloaded update");
   } finally {
     await reader.cancel().catch(() => undefined);
     await file?.close();

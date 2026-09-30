@@ -4,7 +4,7 @@ import path from "node:path";
 import { ExternalProviderService } from "../src/core/services/external-provider-service.ts";
 import { CodexProviderSwitch, getCodexSwitchStatePath } from "../src/core/services/codex-provider-switch.ts";
 import { assertCodexStopped, assertNoActiveCodexTurns } from "../src/core/services/codex-switch-runtime.ts";
-import { codexSqlite, readThreadSnapshot } from "../src/core/store/codex-thread-state.ts";
+import { codexSqlite, readThreadSnapshot, updateThreadSettings } from "../src/core/store/codex-thread-state.ts";
 import { getExternalProviderStorePath } from "../src/core/store/external-provider-store.ts";
 import { getStateDir } from "../src/core/store/state-paths.ts";
 import { createApp } from "../src/server/app.ts";
@@ -43,6 +43,17 @@ async function data() { return (await readThreadSnapshot(db)).settings; }
 async function files() {
   const read = (file: string) => fs.readFile(file, "utf8").catch((error) => { if (error.code === "ENOENT") return null; throw error; });
   return Promise.all([config, path.join(home, "model-catalogs/ai-zero-token-models.json"), getExternalProviderStorePath(), getCodexSwitchStatePath(), rollout, path.join(home, "auth.json")].map(read));
+}
+
+async function databaseClient(sql = "SELECT * FROM threads;") {
+  const child = Bun.spawn([process.execPath, "-e", 'const {Database}=require("bun:sqlite"); const db=new Database(process.env.FIXTURE_FILE); db.exec(process.env.FIXTURE_SQL); console.log("ready"); setInterval(()=>{},1000);'], {
+    env: { ...process.env, FIXTURE_FILE: db, FIXTURE_SQL: sql }, stdout: "pipe", stderr: "pipe",
+  });
+  try {
+    const ready = await child.stdout.getReader().read();
+    if (!new TextDecoder().decode(ready.value).includes("ready")) throw new Error("Database fixture failed to open.");
+    return child;
+  } catch (error) { child.kill(); await child.exited; throw error; }
 }
 
 describe("Codex provider switch", () => {
@@ -181,18 +192,58 @@ describe("Codex provider switch", () => {
     expect(await fs.readFile(config, "utf8")).toBe(nativeConfig);
   });
 
-  test("detects another process holding the selected Codex home and protects an unfinished turn", async () => {
+  for (const mode of ["idle", "wal-reader"] as const) test(`allows switching with an ${mode} database viewer in another process`, async () => {
+    if (mode === "wal-reader") await codexSqlite(db, "PRAGMA journal_mode=WAL;");
+    const child = await databaseClient(mode === "wal-reader" ? "BEGIN; SELECT * FROM threads;" : undefined);
+    try {
+      const b = await create();
+      await service.activate(b.id, ["b-model"], "b-model");
+      expect((await data()).every((row) => row.model_provider === "azt_active")).toBe(true);
+      await service.deactivate(b.id);
+      expect((await data()).every((row) => row.model_provider === "openai")).toBe(true);
+    } finally { child.kill(); await child.exited; }
+  });
+
+  test("a real SQLite write lock fails cleanly and reports candidate processes without treating every reader as a lock holder", async () => {
+    await codexSqlite(db, "PRAGMA journal_mode=WAL;");
+    const b = await create(); const before = await files(); const rows = await data();
+    const child = await databaseClient("BEGIN IMMEDIATE; UPDATE threads SET title='uncommitted fixture edit' WHERE id='t1';");
+    try {
+      let failure: unknown;
+      try { await service.activate(b.id, ["b-model"], "b-model"); } catch (error) { failure = error; }
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toContain("锁冲突");
+      expect((failure as Error).message).toContain(`PID ${child.pid}`);
+      expect((failure as Error).message).toContain("并不代表持有冲突锁");
+      expect(await files()).toEqual(before);
+      expect(await data()).toEqual(rows);
+      expect(await fs.stat(`${getCodexSwitchStatePath()}.pending`).then(() => true, () => false)).toBe(false);
+    } finally { child.kill(); await child.exited; }
+    await service.activate(b.id, ["b-model"], "b-model");
+    expect((await data()).every((row) => row.model_provider === "azt_active")).toBe(true);
+  }, 20_000);
+
+  test("a conflict partway through the SQL statements rolls back earlier thread updates", async () => {
+    const before = await data();
+    const stale = before.map((row, index) => index === 1 ? { ...row, model: "stale-model" } : row);
+    const after = before.map((row) => ({ ...row, model_provider: "azt_active", model: "b-model" }));
+    await expect(updateThreadSettings(db, stale, after)).rejects.toThrow();
+    expect(await data()).toEqual(before);
+  });
+
+  test("allows another process reading history and protects an unfinished Codex turn", async () => {
     const child = Bun.spawn([process.execPath, "-e", 'const fs=require("fs");const fd=fs.openSync(process.env.FIXTURE_FILE,"r");console.log("ready");setInterval(()=>{},1000)'], {
       env: { ...process.env, FIXTURE_FILE: rollout }, stdout: "pipe", stderr: "pipe",
     });
     try {
       await child.stdout.getReader().read();
-      await expect(assertCodexStopped(home)).rejects.toThrow("仍在运行");
+      await assertCodexStopped(home);
     } finally { child.kill(); await child.exited; }
     await assertCodexStopped(home);
+    const openFiles = [{ pid: 123, command: "codex", file: rollout, relativePath: "sessions/fixture.jsonl" }];
     await fs.appendFile(rollout, '{"type":"event_msg","payload":{"type":"task_started"}}\n');
-    await expect(assertNoActiveCodexTurns(home)).rejects.toThrow("仍在运行");
+    await expect(assertNoActiveCodexTurns(home, openFiles)).rejects.toThrow("正在回复");
     await fs.appendFile(rollout, '{"type":"event_msg","payload":{"type":"task_complete"}}\n');
-    await assertNoActiveCodexTurns(home);
+    await assertNoActiveCodexTurns(home, openFiles);
   });
 });

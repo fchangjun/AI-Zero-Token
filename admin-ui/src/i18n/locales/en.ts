@@ -105,7 +105,9 @@ const en = {
     },
     errors: {
       "check-failed": "Could not check for updates. Check your connection and retry; release assets may still be uploading.",
-      "download-failed": "Download failed. Check your connection and disk space, then retry. The current app is unchanged.",
+      "download-failed": "Download did not finish. Retry or install manually. The current app is unchanged.",
+      "download-network": "Cannot reach GitHub downloads, or the connection was interrupted. Check your network/proxy and retry, or install manually. The current app is unchanged.",
+      "download-write": "Cannot save the installer. Check update-folder write permissions, or install manually. The current app is unchanged.",
       integrity: "The installer failed verification. Update stopped; please download it again.",
       "missing-digest": "This update is not ready for in-app installation yet. Try later or download it from the release page.",
       "install-location": "Move the app from the DMG into a local Applications folder, then open it to update.",

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.18 - 2026-09-30
+
+- Fixed macOS update downloads failing on GitHub redirects in Electron. Follow only validated official redirects, retry initial download connection failures through the matching GitHub asset API, and retain byte-count and SHA-256 verification. Network, file-write, and disk-space failures now have distinct messages.
+- Removed duplicate npm/CLI notices and version metadata from all native desktop platforms, including Windows; browser and CLI update channels remain available.
+- Improved Codex provider switching by distinguishing active Codex backends from unrelated plugins and database viewers. Ignore historical unfinished turns while preserving protection for active or uncertain replies, and allow normal WAL readers without bypassing real SQLite write locks.
+- Stop SQL transactions on the first failed statement, roll back partial changes, and provide actionable lock-conflict diagnostics. Provider errors remain visible until dismissed or retried.
+- Preserved inherited environment variables in the development launcher and used absolute macOS process-inspection tools so switching also works with a minimal PATH.
+- Added real Electron download/redirect/cancellation tests, full-shell update-notice regression coverage, and Codex runtime/database concurrency tests.
+
+Users on 2.0.16 or 2.0.17 whose in-app download fails must manually install 2.0.18 once to receive the downloader fix. Account and settings directories are unchanged.
+
 ## 2.0.17 - 2026-09-30
 
 - Improved macOS desktop updates with a persistent update notice and a release-notes dialog showing versions, publication date, and download size. System notifications and tray checks open the dialog, including after the main window was closed. Downloads show progress, support background preparation, and prompt for restart when ready.

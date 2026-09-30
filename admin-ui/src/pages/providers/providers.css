@@ -338,6 +338,7 @@
 .providers-load-error > svg { color: #dc2626; }
 .provider-feedback { position: fixed; z-index: 50; right: 24px; bottom: 24px; max-width: min(440px, calc(100vw - 32px)); min-height: 44px; padding: 11px 14px; display: flex; align-items: center; gap: 8px; border: 1px solid #bbf7d0; border-radius: 12px; color: #047857; background: #f0fdf4; box-shadow: 0 16px 36px rgba(15,23,42,.16); font-size: 12px; font-weight: 750; }
 .provider-feedback.is-error { color: #b91c1c; border-color: #fecdd3; background: #fff1f2; }
+.provider-feedback > svg { flex: 0 0 auto; }
 .provider-spin { animation: provider-spin .8s linear infinite; }
 @keyframes provider-spin { to { transform: rotate(360deg); } }
 

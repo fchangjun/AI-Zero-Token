@@ -1,5 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
+if (process.isMainFrame) contextBridge.exposeInMainWorld("desktopApp", { isDesktop: true });
+
 if (process.isMainFrame && process.platform === "darwin") {
   contextBridge.exposeInMainWorld("desktopUpdater", {
     getState: () => ipcRenderer.invoke("desktop-update:state"),

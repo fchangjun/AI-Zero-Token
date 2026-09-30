@@ -8,21 +8,38 @@ export function sqlString(value: string | null): string {
   return value === null ? "NULL" : `'${value.replace(/'/g, "''")}'`;
 }
 
+function sqliteOperationError(error: unknown): Error {
+  const detail = error as { code?: string; errcode?: number; errno?: number; message?: string; stderr?: string };
+  const rawCode = detail?.errcode ?? detail?.errno;
+  const primaryCode = typeof rawCode === "number" ? rawCode & 0xff : undefined;
+  if (/^SQLITE_(BUSY|LOCKED)(_|$)/.test(detail?.code ?? "") || primaryCode === 5 || primaryCode === 6
+    || /database (?:is |table is |schema is )?(?:locked|busy)/i.test(`${detail?.message ?? ""}\n${detail?.stderr ?? ""}`)) {
+    return Object.assign(new Error("Codex 会话数据库发生锁冲突，等待后仍无法完成切换。请先在数据库软件中提交或撤销未完成的事务，再重试。", { cause: error }), { statusCode: 409, code: "AZT_CODEX_DB_BUSY" });
+  }
+  // Do not expose SQL, paths or conversation metadata from native or CLI errors.
+  return new Error("Codex 会话数据库操作失败，未完成切换。请确认数据库可读写。", { cause: error });
+}
+
 /** Use the bundled runtime when available; older Node releases use system sqlite3. */
-export async function codexSqlite(dbPath: string, sql: string, read = false): Promise<Record<string, unknown>[]> {
+export async function codexSqlite(dbPath: string, sql: string | readonly string[], read = false): Promise<Record<string, unknown>[]> {
+  if (read && typeof sql !== "string") throw new Error("SQLite 查询必须是单条语句。");
   let module: any;
   try {
     const name = process.versions.bun ? "bun:sqlite" : "node:sqlite";
     module = await import(name);
   } catch { /* Node 22 before SQLite was enabled by default. */ }
   if (module) {
-    const db = process.versions.bun ? new module.Database(dbPath) : new module.DatabaseSync(dbPath);
     try {
-      db.exec("PRAGMA busy_timeout=5000;");
-      if (read) return db.prepare(sql).all();
-      db.exec(sql);
-      return [];
-    } finally { db.close(); }
+      const db = process.versions.bun ? new module.Database(dbPath) : new module.DatabaseSync(dbPath);
+      try {
+        db.exec("PRAGMA busy_timeout=5000;");
+        if (read) return db.prepare(sql).all();
+        // Execute separately so a failed BEGIN cannot fall through to later writes.
+        // Some Bun versions continue a multi-statement exec after an earlier error.
+        for (const statement of typeof sql === "string" ? [sql] : sql) db.exec(statement);
+        return [];
+      } finally { db.close(); }
+    } catch (error) { throw sqliteOperationError(error); }
   }
   try {
     const stdout = await new Promise<string>((resolve, reject) => {
@@ -31,7 +48,7 @@ export async function codexSqlite(dbPath: string, sql: string, read = false): Pr
       }, (error, output) => error ? reject(error) : resolve(output));
       // A large history can exceed the OS command-line limit; SQL goes through stdin.
       child.stdin?.on("error", () => undefined);
-      child.stdin?.end(`PRAGMA busy_timeout=5000; ${sql}\n`);
+      child.stdin?.end(`PRAGMA busy_timeout=5000; ${typeof sql === "string" ? sql : sql.join("\n")}\n`);
     });
     // busy_timeout itself returns a row in sqlite3's JSON mode.
     const output = stdout.replace(/^\[\{"timeout":5000\}\]\s*/, "").trim();
@@ -40,8 +57,7 @@ export async function codexSqlite(dbPath: string, sql: string, read = false): Pr
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       throw new Error("当前运行环境缺少 SQLite。请使用新版 AZT 桌面版、Node.js 22.13+ 或安装 sqlite3 后重试。");
     }
-    // Do not expose SQL, paths or conversation metadata from child-process errors.
-    throw new Error("Codex 会话数据库操作失败，未完成切换。请确认 Codex 已完全退出，且数据库可读写。", { cause: error });
+    throw sqliteOperationError(error);
   }
 }
 
@@ -79,7 +95,7 @@ export async function updateThreadSettings(dbPath: string, before: ThreadSetting
       "INSERT INTO azt_switch_guard SELECT changes()=1;");
   }
   statements.push("COMMIT;");
-  await codexSqlite(dbPath, statements.join("\n"));
+  await codexSqlite(dbPath, statements);
 }
 
 export async function backupThreadDatabase(dbPath: string, backupPath: string): Promise<void> {

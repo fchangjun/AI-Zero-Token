@@ -49,12 +49,13 @@ async function capture(name) {
   const image = await win.webContents.capturePage();
   await fs.writeFile(path.join(output, name + '.png'), image.toPNG());
 }
-async function openWindow() {
-  win = new BrowserWindow({ show: false, width: 1200, height: 900, webPreferences: { preload: path.join(repo, 'src/desktop/preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
+async function openWindow(preload = path.join(repo, 'src/desktop/preload.cjs')) {
+  win = new BrowserWindow({ show: false, width: 1200, height: 900, webPreferences: { ...(preload ? { preload } : {}), contextIsolation: true, nodeIntegration: false, sandbox: true, backgroundThrottling: false } });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('console-message', (details) => { if (details.level === 'error') errors.push(details.message); });
   await win.loadFile(path.join(root, 'index.html'));
-  await visible('Boolean(document.querySelector(".desktop-update-entry"))');
+  await visible('Boolean(document.querySelector(".app-shell"))');
+  if (preload === path.join(repo, 'src/desktop/preload.cjs')) await visible('Boolean(document.querySelector(".desktop-update-entry"))');
 }
 
 async function main() {
@@ -66,20 +67,18 @@ async function main() {
       import React from 'react';
       import { createRoot } from 'react-dom/client';
       import { LocaleProvider } from './admin-ui/src/i18n';
-      import { useDesktopUpdater } from './admin-ui/src/hooks/useDesktopUpdater';
-      import { DesktopUpdatePanel } from './admin-ui/src/shared/components/DesktopUpdatePanel';
-      import { AppSidebar } from './admin-ui/src/layouts/AppSidebar';
+      import { AppShell } from './admin-ui/src/layouts/AppShell';
       import './admin-ui/src/styles.css';
       localStorage.setItem('azt.admin.locale', localStorage.getItem('preview-locale') || 'zh-CN');
-      const workspace = { routes: [], activeRoute: 'overview', goRoute() {}, copyBaseUrl() {}, setContactOpen() {}, config: { status: { loggedIn: true }, baseUrl: 'http://127.0.0.1:8787/v1' } };
+      const channel = { currentVersion: '2.0.16', latestVersion: '2.0.17', status: 'update-available' };
+      const workspace = { routes: [], activeRoute: 'logs', activeRouteMeta: {label:'工作台'}, pageDescriptions: {logs:'独立更新体验测试'}, requestLogs: [], goRoute() {}, copyBaseUrl() {}, setContactOpen() {}, setStatus() {}, config: { status: { loggedIn: true }, baseUrl: 'http://127.0.0.1:8787/v1', versionStatus: { desktop: channel, npm: channel } } };
       function Preview() {
-        const updater = useDesktopUpdater(true);
-        return <div className="app-shell"><AppSidebar workspace={workspace} updater={updater} /><main className="main"><DesktopUpdatePanel updater={updater} /><header className="topbar"><div className="page-title"><span className="page-kicker">AI ZERO TOKEN</span><h1>工作台</h1><p>管理你的模型与服务</p></div></header><section className="card" style={{padding:32,minHeight:420}}><h3>本地服务已就绪</h3><p style={{color:'var(--text-muted)'}}>独立更新体验预览 · 所有版本与下载均为测试数据</p></section></main></div>;
+        return <AppShell workspace={workspace} />;
       }
       createRoot(document.getElementById('root')).render(<React.StrictMode><LocaleProvider><Preview /></LocaleProvider></React.StrictMode>);
     `, resolveDir: repo, loader: 'tsx' },
     bundle: true, platform: 'browser', jsx: 'automatic', outfile: path.join(root, 'fixture.js'),
-    alias: { '@': path.join(repo, 'admin-ui/src') }, loader: { '.svg': 'dataurl', '.png': 'dataurl' },
+    alias: { '@': path.join(repo, 'admin-ui/src') }, loader: { '.svg': 'dataurl', '.png': 'dataurl', '.md': 'text' },
     define: { 'process.env.NODE_ENV': '"production"' }, tsconfig: path.join(repo, 'admin-ui/tsconfig.json'),
   });
   await fs.writeFile(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="fixture.css"></head><body><div id="root"></div><script src="fixture.js"></script></body></html>');
@@ -108,6 +107,9 @@ async function main() {
   assert.equal(await js('Boolean(document.querySelector(".desktop-update-card"))'), false, 'idle updates stay in the sidebar');
   await updater.check();
   await visible('Boolean(document.querySelector(".desktop-update-card"))');
+  assert.equal(await js('document.querySelectorAll(".desktop-update-card").length'), 1);
+  assert.equal(await js('document.querySelectorAll(".strong-update-panel").length'), 0, 'native macOS has no duplicate npm banner');
+  assert.equal(await js('document.body.textContent.includes("npm/CLI")'), false, 'native sidebar omits npm versions');
   await click('查看更新', '.desktop-update-card button');
   await visible('Boolean(document.querySelector("dialog[open]"))');
   assert.ok(await js('document.querySelector(".desktop-release-notes strong").textContent.includes("升级内容")'));
@@ -173,12 +175,22 @@ async function main() {
   await until(() => quitRequested, 'explicit install request');
   assert.equal(await js('[...document.querySelectorAll("dialog button")].every(el => el.disabled)'), true);
   await updater.stop();
+  win.destroy();
+  await fs.writeFile(path.join(root, 'native-marker.cjs'), 'require("electron").contextBridge.exposeInMainWorld("desktopApp", {isDesktop:true});');
+  await openWindow(path.join(root, 'native-marker.cjs'));
+  await visible('Boolean(document.querySelector(".strong-update-panel"))');
+  assert.equal(await js('document.querySelectorAll(".strong-update-panel").length'), 1, 'manual native platform has one desktop banner');
+  assert.equal(await js('document.body.textContent.includes("npm/CLI")'), false, 'Windows-style native bridge suppresses npm');
+  win.destroy();
+  await openWindow(null);
+  await visible('Boolean(document.querySelector(".strong-update-panel"))');
+  assert.ok(await js('document.querySelector(".strong-update-panel").textContent.includes("npm/CLI")'), 'browser retains npm update channel');
   assert.deepEqual(errors, []);
   console.log(JSON.stringify({ result: 'PASS', checks: ['quiet idle state', 'notice to release notes', 'defer without repeat', 'notification with recreated window', 'manual fallback', 'empty and long notes', 'download failure and retry', 'download and cancel', 'background preparation', 'ready notification', 'explicit restart', 'keyboard focus', 'English narrow layout'], screenshots: output }));
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(async () => {
   if (win && !win.isDestroyed()) win.destroy();
   await updater?.stop();
-  await fs.rm(root, { recursive: true, force: true });
+  await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   app.exit(process.exitCode || 0);
 });

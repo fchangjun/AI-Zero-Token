@@ -7,7 +7,7 @@ import {
 } from "../store/codex-auth-store.js";
 import { backupThreadDatabase, codexSqlite, readThreadSnapshot, updateThreadSettings, type ThreadSettings, type ThreadSnapshot } from "../store/codex-thread-state.js";
 import { getStateDir } from "../store/state-paths.js";
-import { stoppedCodexRuntime, type CodexSwitchRuntime } from "./codex-switch-runtime.js";
+import { explainCodexDatabaseError, stoppedCodexRuntime, type CodexSwitchRuntime } from "./codex-switch-runtime.js";
 
 export type ThirdPartySwitchTarget = {
   baseUrl: string; bearerToken: string; model: string; catalogModels: CodexCatalogModelInput[]; displayName: string;
@@ -95,7 +95,8 @@ export class CodexProviderSwitch {
     await this.runtime.assertStopped(getCodexHomeDir());
     const journal = JSON.parse(raw.toString()) as Journal;
     this.validateJournal(journal);
-    await this.rollback(journal);
+    try { await this.rollback(journal); }
+    catch (error) { throw await explainCodexDatabaseError(error, getCodexHomeDir()); }
   }
 
   private validateJournal(journal: Journal): void {
@@ -139,6 +140,11 @@ export class CodexProviderSwitch {
   }
 
   async commit(target: ThirdPartySwitchTarget | undefined, storeContent: string, commitStore: () => Promise<void>): Promise<void> {
+    try { await this.commitSwitch(target, storeContent, commitStore); }
+    catch (error) { throw await explainCodexDatabaseError(error, getCodexHomeDir()); }
+  }
+
+  private async commitSwitch(target: ThirdPartySwitchTarget | undefined, storeContent: string, commitStore: () => Promise<void>): Promise<void> {
     await this.runtime.prepare?.();
     const home = path.resolve(getCodexHomeDir());
     await this.runtime.assertStopped(home);

@@ -31,5 +31,5 @@ export function useDesktopUpdater(workspaceReady: boolean) {
     // State events are authoritative; an older in-flight command must not overwrite newer progress.
     try { await bridge[name](); } catch { setBridgeError(true); }
   }
-  return { state, bridgeError, action, supported: Boolean(bridge && state?.phase !== "unsupported") };
+  return { state, bridgeError, action, isDesktop: Boolean(window.desktopApp?.isDesktop || bridge), supported: Boolean(bridge && state?.phase !== "unsupported") };
 }

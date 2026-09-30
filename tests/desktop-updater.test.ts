@@ -62,6 +62,48 @@ describe("trusted desktop releases", () => {
 });
 
 describe("download verification", () => {
+  test("accepts only this repository's matching asset API URL", () => {
+    const meta = manifest();
+    Object.assign(meta.assets[0], { id: 123, url: "https://api.github.com/repos/fchangjun/AI-Zero-Token/releases/assets/123" });
+    expect(selectMacRelease(meta, "2.0.16", "arm64")?.assetApiUrl).toEndWith("/123");
+    for (const url of ["https://api.github.com/repos/attacker/repo/releases/assets/123", "https://api.github.com/repos/fchangjun/AI-Zero-Token/releases/assets/124", "https://evil.example/123"]) {
+      Object.assign(meta.assets[0], { url });
+      expect(selectMacRelease(meta, "2.0.16", "arm64")?.assetApiUrl).toBeUndefined();
+    }
+  });
+  test("falls back to the official API after a connection error, without forwarding credentials", async () => {
+    const release = selectMacRelease(manifest(), "2.0.16", "arm64")!;
+    release.assetApiUrl = "https://api.github.com/repos/fchangjun/AI-Zero-Token/releases/assets/123";
+    const destination = path.join(await temp(), "update.dmg");
+    const seen: string[] = [];
+    await downloadRelease({ release, destination, signal: new AbortController().signal, onProgress() {}, fetcher: async (url, init) => {
+      seen.push(url); expect(init?.credentials).toBe("omit");
+      expect(new Headers(init?.headers).has("authorization")).toBe(false);
+      if (url === release.downloadUrl) throw new Error("net::ERR_CONNECTION_RESET");
+      if (url === release.assetApiUrl) {
+        expect(new Headers(init?.headers).get("accept")).toBe("application/octet-stream");
+        return new Response(null, { status: 302, headers: { location: "https://release-assets.githubusercontent.com/fixture" } });
+      }
+      return new Response(payload);
+    } });
+    expect(seen).toHaveLength(3); expect(await fs.readFile(destination)).toEqual(payload);
+  });
+  test("does not use fallback after an untrusted redirect or integrity failure", async () => {
+    const release = selectMacRelease(manifest(), "2.0.16", "arm64")!;
+    release.assetApiUrl = "https://api.github.com/repos/fchangjun/AI-Zero-Token/releases/assets/123";
+    for (const response of [new Response(null, { status: 302, headers: { location: "http://127.0.0.1/private" } }), new Response(Buffer.alloc(payload.length))]) {
+      let requests = 0;
+      await expect(downloadRelease({release,destination:path.join(await temp(),"update.dmg"),signal:new AbortController().signal,onProgress(){},fetcher:async()=>{requests++;return response;}})).rejects.toThrow();
+      expect(requests).toBe(1);
+    }
+  });
+  test("separates connection failures from write failures", async () => {
+    const release = selectMacRelease(manifest(), "2.0.16", "arm64")!;
+    const destination = path.join(await temp(), "missing", "update.dmg");
+    const params = {release,destination,signal:new AbortController().signal,onProgress(){}};
+    await expect(downloadRelease({...params,fetcher:async()=>{throw new Error("offline");}})).rejects.toMatchObject({code:"download-network"});
+    await expect(downloadRelease({...params,fetcher:async()=>new Response(payload)})).rejects.toMatchObject({code:"download-write"});
+  });
   test("follows the GitHub CDN redirect and writes exactly the verified bytes", async () => {
     const destination = path.join(await temp(), "update.dmg");
     const progress: number[] = [];

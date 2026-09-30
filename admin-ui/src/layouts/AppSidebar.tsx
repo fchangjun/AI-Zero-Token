@@ -76,11 +76,11 @@ export function AppSidebar({ workspace, updater }: { workspace: UseAdminWorkspac
             <span>{t("sidebar.latestDesktopVersion")}</span>
             <strong>{nativeState ? nativeState.version || (nativeState.phase === "up-to-date" ? nativeState.currentVersion : t("common.na")) : desktopVersion?.latestVersion || t("common.na")}</strong>
           </div>
-          {!updater.supported && <div className="sidebar-meta">
+          {!updater.isDesktop && <div className="sidebar-meta">
             <span>{t("sidebar.currentNpmVersion")}</span>
             <strong>{versionStatus?.npm.currentVersion || t("common.na")}</strong>
           </div>}
-          {!updater.supported && <div className="sidebar-meta">
+          {!updater.isDesktop && <div className="sidebar-meta">
             <span>{t("sidebar.latestNpmVersion")}</span>
             <strong>{versionStatus?.npm.latestVersion || t("common.na")}</strong>
           </div>}
