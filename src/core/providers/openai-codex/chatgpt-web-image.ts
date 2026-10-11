@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import type { OAuthProfile } from "../../types.js";
+import { loadSettings } from "../../store/settings-store.js";
+import { requestStream, requestText } from "../http-client.js";
 
 type ChatRequirements = {
   token: string;
@@ -34,6 +37,11 @@ export type ChatGPTWebImageResult = {
   }>;
   output_format?: "png" | "webp" | "jpeg";
   size?: string;
+};
+
+export type ChatGPTWebImageRecoveryRequest = {
+  profile: OAuthProfile;
+  conversationId: string;
 };
 
 type ConversationState = {
@@ -149,6 +157,7 @@ const WINDOW_KEYS = [
 
 const sessionIdsByProfile = new Map<string, { deviceId: string; sessionId: string }>();
 const cookiesByProfile = new Map<string, Map<string, string>>();
+const imageConversationByRequest = new Map<string, string>();
 let nativeSha3Supported: boolean | undefined;
 let warnedAboutSha3Fallback = false;
 
@@ -174,27 +183,6 @@ function parseJson(value: string, context: string): unknown {
   } catch (error) {
     throw new Error(`${context} 响应不是合法 JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
-}
-
-function roundMs(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function normalizeFetchHeaders(headers: Headers): Record<string, string> {
-  const normalized: Record<string, string> = {};
-  headers.forEach((value, key) => {
-    normalized[key.toLowerCase()] = value;
-  });
-
-  const getSetCookie = (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
-  if (typeof getSetCookie === "function") {
-    const setCookies = getSetCookie.call(headers);
-    if (setCookies.length > 0) {
-      normalized["set-cookie"] = setCookies.join(",");
-    }
-  }
-
-  return normalized;
 }
 
 function parsePowResources(html: string): { scriptSources: string[]; dataBuild: string } {
@@ -305,6 +293,30 @@ function buildLegacyTimeString(): string {
 
 function compactJson(value: unknown): string {
   return JSON.stringify(value);
+}
+
+function imageRecoveryKey(request: ChatGPTWebImageRequest): string {
+  return createHash("sha256")
+    .update(compactJson({
+      profile: request.profile.profileId,
+      prompt: request.prompt,
+      model: request.model,
+      size: request.size,
+      inputImages: (request.inputImages ?? []).map((image) => image.imageUrl),
+    }))
+    .digest("hex");
+}
+
+function rememberImageConversation(key: string, conversationId: string): void {
+  imageConversationByRequest.delete(key);
+  imageConversationByRequest.set(key, conversationId);
+  while (imageConversationByRequest.size > 50) {
+    const oldest = imageConversationByRequest.keys().next().value as string | undefined;
+    if (!oldest) {
+      break;
+    }
+    imageConversationByRequest.delete(oldest);
+  }
 }
 
 function rotateLeft64(value: bigint, bits: number): bigint {
@@ -795,30 +807,28 @@ async function requestChatGptText(params: {
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    const startedAt = performance.now();
     try {
-      const response = await fetch(`${CHATGPT_BASE_URL}${params.path}`, {
+      const response = await requestText({
+        url: `${CHATGPT_BASE_URL}${params.path}`,
         method: params.method,
         headers: params.headers,
         body: params.body,
-        signal: AbortSignal.timeout(params.timeoutMs),
+        timeoutMs: params.timeoutMs,
       });
-      const normalizedHeaders = normalizeFetchHeaders(response.headers);
-      storeChatGptCookies(params.profile, normalizedHeaders);
-      const text = await response.text();
+      storeChatGptCookies(params.profile, response.headers);
       console.info("[gateway:image] ChatGPT web request timing", {
         method: params.method,
         url: `${CHATGPT_BASE_URL}${params.path}`,
         status: response.status,
-        transport: "fetch",
+        transport: response.transport,
         attempt,
-        bodyLength: text.length,
-        totalMs: roundMs(performance.now() - startedAt),
+        bodyLength: response.body.length,
+        totalMs: response.timing.totalMs,
       });
       return {
-        body: text,
+        body: response.body,
         status: response.status,
-        headers: normalizedHeaders,
+        headers: response.headers,
       };
     } catch (error) {
       lastError = error;
@@ -827,7 +837,6 @@ async function requestChatGptText(params: {
         url: `${CHATGPT_BASE_URL}${params.path}`,
         attempt,
         maxAttempts,
-        elapsedMs: roundMs(performance.now() - startedAt),
         error: error instanceof Error ? error.message : String(error),
       });
       if (attempt < maxAttempts) {
@@ -1253,29 +1262,25 @@ async function requestChatGptStream(params: {
   body: string;
   timeoutMs: number;
 }): Promise<{ status: number; headers: Record<string, string>; body: ReadableStream<Uint8Array> }> {
-  const startedAt = performance.now();
-  const response = await fetch(`${CHATGPT_BASE_URL}${params.path}`, {
+  const response = await requestStream({
+    url: `${CHATGPT_BASE_URL}${params.path}`,
     method: "POST",
     headers: params.headers,
     body: params.body,
-    signal: AbortSignal.timeout(params.timeoutMs),
+    timeoutMs: params.timeoutMs,
   });
-  const normalizedHeaders = normalizeFetchHeaders(response.headers);
-  storeChatGptCookies(params.profile, normalizedHeaders);
+  storeChatGptCookies(params.profile, response.headers);
   console.info("[gateway:image] ChatGPT web stream timing", {
     method: "POST",
     url: `${CHATGPT_BASE_URL}${params.path}`,
     status: response.status,
-    transport: "fetch",
-    waitForHeadersMs: roundMs(performance.now() - startedAt),
+    transport: response.transport,
+    waitForHeadersMs: response.timing.phasesMs.waitForHeadersMs ?? response.timing.totalMs,
   });
-  if (!response.body) {
-    throw new Error(`${params.path} 响应缺少 body。`);
-  }
 
   return {
     status: response.status,
-    headers: normalizedHeaders,
+    headers: response.headers,
     body: response.body,
   };
 }
@@ -1454,7 +1459,10 @@ function extractImageToolRecords(conversation: unknown): { fileIds: string[]; se
     const author = message && isRecord(message.author) ? message.author : {};
     const metadata = message && isRecord(message.metadata) ? message.metadata : {};
     const content = message && isRecord(message.content) ? message.content : {};
-    if (author.role !== "tool" || metadata.async_task_type !== "image_gen" || !Array.isArray(content.parts)) {
+    const isImageToolMessage =
+      author.role === "tool" &&
+      (metadata.async_task_type === "image_gen" || content.content_type === "multimodal_text");
+    if (!isImageToolMessage || !Array.isArray(content.parts)) {
       continue;
     }
     for (const part of content.parts) {
@@ -1519,20 +1527,72 @@ function isChatGptUrl(url: URL): boolean {
 }
 
 async function fetchImageBytes(url: string, headers: Record<string, string>): Promise<Buffer> {
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      headers,
-      signal: AbortSignal.timeout(60_000),
-    });
-  } catch (error) {
-    throw new Error(`请求失败: ${error instanceof Error ? error.message : String(error)}`);
+  let lastError: unknown;
+  const proxy = await loadSettings()
+    .then((settings) => settings.networkProxy)
+    .catch(() => undefined);
+  const useConfiguredProxy = Boolean(proxy?.enabled && proxy.url.trim());
+
+  if (!useConfiguredProxy) {
+    try {
+      const response = await fetch(url, {
+        headers,
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!response.ok) {
+        const body = await response.text().catch(() => "");
+        throw new Error(`HTTP ${response.status}${body ? ` ${body.slice(0, 300)}` : ""}`);
+      }
+      return Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      lastError = error;
+    }
   }
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(`HTTP ${response.status}${body ? ` ${body.slice(0, 300)}` : ""}`);
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const bytes = await new Promise<Buffer>((resolve, reject) => {
+        const child = spawn("curl", [
+          "--silent",
+          "--show-error",
+          "--fail",
+          "--location",
+          "--connect-timeout",
+          "10",
+          "--max-time",
+          "60",
+          ...(useConfiguredProxy ? ["--proxy", proxy!.url.trim()] : []),
+          ...(useConfiguredProxy && proxy!.noProxy.trim() ? ["--noproxy", proxy!.noProxy.trim()] : []),
+          ...Object.entries(headers).flatMap(([key, value]) => ["--header", `${key}: ${value}`]),
+          url,
+        ], { stdio: ["ignore", "pipe", "pipe"] });
+        const chunks: Buffer[] = [];
+        let stderr = "";
+        child.stdout.on("data", (chunk: Buffer) => chunks.push(chunk));
+        child.stderr.setEncoding("utf8");
+        child.stderr.on("data", (chunk) => { stderr += chunk; });
+        child.on("error", reject);
+        child.on("close", (code) => {
+          if (code === 0) {
+            resolve(Buffer.concat(chunks));
+          } else {
+            reject(new Error(stderr.trim() || `curl 下载图片失败，退出码 ${code}`));
+          }
+        });
+      });
+      if (bytes.length > 0) {
+        return bytes;
+      }
+      throw new Error("curl 下载图片返回空内容。");
+    } catch (error) {
+      lastError = error;
+      if (attempt < 3) {
+        await sleep(500 * attempt);
+      }
+    }
   }
-  return Buffer.from(await response.arrayBuffer());
+
+  throw new Error(`请求失败: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 }
 
 async function downloadImage(profile: OAuthProfile, url: string): Promise<Buffer> {
@@ -1620,6 +1680,18 @@ async function resolveImages(profile: OAuthProfile, state: ConversationState): P
 }
 
 export async function generateChatGPTWebImage(request: ChatGPTWebImageRequest): Promise<ChatGPTWebImageResult> {
+  const recoveryKey = imageRecoveryKey(request);
+  const existingConversationId = imageConversationByRequest.get(recoveryKey);
+  if (existingConversationId) {
+    console.info("[gateway:image] reusing existing ChatGPT image conversation", {
+      conversationId: existingConversationId,
+    });
+    return retrieveChatGPTWebImage({
+      profile: request.profile,
+      conversationId: existingConversationId,
+    });
+  }
+
   const chatGptSize = toChatGptSize(request.size);
   const prompt = promptWithSize(request.prompt, chatGptSize);
   const resources = await bootstrap(request.profile);
@@ -1641,6 +1713,12 @@ export async function generateChatGPTWebImage(request: ChatGPTWebImageRequest): 
     model: request.model,
     references,
   });
+  if (state.conversationId) {
+    // Store this before downloading. If the image exists but its binary download
+    // times out, an identical retry resumes from this conversation instead of
+    // asking ChatGPT to generate another image.
+    rememberImageConversation(recoveryKey, state.conversationId);
+  }
   const images = await resolveImages(request.profile, state);
 
   return {
@@ -1651,5 +1729,34 @@ export async function generateChatGPTWebImage(request: ChatGPTWebImageRequest): 
     })),
     output_format: "png",
     size: chatGptSize,
+  };
+}
+
+/** Recover an image from an existing ChatGPT conversation without generating a new one. */
+export async function retrieveChatGPTWebImage(
+  request: ChatGPTWebImageRecoveryRequest,
+): Promise<ChatGPTWebImageResult> {
+  const conversationId = request.conversationId.trim();
+  if (!conversationId) {
+    throw new Error("ChatGPT 官网图片恢复缺少 conversation_id。");
+  }
+
+  // Establish the same web session/cookie context used by the generation route,
+  // then only read the existing conversation and its attachment.
+  await bootstrap(request.profile);
+  const ids = await pollImageIds(request.profile, conversationId);
+  const images = await resolveImages(request.profile, {
+    text: "",
+    conversationId,
+    fileIds: ids.fileIds,
+    sedimentIds: ids.sedimentIds,
+    blocked: false,
+    turnUseCase: "image gen",
+  });
+
+  return {
+    created: unixSeconds(),
+    data: images.map((image) => ({ b64_json: image.toString("base64") })),
+    output_format: "png",
   };
 }
