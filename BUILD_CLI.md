@@ -234,7 +234,7 @@ git push origin master
 git push origin vX.Y.Z
 ```
 
-如果本机安装了 GitHub CLI，再创建或更新对应 GitHub Release；如果没有安装，需要在结果里明确说明只完成了 npm 发布、git commit/tag/push，GitHub Release 页面未创建。
+默认还需按照 [桌面发布说明](docs/DESKTOP_RELEASE.md) 构建并上传四个桌面产物。优先使用 GitHub CLI；未安装时，从被忽略的项目本地 `.env.github` 读取凭据并调用 GitHub Releases API，禁止输出或提交 Token。核验 npm 版本、Release 标签及四个附件后，准备可直接发群的中文更新消息；不能把草稿当作已发送。
 
 ## 常见问题
 

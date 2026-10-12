@@ -33,6 +33,10 @@ export type ProviderModelInspection = {
 };
 
 export type ProviderModel = {
+  contextWindow?: number;
+  contextWindowOverride?: number;
+  effectiveContextWindow?: number;
+  contextWindowSource?: "api" | "default" | "manual";
   id: string;
   name?: string;
   description?: string;

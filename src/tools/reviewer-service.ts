@@ -68,7 +68,13 @@ export class ReviewerService {
       await this.instance?.close(); this.instance = null;
       return;
     }
-    if (!this.instance) this.instance = await startManagedReviewer({ root: this.root, frameOrigins: this.frameOrigins });
+    if (!this.instance) this.instance = await startManagedReviewer({
+      root: this.root, frameOrigins: this.frameOrigins,
+      openComposer: async (request) => {
+        if (!this.connector) throw Object.assign(new Error("Codex 未接入，请在 AZT 启用回复按钮接入，或使用“复制指令”。"), { statusCode: 409 });
+        return this.connector.prefill(request);
+      },
+    });
     if (settings.codexButtonEnabled) {
       this.connector = new ReviewerConnector(settings.cdpPort, this.instance, path.join(pluginPath, "injection", "inject.js"));
       this.connector.start();

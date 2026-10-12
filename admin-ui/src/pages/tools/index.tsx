@@ -114,7 +114,7 @@ export function ToolsPage() {
           <label className="azt-tool-toggle"><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={(e) => setDraft({ ...draft, enabled: e.target.checked, codexButtonEnabled: e.target.checked && draft.codexButtonEnabled })} />
             <span>{text("启用 Reviewer", "Enable Reviewer")}<small>{text("随 AZT 启动，只监听 127.0.0.1，不经模型网关公开。", "Starts with AZT; listens on 127.0.0.1, never the model gateway.")}</small></span></label>
           <label className="azt-tool-toggle"><input type="checkbox" checked={draft.codexButtonEnabled} disabled={busy || !draft.enabled} onChange={(e) => setDraft({ ...draft, codexButtonEnabled: e.target.checked })} />
-            <span>{text("Codex 回复旁显示 Review 按钮（实验性）", "Review buttons in Codex (experimental)")}<small>{text("保存选定回复后，在 Codex 右侧浮层打开同一工作台。", "Saves the selected reply and opens this workbench in a right-side overlay.")}</small></span></label>
+            <span>{text("Codex 回复旁显示 Review 按钮（实验性）", "Review buttons in Codex (experimental)")}<small>{text("保存选定回复后，在 Codex 内置浏览器侧边面板打开；同一对话复用审阅标签。", "Saves the selected reply and opens it in Codex’s browser side panel; reuses the review tab for this chat.")}</small></span></label>
           <label className="azt-tool-field">{text("本机 CDP 调试端口", "Local CDP debugging port")}
             <input type="number" min={1024} max={65535} step={1} value={draft.cdpPort} disabled={busy || !draft.enabled} onChange={(e) => setDraft({ ...draft, cdpPort: Number(e.target.value) })} /></label>
           <p className="azt-tool-muted">{status?.connector.connected ? text(`已连接 ${status.connector.targets} 个窗口 · ${status.connector.buttons} 个按钮`, `Connected: ${status.connector.targets} windows · ${status.connector.buttons} buttons`) : text("Codex 未连接；不影响 AZT 工作台与 MCP 使用。", "Codex not connected; the AZT workbench and MCP remain available.")}</p>
@@ -131,7 +131,7 @@ export function ToolsPage() {
           <p>{text("启用上面的开关后，优先点击“保存并启动 Codex 接入”。如果 Codex 正在运行，AZT 会先弹窗确认，再请求正常退出并带本机调试端口启动。若正常退出失败，请手动完全退出后再次点击。", "After enabling the switches above, use “Save & start Codex connection”. If Codex is running, AZT asks for confirmation, requests a graceful quit, and starts it with a loopback-only debugging port. If it does not quit normally, quit it manually and try again.")}</p>
           <p>{text("手动命令仅用于排障或备用方式：", "Manual command for troubleshooting or fallback only:")}</p>
           <code>open -b com.openai.codex --args --remote-debugging-address=127.0.0.1 --remote-debugging-port={draft?.cdpPort || 9222}</code>
-          <p>{text("调试端口可控制页面，请勿开放到局域网或转发给他人。此方式依赖 Codex 页面结构，不是官方原生面板；若页面更新或 iframe 被拦截，请回到本页打开相同记录。请先关闭旧 Companion 的按钮注入，避免冲突。", "The debugging port can control pages; never expose or forward it. This relies on Codex DOM structure, not a native panel API. If the layout changes or frames are blocked, open the same review here. Disable the old Companion injector first.")}</p>
+          <p>{text("调试端口可控制页面，请勿开放到局域网或转发给他人。Review 优先打开 Codex 内置浏览器，但接入依赖其内部页面事件，并非公开扩展 API。若版本不兼容，会显示失败提示；可手动选择临时浮层，或回到本页打开同一记录，不自动打开系统浏览器。请先关闭旧 Companion 的按钮注入。", "The debugging port can control pages; never expose or forward it. Review uses Codex’s browser via a version-dependent internal event, not a public extension API. On failure, explicitly choose the overlay or open the same record here; the system browser is never opened automatically. Disable the old Companion injector first.")}</p>
         </details>
       </section>
       <section className="azt-tool-card">
@@ -144,7 +144,8 @@ export function ToolsPage() {
           <button className="btn-secondary" type="submit" disabled={busy || !source.trim()}>{text("只读导入旧数据", "Import without changing source")}</button>
         </form>
         <details className="azt-tool-details"><summary>{text("可选 MCP / Skill 入口", "Optional MCP / Skill entry")}</summary>
-          <p>{text("插件目录（本期不会自动安装或更改现有插件）：", "Plugin directory (not installed automatically):")}</p><code className="azt-tool-path">{status?.pluginPath || "—"}</code>
+          <p>{text("AZT 版插件目录（不会自动覆盖已安装的旧插件）：", "AZT plugin directory (does not overwrite a legacy installation):")}</p><code className="azt-tool-path">{status?.pluginPath || "—"}</code>
+          <p className="azt-tool-warning">{text("如果 Codex 仍装着独立版 Reviewer，它仍会使用旧服务和旧记录。请将该插件入口切换到上方 AZT 版目录；回复旁的 Review 按钮不依赖旧插件。", "The legacy standalone plugin still uses its old service and records. Switch that plugin entry to the AZT directory above. Reply Review buttons do not depend on the legacy plugin.")}</p>
           <p>{text("先启用本服务，再安装该本地插件。桌面包中使用 app.asar.unpacked 下的同名目录。自定义 AI_ZERO_TOKEN_HOME 时，MCP 需使用同一环境变量。", "Enable this service before installing the local plugin. Desktop builds use the matching directory under app.asar.unpacked. With a custom AI_ZERO_TOKEN_HOME, pass the same environment variable to MCP.")}</p>
         </details>
       </section>
@@ -160,7 +161,7 @@ export function ToolsPage() {
       {!status?.running && history.length > 0 && <p className="azt-tool-muted">{text("启用服务后可打开历史记录。", "Enable the service to open a review.")}</p>}
     </section>
     {opened && workbenchUrl && <section ref={workbenchRef} className="azt-tool-workbench" aria-label={text("审阅工作台", "Review workbench")}>
-      <header><strong>Response Reviewer</strong><span>{text("意见仅复制或预填，不自动发送", "Copy or prefill only; never auto-send")}</span>
+      <header><strong>Response Reviewer</strong><span>{text("仅回填对应任务的空输入框；不自动发送", "Prefill only the matching empty composer; never auto-send")}</span>
         <button type="button" title={text("链接含本机访问令牌，请勿分享", "Contains a local access token; do not share")} onClick={() => void act(async () => {
           if (!await copyText(workbenchUrl)) throw new Error(text("复制失败，请检查剪贴板权限。", "Copy failed; check clipboard permissions."));
           setNotice(text("已复制本机审阅链接，请勿分享访问令牌。", "Local review link copied. Do not share its access token."));

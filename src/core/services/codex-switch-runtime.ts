@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { setTimeout as delay } from "node:timers/promises";
 
 const exec = promisify(execFile);
 export type CodexSwitchRuntime = {
@@ -60,7 +61,7 @@ function describeOwners(files: readonly CodexOpenFile[]): string {
 }
 
 function inUseError(files: readonly CodexOpenFile[]): Error {
-  return Object.assign(new Error(`以下 Codex 进程仍在使用会话设置：${describeOwners(files)}。请等待当前回复结束，并退出对应的 Codex 客户端或 CLI/IDE 后重试；切换尚未完成。`), { statusCode: 409 });
+  return Object.assign(new Error(`以下 Codex 进程仍在使用会话设置：${describeOwners(files)}。请完全退出对应的 Codex 客户端或 CLI/IDE 后重试；切换尚未完成。`), { statusCode: 409 });
 }
 
 export function assertNoRunningCodexClients(files: readonly CodexOpenFile[]): void {
@@ -86,7 +87,7 @@ function processInspectionError(error: unknown, command: string): Error {
   });
 }
 
-export async function getCodexOpenFiles(home: string): Promise<CodexOpenFile[]> {
+export async function getCodexOpenFiles(home: string, signal?: AbortSignal): Promise<CodexOpenFile[]> {
   // Enumerate handles, not the filesystem: plugin caches and worktrees can be huge.
   await fs.mkdir(home, { recursive: true });
   const realHome = await fs.realpath(home);
@@ -95,29 +96,94 @@ export async function getCodexOpenFiles(home: string): Promise<CodexOpenFile[]> 
   let output = "";
   try {
     const args = ["-n", "-P", "-F", "pcn", ...(process.getuid ? ["-a", "-u", String(process.getuid())] : [])];
-    const { stdout } = await exec(command, args, { timeout: 20_000, maxBuffer: 32 * 1024 * 1024 });
+    const { stdout } = await exec(command, args, { signal, timeout: 20_000, maxBuffer: 32 * 1024 * 1024 });
     output = stdout;
   } catch (error) {
+    signal?.throwIfAborted();
     if ((error as { code?: unknown }).code === 1 && !(error as { stderr?: string }).stderr?.trim()) output = (error as { stdout?: string }).stdout ?? "";
     else throw processInspectionError(error, command);
   }
   return parseCodexOpenFiles(output, [realHome, path.resolve(home)]);
 }
 
-export async function assertCodexStopped(home: string): Promise<void> {
+async function getRunningCodexClients(home: string, signal?: AbortSignal): Promise<CodexOpenFile[]> {
   if (process.platform === "win32") {
-    const { stdout } = await exec("tasklist", ["/FO", "CSV", "/NH"], { timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
+    const { stdout } = await exec("tasklist", ["/FO", "CSV", "/NH"], { signal, timeout: 10_000, maxBuffer: 8 * 1024 * 1024 });
     const owners = stdout.split(/\r?\n/).flatMap((line): CodexOpenFile[] => {
       const match = /^"([^"\r\n]*(?:codex|chatgpt)[^"\r\n]*\.exe)","(\d+)"/i.exec(line);
       return match ? [{ pid: Number(match[2]), command: match[1], file: "", relativePath: "" }] : [];
     });
-    if (owners.length) throw inUseError(owners);
-    return;
+    return owners;
   }
-  assertNoRunningCodexClients(await getCodexOpenFiles(home));
+  return (await getCodexOpenFiles(home, signal)).filter((file) => isCodexCommand(file.command) && isSwitchResource(file));
 }
 
-export const stoppedCodexRuntime: CodexSwitchRuntime = { assertStopped: assertCodexStopped };
+export async function assertCodexStopped(home: string): Promise<void> {
+  const owners = await getRunningCodexClients(home);
+  if (owners.length) throw inUseError(owners);
+}
+
+export const CODEX_SWITCH_EXIT_TIMEOUT_MS = 15_000;
+type SwitchPreparation = {
+  timeoutMs?: number;
+  pollIntervalMs?: number;
+  inspect?: (home: string, signal: AbortSignal) => Promise<CodexOpenFile[]>;
+  desktop?: {
+    runningApps: (signal: AbortSignal) => Promise<string[]>;
+    quit: (apps: string[], signal: AbortSignal) => Promise<void>;
+  };
+};
+
+/** One deadline covers inspection, graceful quit and backend shutdown. No settings are written here. */
+export async function prepareCodexClientsForSwitch(home: string, options: SwitchPreparation = {}): Promise<string[]> {
+  const timeoutMs = options.timeoutMs ?? CODEX_SWITCH_EXIT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const { signal } = controller;
+  const inspect = options.inspect ?? getRunningCodexClients;
+  let owners: CodexOpenFile[] = [];
+  let runningApps: string[] = [];
+  let timer: ReturnType<typeof setTimeout>;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      const remaining = [runningApps.map((app) => path.basename(app, ".app")).join("、"), describeOwners(owners)].filter(Boolean).join("；");
+      const error = Object.assign(new Error(`等待 Codex 退出已超时（${timeoutMs / 1000} 秒）。${remaining ? `仍未退出：${remaining}。` : "未能确认后台进程已退出。"}请完全退出相关客户端或 CLI/IDE 后重试；本次尚未修改会话设置。`), { statusCode: 409, code: "AZT_CODEX_EXIT_TIMEOUT" });
+      controller.abort(error);
+      reject(error);
+    }, timeoutMs);
+  });
+  const readState = async () => {
+    signal.throwIfAborted();
+    [owners, runningApps] = await Promise.all([
+      inspect(home, signal), options.desktop?.runningApps(signal) ?? Promise.resolve([]),
+    ]);
+    signal.throwIfAborted();
+  };
+  const prepare = async () => {
+    await readState();
+    await assertNoActiveCodexTurns(home, owners, signal);
+    signal.throwIfAborted();
+    const appsToReopen = [...runningApps];
+    if (runningApps.length) {
+      await options.desktop!.quit(runningApps, signal);
+      await readState();
+    }
+    while (owners.length || runningApps.length) {
+      await delay(options.pollIntervalMs ?? 500, undefined, { signal });
+      await readState();
+      await assertNoActiveCodexTurns(home, owners, signal);
+      signal.throwIfAborted();
+    }
+    return appsToReopen;
+  };
+  try { return await Promise.race([prepare(), expired]); }
+  catch (error) { if (signal.aborted) throw signal.reason; throw error; }
+  finally { clearTimeout(timer!); controller.abort(); }
+}
+
+export const stoppedCodexRuntime: CodexSwitchRuntime = {
+  assertStopped: assertCodexStopped,
+  prepare: async () => { await prepareCodexClientsForSwitch(process.env.CODEX_HOME || path.join(os.homedir(), ".codex")); },
+};
 
 /** Open handles are diagnostic candidates only after SQLite reports a real lock conflict. */
 export async function explainCodexDatabaseError(error: unknown, home: string): Promise<unknown> {
@@ -157,12 +223,12 @@ async function readLastTurn(file: string): Promise<LastTurn> {
   } finally { await handle.close(); }
 }
 
-async function processStartTimes(files: readonly CodexOpenFile[]): Promise<Map<number, number>> {
+async function processStartTimes(files: readonly CodexOpenFile[], signal?: AbortSignal): Promise<Map<number, number>> {
   const pids = [...new Set(files.map((file) => file.pid))];
   if (!pids.length) return new Map();
   try {
     const { stdout } = await exec(process.platform === "darwin" ? "/bin/ps" : "ps", ["-p", pids.join(","), "-o", "pid=,lstart="], {
-      timeout: 2000, env: { ...process.env, LC_ALL: "C", LANG: "C" },
+      signal, timeout: 2000, env: { ...process.env, LC_ALL: "C", LANG: "C" },
     });
     const result = new Map<number, number>();
     for (const line of stdout.split(/\r?\n/)) {
@@ -171,18 +237,20 @@ async function processStartTimes(files: readonly CodexOpenFile[]): Promise<Map<n
       if (match && Number.isFinite(timestamp)) result.set(Number(match[1]), timestamp);
     }
     return result;
-  } catch { return new Map(); } // Without process age, unfinished records still block.
+  } catch { signal?.throwIfAborted(); return new Map(); } // Without process age, unfinished records still block.
 }
 
 /** Closed historical files cannot tell us whether a currently running backend is busy. */
 export async function assertNoActiveCodexTurns(
   home = process.env.CODEX_HOME || path.join(os.homedir(), ".codex"),
   observedFiles?: readonly CodexOpenFile[],
+  signal?: AbortSignal,
 ): Promise<void> {
-  const files = (observedFiles ?? await getCodexOpenFiles(home)).filter((file) => isRollout(file) && isCodexCommand(file.command));
-  const starts = observedFiles ? new Map<number, number>() : await processStartTimes(files);
+  const files = (observedFiles ?? await getCodexOpenFiles(home, signal)).filter((file) => isRollout(file) && isCodexCommand(file.command));
+  const starts = await processStartTimes(files, signal);
   const turns = new Map<string, LastTurn>();
   for (const file of files) {
+    signal?.throwIfAborted();
     let turn = turns.get(file.file);
     if (turn === undefined) {
       try { turn = await readLastTurn(file.file); } catch { turn = "unknown"; }

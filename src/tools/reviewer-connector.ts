@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import type { ReviewerInstance } from "../../modules/response-reviewer/src/managed.mjs";
+import type { ComposerRequest, ComposerResult, ReviewerInstance } from "../../modules/response-reviewer/src/managed.mjs";
 
 type Target = { id: string; type: string; url: string; webSocketDebuggerUrl: string };
 type Client = { evaluate(expression: string): Promise<unknown>; close(): void };
@@ -105,10 +105,37 @@ export class ReviewerConnector {
   private stopped = false;
   private pending: Promise<void> | null = null;
   private nextDiscovery = 0;
+  private filling = false;
   private status: ConnectorStatus = { connected: false, targets: 0, buttons: 0, error: null };
 
   constructor(private port: number, private reviewer: ReviewerInstance, private injectionPath: string) {}
   snapshot(): ConnectorStatus { return { ...this.status }; }
+  async prefill(request: ComposerRequest): Promise<ComposerResult> {
+    const fail = (message: string) => { throw Object.assign(new Error(message), { statusCode: 409 }); };
+    if (this.stopped || !this.clients.size) return fail("Codex 未连接，请在 AZT 启动接入，或使用“复制指令”。");
+    if (!/^[A-Za-z0-9_-]{1,200}$/.test(request.threadKey) || !request.prompt.trim() || Buffer.byteLength(request.prompt) > 256 * 1024) {
+      return fail("任务或审阅指令无效，请使用“复制指令”。");
+    }
+    if (this.filling) return fail("正在回填，请勿重复点击。");
+    this.filling = true;
+    try {
+      const matches: Client[] = [];
+      for (const client of this.clients.values()) {
+        const info = await client.evaluate("window.__aztReviewerModules?.['response-reviewer']?.status()") as { taskContext?: { threadKey?: string } } | null;
+        if (info?.taskContext?.threadKey === request.threadKey) matches.push(client);
+      }
+      if (this.stopped) return fail("Codex 接入已关闭，未写入输入框。");
+      if (matches.length !== 1) return fail(matches.length
+        ? "多个窗口打开了同一任务，无法确定输入框。请保留一个对应任务窗口后重试，或复制指令。"
+        : "请先在 Codex 切回这条回复所属的任务，再点击“放入对话框”；未写入其他任务。");
+      // No queue or retry: a transport timeout must never replay a composer edit.
+      // The page rechecks the task and draft synchronously immediately before writing.
+      const result = await matches[0]!.evaluate(`window.__aztReviewerModules?.['response-reviewer']?.prefill(${JSON.stringify(request)})`) as
+        { prefilled?: boolean; threadKey?: string; error?: string } | null;
+      if (result?.prefilled !== true || result.threadKey !== request.threadKey) return fail(result?.error || "未能确认输入框内容。请检查 Codex，必要时复制指令；不会自动重试。");
+      return { prefilled: true, threadKey: request.threadKey };
+    } finally { this.filling = false; }
+  }
   start(): void { this.schedule(0); }
   private schedule(delay: number): void {
     if (this.stopped) return;
@@ -144,7 +171,7 @@ export class ReviewerConnector {
     for (const [id, client] of this.clients) {
       if (this.stopped) return;
       try {
-        const installed = await client.evaluate("Boolean(window.__aztReviewerModules?.['response-reviewer']?.active && window.__aztReviewerBridge)");
+        const installed = await client.evaluate("Boolean(window.__aztReviewerModules?.['response-reviewer']?.active && window.__aztReviewerModules['response-reviewer'].version === 2 && window.__aztReviewerModules['response-reviewer'].revision === 3 && window.__aztReviewerBridge)");
         const config = { url: this.reviewer.reviewUrl(), serviceReady: true };
         if (!installed) {
           await client.evaluate(bootstrap);

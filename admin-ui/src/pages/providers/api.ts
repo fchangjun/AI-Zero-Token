@@ -75,6 +75,10 @@ export function normalizeProviderModel(value: unknown): ProviderModel {
     id,
     ...(textValue(source.displayName, textValue(source.name)) ? { name: textValue(source.displayName, textValue(source.name)) } : {}),
     ...(textValue(source.description) ? { description: textValue(source.description) } : {}),
+    contextWindow: numberValue(source.contextWindow),
+    contextWindowOverride: numberValue(source.contextWindowOverride),
+    effectiveContextWindow: numberValue(source.effectiveContextWindow),
+    contextWindowSource: source.contextWindowSource === "manual" ? "manual" : source.contextWindowSource === "api" ? "api" : "default",
     selectedForCodex: booleanValue(source.selectedForCodex),
     catalogStatus: source.catalogStatus === "missing" ? "missing" : "available",
     inspection: {
@@ -188,4 +192,8 @@ export async function activateProvider(providerId: string, modelIds: string[], d
 
 export async function deactivateProvider(providerId: string): Promise<ApiProvider | null> {
   return providerFromMutation(await fetchJson<unknown>(`${PROVIDERS_ENDPOINT}/${encodeURIComponent(providerId)}/deactivate`, jsonRequest("POST")));
+}
+
+export async function setProviderContextWindow(providerId: string, modelId: string, contextWindow: number | null): Promise<ApiProvider | null> {
+  return providerFromMutation(await fetchJson<unknown>(`${PROVIDERS_ENDPOINT}/${encodeURIComponent(providerId)}/context-window`, jsonRequest("PUT", { modelId, contextWindow })));
 }

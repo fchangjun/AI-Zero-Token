@@ -7,6 +7,7 @@ const OverviewPage = lazy(() => import("@/pages/overview").then((module) => ({ d
 const DocsPage = lazy(() => import("@/pages/docs").then((module) => ({ default: module.DocsPage })));
 const ModelServicesPage = lazy(() => import("@/pages/providers/ModelServicesPage").then((module) => ({ default: module.ModelServicesPage })));
 const UsagePage = lazy(() => import("@/pages/usage").then((module) => ({ default: module.UsagePage })));
+const ResetCalendarPage = lazy(() => import("@/pages/reset-calendar").then((module) => ({ default: module.ResetCalendarPage })));
 const TesterPage = lazy(() => import("@/pages/tester").then((module) => ({ default: module.TesterPage })));
 const ImageBedPage = lazy(() => import("@/pages/image-bed").then((module) => ({ default: module.ImageBedPage })));
 const NetworkDetectPage = lazy(() => import("@/pages/network-detect").then((module) => ({ default: module.NetworkDetectPage })));
@@ -56,6 +57,8 @@ export function RouteRenderer({ workspace }: { workspace: UseAdminWorkspaceResul
       <ModelServicesPage workspace={workspace} />
     ) : activeRoute === "usage" ? (
       <UsagePage config={config} setStatus={workspace.setStatus} />
+    ) : activeRoute === "reset-calendar" ? (
+      <ResetCalendarPage setStatus={workspace.setStatus} />
     ) : activeRoute === "providers" ? (
       <ModelServicesPage workspace={workspace} />
     ) : activeRoute === "tester" ? (

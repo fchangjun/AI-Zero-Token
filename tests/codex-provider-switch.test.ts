@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ExternalProviderService } from "../src/core/services/external-provider-service.ts";
 import { CodexProviderSwitch, getCodexSwitchStatePath } from "../src/core/services/codex-provider-switch.ts";
-import { assertCodexStopped, assertNoActiveCodexTurns } from "../src/core/services/codex-switch-runtime.ts";
+import { assertCodexStopped, assertNoActiveCodexTurns, prepareCodexClientsForSwitch } from "../src/core/services/codex-switch-runtime.ts";
 import { codexSqlite, readThreadSnapshot, updateThreadSettings } from "../src/core/store/codex-thread-state.ts";
 import { getExternalProviderStorePath } from "../src/core/store/external-provider-store.ts";
 import { getStateDir } from "../src/core/store/state-paths.ts";
@@ -57,6 +57,25 @@ async function databaseClient(sql = "SELECT * FROM threads;") {
 }
 
 describe("Codex provider switch", () => {
+  test("an exit timeout leaves the active takeover, config, credentials and thread settings unchanged", async () => {
+    const provider = await create();
+    await service.activate(provider.id, ["b-model"], "b-model");
+    const before = await files();
+    const rows = await data();
+    const blocked = new ExternalProviderService({
+      assertStopped: assertCodexStopped,
+      prepare: async () => { await prepareCodexClientsForSwitch(home, {
+        timeoutMs: 40, pollIntervalMs: 5,
+        inspect: async () => [{ pid: 987654, command: "codex", file: db, relativePath: "state_5.sqlite" }],
+      }); },
+    });
+    await expect(blocked.deactivate(provider.id)).rejects.toThrow("等待 Codex 退出已超时");
+    expect(await files()).toEqual(before);
+    expect(await data()).toEqual(rows);
+    expect((await service.list()).activeProviderId).toBe(provider.id);
+    expect(await fs.stat(`${getCodexSwitchStatePath()}.pending`).then(() => true, () => false)).toBe(false);
+  });
+
   test("native → B → C → native changes all local threads and preserves history and native auth", async () => {
     const originalRollout = await fs.readFile(rollout, "utf8");
     const b = await create(); const c = await create("C", ["c-model"]);

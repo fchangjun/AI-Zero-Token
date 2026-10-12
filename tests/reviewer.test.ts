@@ -80,6 +80,7 @@ describe("AZT managed Reviewer", () => {
       expect((await request(base, "/api/health", "GET", undefined, { origin })).headers.get("access-control-allow-origin")).toBeNull();
     }
     expect((await request(base, "/api/health")).status).toBe(200);
+    expect((await (await request(base, "/api/runtime")).json()).composerMode).toBe("verified");
   });
 
   test("snapshot, annotations, prompt compilation and independent data roots", async () => {
@@ -115,6 +116,38 @@ describe("AZT managed Reviewer", () => {
     expect((await request(base, "/api/responses/files/files/outside")).status).toBe(403);
     expect((await request(base, "/api/responses/files/files/not-declared")).status).toBe(404);
     expect(await fs.readFile(path.join(outside, "secret.txt"), "utf8")).toBe("secret");
+  });
+
+  test("composer requires a live connector and does not fall back to an unverified deep link", async () => {
+    const instance = await service(); const base = await enable(instance);
+    await save(base, "bound", { threadKey: "thread-original" });
+    const result = await request(base, "/api/responses/bound/composer", "POST", {});
+    expect(result.status).toBe(409);
+    expect((await result.json()).error).toContain("未接入");
+  });
+
+  test("composer only reports success after acknowledging the bound task and compiles stored annotations", async () => {
+    const captured: Array<{ threadKey: string; prompt: string }> = [];
+    const instance = await startManagedReviewer({
+      root: await temp(), frameOrigins: [],
+      openComposer: async (input) => {
+        captured.push(input);
+        return { prefilled: true, threadKey: input.threadKey === "wrong-ack" ? "different-thread" : input.threadKey };
+      },
+    });
+    cleanup.push(() => instance.close());
+    const base = instance.reviewUrl();
+    await save(base, "bound", { threadKey: "original" });
+    await request(base, "/api/responses/bound/annotations", "POST", { comment: "回填测试" });
+    const response = await request(base, "/api/responses/bound/composer", "POST", { threadKey: "attacker", prompt: "ignored" });
+    expect(response.status).toBe(200);
+    expect((await response.json()).composer).toEqual({ prefilled: true, threadKey: "original" });
+    expect(captured[0]!.threadKey).toBe("original");
+    expect(captured[0]!.prompt).toContain("回填测试");
+    expect(captured[0]!.prompt).not.toContain("ignored");
+    await save(base, "bad", { threadKey: "wrong-ack" });
+    expect((await request(base, "/api/responses/bad/composer", "POST", {})).status).toBe(502);
+    expect((await request(base, "/api/responses/missing/composer", "POST", {})).status).toBe(404);
   });
 
   test("legacy import is read-only, idempotent, annotation preserving and discards permissions/outbox", async () => {
@@ -186,6 +219,39 @@ describe("AZT managed Reviewer", () => {
 });
 
 describe("Reviewer integration boundaries", () => {
+  test("connector prefill requires exactly one matching task and never retries an uncertain write", async () => {
+    const reviewer = await startManagedReviewer({ root: await temp(), frameOrigins: [] });
+    cleanup.push(() => reviewer.close());
+    const connector = new ReviewerConnector(1, reviewer, "unused");
+    let writes = 0;
+    const client = (threadKey: string, uncertain = false) => ({
+      close() {},
+      async evaluate(expression: string) {
+        if (expression.includes(".status()")) return { taskContext: { threadKey } };
+        if (expression.includes("?.prefill(")) {
+          writes++;
+          if (uncertain) throw new Error("transport timeout");
+          return { prefilled: true, threadKey };
+        }
+        return null;
+      },
+    });
+    const input = { threadKey: "original", prompt: "请修改" };
+    Object.assign(connector, { clients: new Map([["other", client("other")]]) });
+    await expect(connector.prefill(input)).rejects.toThrow("切回");
+    expect(writes).toBe(0);
+    Object.assign(connector, { clients: new Map([["a", client("original")], ["b", client("original")]]) });
+    await expect(connector.prefill(input)).rejects.toThrow("多个窗口");
+    expect(writes).toBe(0);
+    Object.assign(connector, { clients: new Map([["a", client("original")]]) });
+    expect(await connector.prefill(input)).toEqual({ prefilled: true, threadKey: "original" });
+    Object.assign(connector, { clients: new Map([["a", client("original", true)]]) });
+    await expect(connector.prefill(input)).rejects.toThrow("transport timeout");
+    expect(writes).toBe(2);
+    await connector.close();
+    await expect(connector.prefill(input)).rejects.toThrow("未连接");
+  });
+
   test("management routes reject remote clients, nonlocal hosts and external origins", async () => {
     const app = await createApp(); cleanup.push(() => app.close());
     for (const url of ["/_gateway/tools", "/_gateway/tools/reviewer", "/_gateway/tools/reviewer/history", "/_gateway/tools/reviewer/start-codex"]) {
@@ -258,6 +324,15 @@ describe("Reviewer integration boundaries", () => {
     }
     const tools = await call("tools/list");
     expect(tools.result.tools.length).toBe(4);
+    const opened = await call("tools/call", { name: "open_reviewer", arguments: { projectDir: home, threadId: "mcp-thread" } });
+    expect(JSON.stringify(opened)).toContain(new URL(base).origin);
+    const reviewed = await call("tools/call", { name: "review_response", arguments: {
+      projectDir: home, threadId: "mcp-thread", title: "MCP 富文本", content: "MCP 回复", contentHtml: "<h2>MCP 回复</h2><pre><code>const x = 1;</code></pre>",
+    } });
+    expect(JSON.stringify(reviewed)).not.toContain('"isError":true');
+    expect((await instance.history()).some(item => item.title === "MCP 富文本" && item.threadKey === "mcp-thread")).toBe(true);
+    const running = await call("tools/call", { name: "reviewer_status" });
+    expect(JSON.stringify(running)).toContain(new URL(base).origin);
     const prompt = await call("tools/call", { name: "get_review_prompt", arguments: { responseId: "mcp-review" } });
     expect(JSON.stringify(prompt)).toContain("MCP 批注");
     await instance.close();

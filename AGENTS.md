@@ -62,6 +62,7 @@ For a normal release:
 
    Do not upload mac zip files, blockmaps, unpacked app directories, debug metadata, or auto-update metadata unless the release explicitly enables an auto-update channel.
 14. Create or update the matching GitHub Release and upload the four desktop artifacts. If `gh` is installed, use it. If `gh` is not installed, load the ignored project-local `.env.github` token and use the GitHub Releases API. Never print or commit GitHub token values.
+15. Prepare a copy-ready Chinese group announcement after verifying the release. Follow the release communication rules below; technical release reporting alone is not sufficient.
 
 GitHub may normalize uploaded asset names by replacing spaces with dots. Still verify that the four expected macOS/Windows artifacts are present on the release.
 
@@ -84,7 +85,33 @@ Check Codex-specific paths when relevant:
 
 ## Communication
 
+### Codex 对话记录清理
+
+用户要求清理本项目的 Codex 对话时，必须同时处理对话内容、索引和桌面端侧栏目录。2026-09-30 的排查确认：只删除 `state_5.sqlite` 和 rollout 文件，即使再清理 `session_index.jsonl`，侧栏仍可能显示旧条目，点击后提示“恢复失败”；遗漏来源是 `sqlite/codex-dev.db` 的 `local_thread_catalog`。
+
+执行流程：
+
+1. 确定当前实际使用的 Codex 数据目录（通常为 `~/.codex`）、项目根目录及新旧项目 ID。按用户指定的时间范围筛选；未指定时间口径时，说明使用最后活动时间，并检查秒与毫秒字段。保留当前对话及仍在运行的对话。
+2. 先固定待删除的会话 ID 清单，核对项目归属和日期。后续各层清理均使用这份清单，不能仅凭标题或“数据库里不存在”删除其他项目的记录。清单只需保存 ID、日期和必要路径，避免输出整段对话或凭证。
+3. 优先使用可用的正式删除接口；归档不等于删除。确需直接维护本地数据时，先检查当前数据库表结构和关联约束，使用事务及参数化 SQL。数据库版本、字段和文件名可能变化，不能盲目复用旧 SQL。
+4. 清理内容层：`state_5.sqlite` 中的会话及关联记录、`thread_history_1.sqlite` 中对应历史，以及实际存在的队列、目标、记忆等会话关联记录。只删除清单中会话对应的 `sessions/` 或 `archived_sessions/` rollout 文件，不删除工作区、项目文件或 worktree。
+5. 清理索引层：删除 `session_index.jsonl` 中对应 ID 的条目；检查 `.codex-global-state.json` 是否存在这些 ID 的旧引用，有则定向处理。不要清空全局设置或其他项目的索引。
+6. **必须检查侧栏目录层**：`sqlite/codex-dev.db` 的 `local_thread_catalog`，按 `host_id` 和 `thread_id` 删除对应目录项；检查 `thread_timeline_ledger`、`local_thread_catalog_scan_entries` 等关联表。当前结构支持时，在同一事务中递增 `local_thread_catalog_metadata.catalog_revision`。不要删除自动任务定义或整个数据库来刷新侧栏。
+7. 核验同一批 ID 在内容数据库、rollout 文件、会话索引和侧栏目录中均已不存在，并报告各层实际删除数量。数据库核验不能代替界面核验；无法观察侧栏时明确说明。用户反馈仍有条目时，用具体标题定位 ID 和数据来源，不反复建议重启、不未经核实就归因于缓存。
+
+此流程只适用于用户已授权的清理范围，不构成自动删除对话的授权。
+
 Use Chinese for user-facing updates unless the user switches languages.
+
+### Release announcements
+
+Every version release must also deliver a Chinese update message that the user can paste directly into their group. Follow `docs/DESKTOP_RELEASE.md` → `Release communications`.
+
+- Include the product name and version, 3–5 concise user-facing highlights (fewer for a small patch), necessary upgrade instructions, and the verified version-specific GitHub Release link. Include the npm update command when that channel was published.
+- Explain practical benefits in plain language. Base claims on the actual release changes and verified results; do not present previous-version features or planned work as newly shipped. Do not promise complete safety or universal platform testing.
+- Keep the group message compact, normally about 150–300 Chinese characters excluding links and commands. Keep commit hashes and detailed test reports in the technical handoff, not the group copy.
+- For a major feature/milestone release, also prepare a WeChat Official Account article draft when that communication scope is requested or clearly designated. This is a longer user-oriented story covering use cases, key changes, screenshots where useful, upgrade steps, and known limitations. Do not create a long article for every patch, and do not infer a major product milestone solely from the semantic version number.
+- Preparing copy does not mean it has been sent. Do not post to a group or publish an Official Account article without a clearly identified destination and the user's authorization for that external action. Never report a draft as published.
 
 When reporting a release, include:
 

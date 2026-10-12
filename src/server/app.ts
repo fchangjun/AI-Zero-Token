@@ -11,8 +11,11 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
-import { assertCodexStopped } from "../core/services/codex-switch-runtime.js";
+import { assertCodexStopped, stoppedCodexRuntime } from "../core/services/codex-switch-runtime.js";
 import { registerToolRoutes } from "./tool-routes.js";
+import { registerResetCalendarRoutes } from "./reset-calendar-routes.js";
+import { ResetCalendarService } from "../core/services/reset-calendar-service.js";
+import type { ResetCalendarNotification } from "../core/reset-calendar-types.js";
 import { configureLocalGatewayForCodex, gatewayKeyMatches, getGatewayAccessStatus, isLocalGatewayUrl, KEYED_GATEWAY_PROVIDER_ID, readGatewayAccess, updateGatewayAccess } from "../core/services/gateway-access-service.js";
 import type { ChatResult, OAuthProfile, ProfileSummary } from "../core/types.js";
 import { isTransientHttpError, requestText } from "../core/providers/http-client.js";
@@ -2225,6 +2228,9 @@ export function createApp(params?: {
   onPrepareCodexSwitch?: () => Promise<void>;
   onCompleteCodexSwitch?: () => Promise<void>;
   onStartCodexWithReviewer?: (cdpPort: number) => Promise<{ started: boolean; cancelled?: boolean }>;
+  onResetNotification?: (notification: ResetCalendarNotification) => boolean | void | Promise<boolean | void>;
+  resetNotificationsSupported?: () => boolean;
+  resetCalendarService?: ResetCalendarService;
 }) {
   const defaultBodyLimit = params?.bodyLimit ?? DEFAULT_ROUTE_BODY_LIMIT_BYTES;
   const codexCompactBodyLimit = Math.max(defaultBodyLimit, CODEX_COMPACT_BODY_LIMIT_BYTES);
@@ -2242,7 +2248,7 @@ export function createApp(params?: {
         .catch((error) => done(error as Error));
     },
   );
-  const ctx = createGatewayContext({ codexSwitchRuntime: { assertStopped: assertCodexStopped, prepare: params?.onPrepareCodexSwitch } });
+  const ctx = createGatewayContext({ codexSwitchRuntime: { assertStopped: assertCodexStopped, prepare: params?.onPrepareCodexSwitch ?? stoppedCodexRuntime.prepare } });
   async function completeCodexSwitch(): Promise<string | undefined> {
     try { await params?.onCompleteCodexSwitch?.(); return undefined; }
     catch { return "服务设置已切换，但 Codex 未能自动打开，请手动打开客户端。"; }
@@ -2281,6 +2287,10 @@ export function createApp(params?: {
   });
   const gatewayRequestLogs: GatewayRequestLog[] = [];
   registerToolRoutes(app, { onStartCodexWithReviewer: params?.onStartCodexWithReviewer });
+  registerResetCalendarRoutes(app, params?.resetCalendarService ?? new ResetCalendarService({
+    notify: params?.onResetNotification,
+    notificationsSupported: params?.resetNotificationsSupported,
+  }));
   const pendingUsageWrites = new Set<Promise<void>>();
   app.addHook("onClose", async () => { await Promise.allSettled([...pendingUsageWrites]); });
   const codexResponseProfileBindings = new Map<string, { profileId: string; accountId: string; seenAt: number }>();
@@ -2997,6 +3007,23 @@ export function createApp(params?: {
       return { error: { type: "validation_error", message: "API 服务 ID 格式错误" } };
     }
     return { provider: await ctx.externalProviderService.sync(parsed.data.id) };
+  });
+
+  app.put("/_gateway/admin/providers/:id/context-window", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) {
+      reply.code(403);
+      return { error: { type: "local_access_required", message: "模型设置只能从本机管理页修改。" } };
+    }
+    const params = externalProviderParamsSchema.safeParse(request.params);
+    const body = z.object({
+      modelId: z.string().trim().min(1).max(256),
+      contextWindow: z.number().int().min(1).max(4_000_000).nullable(),
+    }).safeParse(request.body);
+    if (!params.success || !body.success) {
+      reply.code(400);
+      return { error: { type: "validation_error", message: "请提供模型 ID 和有效的上下文窗口（1–4,000,000），或使用 null 恢复自动。" } };
+    }
+    return { provider: await ctx.externalProviderService.setContextWindow(params.data.id, body.data.modelId, body.data.contextWindow) };
   });
 
   app.post("/_gateway/admin/providers/:id/inspect", async (request, reply) => {

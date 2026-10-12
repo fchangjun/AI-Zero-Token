@@ -8,7 +8,7 @@ import { readStore, updateStore, listResponses } from "./store.mjs";
 import { acquireLock } from "./lock.mjs";
 import { normalizeStoredResponse } from "./store.mjs";
 
-export async function startManagedReviewer({ root, frameOrigins }) {
+export async function startManagedReviewer({ root, frameOrigins, openComposer }) {
   const release = await acquireLock(root, "service");
   try {
   const previous = await withDataRoot(root, () => readRuntime());
@@ -17,7 +17,7 @@ export async function startManagedReviewer({ root, frameOrigins }) {
   }
   // Validate before opening a port; a corrupt store is never silently replaced.
   await withDataRoot(root, () => readStore());
-  const instance = await createServer({ root, port: 0, frameOrigins });
+  const instance = await createServer({ root, port: 0, frameOrigins, openComposer });
   let closing;
   return { ...instance, close() {
     closing ||= instance.close().finally(release);

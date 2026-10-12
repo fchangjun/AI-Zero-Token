@@ -1,5 +1,6 @@
 import { ConfigService } from "../core/services/config-service.js";
 import { createApp } from "./app.js";
+import type { ResetCalendarNotification } from "../core/reset-calendar-types.js";
 
 const DEFAULT_BODY_LIMIT_MB = 128;
 
@@ -48,6 +49,8 @@ export async function startServer(params?: {
   onPrepareCodexSwitch?: () => Promise<void>;
   onCompleteCodexSwitch?: () => Promise<void>;
   onStartCodexWithReviewer?: (cdpPort: number) => Promise<{ started: boolean; cancelled?: boolean }>;
+  onResetNotification?: (notification: ResetCalendarNotification) => boolean | void | Promise<boolean | void>;
+  resetNotificationsSupported?: () => boolean;
 }) {
   const bodyLimit = resolveBodyLimitBytes();
   const configService = new ConfigService();
@@ -67,6 +70,8 @@ export async function startServer(params?: {
       onPrepareCodexSwitch: params?.onPrepareCodexSwitch,
       onCompleteCodexSwitch: params?.onCompleteCodexSwitch,
       onStartCodexWithReviewer: params?.onStartCodexWithReviewer,
+      onResetNotification: params?.onResetNotification,
+      resetNotificationsSupported: params?.resetNotificationsSupported,
     });
 
     try {

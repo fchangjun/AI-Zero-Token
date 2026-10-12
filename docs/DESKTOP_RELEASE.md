@@ -295,6 +295,23 @@ macOS DMG files should include the in-package `mac-install-guide.txt` helper doc
    npm publish
    ```
 
+## Release communications
+
+The release deliverable includes both the technical handoff and a ready-to-send Chinese group announcement. Prepare the announcement after checking that npm and the GitHub Release are actually available; use draft wording if publication is still pending.
+
+For every version, provide:
+
+- A short title with `AI Zero Token` and the version.
+- 3–5 user-facing improvements, or fewer for a small patch, based on the matching changelog entry. Explain what changed for users rather than listing internal implementation details.
+- Required upgrade actions and relevant limitations, especially a one-time manual installation or data-migration step.
+- A version-specific GitHub Release download link, supported desktop platforms, and the npm command if npm was published.
+
+Prefer about 150–300 Chinese characters excluding links and commands. Avoid technical commit hashes, exhaustive test counts, marketing superlatives, unverified compatibility claims, and presenting earlier features as new in this release. The technical handoff still reports the commit, tag, npm verification, artifact status, and testing limits separately.
+
+For a designated major feature or milestone update, a requested WeChat Official Account article should expand on the user problem, practical scenarios, key improvements, useful screenshots, how to upgrade, and known limits. Patch releases need only the group announcement unless the user asks for more. This publication classification is not determined solely by the semantic major version.
+
+Default to preparing copy for the user. Sending to a group or publishing an article is a separate external action requiring a known destination and user authorization; distinguish drafts from messages actually sent.
+
 ## App Resources
 
 App icon files live in:

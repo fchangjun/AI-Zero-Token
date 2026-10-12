@@ -5,11 +5,15 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import type { ProfileSummary } from "../core/types.js";
+import type { ResetCalendarNotification } from "../core/reset-calendar-types.js";
 import { startServer } from "../server/index.js";
-import { assertNoActiveCodexTurns } from "../core/services/codex-switch-runtime.js";
+import { prepareCodexClientsForSwitch } from "../core/services/codex-switch-runtime.js";
+import { getCodexHomeDir } from "../core/store/codex-auth-store.js";
 import { DesktopUpdater } from "./updater.js";
 import { MacUpdateInstaller } from "./mac-update-installer.js";
 import { fetchDesktopUpdate } from "./update-fetch.js";
+import { ResetCalendarNavigator } from "./reset-calendar-navigation.js";
+import { openExternalHttpUrl } from "./external-links.js";
 
 type GatewayServer = Awaited<ReturnType<typeof startServer>>;
 type AccountPanelTab = "recommended" | "recent" | "all";
@@ -50,6 +54,14 @@ let currentAdminUrl: string | null = null;
 let desktopUpdater: DesktopUpdater | null = null;
 let updateInstaller: MacUpdateInstaller | null = null;
 let updateNotification: Notification | null = null;
+const resetNotifications = new Set<Notification>();
+const resetCalendarNavigator = new ResetCalendarNavigator({
+  getWindow: () => mainWindow,
+  focusWindow: focusMainWindow,
+  isAllowedUrl: isAllowedAppUrl,
+  isQuitting: () => isQuitting,
+  onError: (error) => console.warn("[desktop:reset-calendar:navigate]", error),
+});
 
 const desktopDir = path.dirname(fileURLToPath(import.meta.url));
 const appIconPath = path.resolve(desktopDir, "../../build/icon.png");
@@ -111,6 +123,15 @@ function isAllowedAppUrl(targetUrl: string): boolean {
   return Boolean((currentAdminUrl && isGatewayUrl(targetUrl, currentAdminUrl)) || (currentGatewayUrl && isGatewayUrl(targetUrl, currentGatewayUrl)));
 }
 
+ipcMain.handle("desktop:open-external", async (event, url: unknown) => {
+  if (!mainWindow || !currentAdminUrl || event.sender !== mainWindow.webContents
+    || event.senderFrame !== mainWindow.webContents.mainFrame || !isAllowedAppUrl(event.senderFrame.url)) return false;
+  const sender = new URL(event.senderFrame.url);
+  const admin = new URL(currentAdminUrl);
+  if (sender.origin !== admin.origin || sender.pathname !== admin.pathname) return false;
+  return openExternalHttpUrl(url, (value) => shell.openExternal(value));
+});
+
 function updateDesktopUrls(server: GatewayServer): void {
   const gatewayUrl = createBrowserUrl(server.host, server.port);
   currentGatewayUrl = gatewayUrl;
@@ -137,6 +158,7 @@ async function restartGateway(): Promise<void> {
 
     if (mainWindow && !mainWindow.isDestroyed()) {
       await mainWindow.loadURL(currentAdminUrl ?? createBrowserUrl(server.host, server.port));
+      resetCalendarNavigator.consume();
     }
     void renderAccountPanel();
   } catch (error) {
@@ -194,19 +216,30 @@ async function restartCodexApp(): Promise<void> {
 
 async function prepareCodexSwitch(): Promise<void> {
   if (isRestartingCodex || isStartingCodexWithReviewer) throw new Error("Codex 正在启动或重启，请稍后再切换服务。");
-  if (process.platform !== "darwin") return;
-  const { stdout } = await execFileAsync("ps", ["-axo", "command="], { timeout: 2000, maxBuffer: 8 * 1024 * 1024 });
-  const runningApps = codexAppPaths.filter((appPath) => {
-    const executable = `${appPath}/Contents/MacOS/${path.basename(appPath, ".app")}`;
-    return stdout.split(/\r?\n/).some((line) => line.trim() === executable || line.trim().startsWith(`${executable} `));
-  });
-  if (!runningApps.length) return;
-  await assertNoActiveCodexTurns();
   isRestartingCodex = true;
   try {
-    for (const appPath of runningApps) await runDesktopCommand("osascript", ["-e", `tell application "${appPath}" to quit`], codexQuitTimeoutMs);
-    if (!await waitForCodexMainProcess(false, 8000)) throw new Error("Codex 尚未完全退出，未切换服务。请等待回复结束后手动退出再试。");
-    reopenCodexAfterSwitch = [...runningApps];
+    const apps = await prepareCodexClientsForSwitch(getCodexHomeDir(), {
+      desktop: process.platform === "darwin" ? {
+        runningApps: async (signal) => {
+          const { stdout } = await execFileAsync("/bin/ps", ["-axo", "command="], { signal, timeout: 2000, maxBuffer: 8 * 1024 * 1024 });
+          return codexAppPaths.filter((appPath) => {
+            const executable = `${appPath}/Contents/MacOS/${path.basename(appPath, ".app")}`;
+            return stdout.split(/\r?\n/).some((line) => line.trim() === executable || line.trim().startsWith(`${executable} `));
+          });
+        },
+        quit: async (apps, signal) => {
+          for (const appPath of apps) {
+            signal.throwIfAborted();
+            await execFileAsync("/usr/bin/osascript", ["-e", `tell application "${appPath}" to quit`], { signal });
+          }
+        },
+      } : undefined,
+    });
+    // Recovery and the new switch can prepare in sequence before the final reopen.
+    reopenCodexAfterSwitch = [...new Set([...reopenCodexAfterSwitch, ...apps])];
+  } catch (error) {
+    reopenCodexAfterSwitch = [];
+    throw error;
   } finally { isRestartingCodex = false; }
 }
 
@@ -1069,6 +1102,8 @@ async function ensureGatewayServer(): Promise<GatewayServer> {
     onPrepareCodexSwitch: prepareCodexSwitch,
     onCompleteCodexSwitch: completeCodexSwitch,
     onStartCodexWithReviewer: startCodexWithReviewer,
+    onResetNotification: notifyResetCalendar,
+    resetNotificationsSupported: () => Notification.isSupported(),
   });
   updateDesktopUrls(gatewayServer);
 
@@ -1099,7 +1134,7 @@ async function createMainWindow(): Promise<void> {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    void shell.openExternal(url).catch((error) => console.warn("[desktop:external-link]", error));
     return { action: "deny" };
   });
 
@@ -1109,8 +1144,10 @@ async function createMainWindow(): Promise<void> {
     }
 
     event.preventDefault();
-    void shell.openExternal(url);
+    void shell.openExternal(url).catch((error) => console.warn("[desktop:external-link]", error));
   });
+
+  mainWindow.webContents.on("did-finish-load", () => resetCalendarNavigator.consume());
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -1139,6 +1176,7 @@ async function createMainWindow(): Promise<void> {
 
   updateDesktopUrls(server);
   await mainWindow.loadURL(currentAdminUrl ?? createBrowserUrl(server.host, server.port));
+  resetCalendarNavigator.consume();
   // A recreated window was focused on the startup page, before its management URL was loaded.
   if (desktopUpdater?.getState().phase !== "idle") void desktopUpdater?.checkIfStale();
 }
@@ -1176,6 +1214,50 @@ function notifyDesktopUpdate(title: string, body: string): void {
     notification.on("failed", (_event, error) => console.warn("[desktop:update:notification]", error));
     notification.show();
   } catch (error) { console.warn("[desktop:update:notification]", error); }
+}
+
+function openResetCalendar(): void {
+  resetCalendarNavigator.request();
+}
+
+function notifyResetCalendar(event: ResetCalendarNotification): Promise<boolean> {
+  if (isQuitting || !Notification.isSupported()) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let notification: Notification;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
+    const finish = (sent: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timeout) clearTimeout(timeout);
+      resolve(sent);
+    };
+    try {
+      notification = new Notification({ title: event.title, body: event.body, icon: appIconPath });
+      // Retain native notification objects until closed, with a bounded live set.
+      for (const previous of [...resetNotifications].slice(0, Math.max(0, resetNotifications.size - 9))) {
+        previous.close();
+        resetNotifications.delete(previous);
+      }
+      resetNotifications.add(notification);
+      notification.on("click", openResetCalendar);
+      notification.once("show", () => finish(true));
+      notification.once("close", () => { resetNotifications.delete(notification); finish(false); });
+      notification.once("failed", (_event, error) => {
+        resetNotifications.delete(notification);
+        console.warn("[desktop:reset-calendar:notification]", error);
+        finish(false);
+      });
+      timeout = setTimeout(() => {
+        resetNotifications.delete(notification);
+        finish(false);
+      }, 5_000);
+      notification.show();
+    } catch (error) {
+      console.warn("[desktop:reset-calendar:notification]", error);
+      finish(false);
+    }
+  });
 }
 
 async function closeGatewayServer(): Promise<void> {

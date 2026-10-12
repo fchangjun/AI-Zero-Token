@@ -1,5 +1,5 @@
 import { AlertCircle, Loader2, RefreshCw, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchJson } from "@/shared/api";
 import {
   activateProvider,
@@ -9,9 +9,11 @@ import {
   inspectProvider,
   listProviders,
   syncProvider,
+  setProviderContextWindow,
   updateProvider,
 } from "./api";
 import { CodexActivation } from "./components/CodexActivation";
+import { CodexSwitchDialog } from "./components/CodexSwitchDialog";
 import { ProviderDetail } from "./components/ProviderDetail";
 import { ProviderDrawer } from "./components/ProviderDrawer";
 import { ProvidersList } from "./components/ProvidersList";
@@ -43,6 +45,8 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerProvider, setDrawerProvider] = useState<ApiProvider | null>(null);
   const [drawerError, setDrawerError] = useState("");
+  const [switchDialog, setSwitchDialog] = useState<{ title: string; detail: string; run: () => Promise<boolean> } | null>(null);
+  const confirmingSwitch = useRef(false);
 
   const refresh = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -85,6 +89,20 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
   function openCreate() { setDrawerProvider(null); setDrawerError(""); setDrawerOpen(true); }
   function openEdit(provider: ApiProvider) { setDrawerProvider(provider); setDrawerError(""); setDrawerOpen(true); }
 
+  function requestSwitch(title: string, detail: string, run: () => Promise<boolean>) {
+    if (action || confirmingSwitch.current) return;
+    setFeedback(null);
+    setSwitchDialog({ title, detail, run });
+  }
+
+  async function confirmSwitch() {
+    if (!switchDialog || confirmingSwitch.current) return;
+    confirmingSwitch.current = true;
+    setFeedback(null);
+    try { if (await switchDialog.run()) setSwitchDialog(null); }
+    finally { confirmingSwitch.current = false; }
+  }
+
   async function saveProvider(draft: ProviderDraft) {
     setAction("save");
     setDrawerError("");
@@ -121,11 +139,14 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
     }
   }
 
-  async function removeProvider(provider: ApiProvider) {
-    const message = provider.activeForCodex
-      ? `“${provider.name}”当前已接入 Codex。删除后也会移除该接入，确定继续吗？`
-      : `确定删除“${provider.name}”及其模型记录吗？`;
-    if (!window.confirm(message)) return;
+  async function removeProvider(provider: ApiProvider, confirmed = false): Promise<boolean> {
+    if (!confirmed) {
+      if (provider.activeForCodex) {
+        requestSwitch("删除服务并解除接管", `将删除“${provider.name}”及其模型记录，并将本地新旧对话恢复为原生 Codex 服务。`, () => removeProvider(provider, true));
+        return false;
+      }
+      if (!window.confirm(`确定删除“${provider.name}”及其模型记录吗？`)) return false;
+    }
     setAction(`delete:${provider.id}`);
     try {
       await deleteProvider(provider.id);
@@ -135,8 +156,10 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
       await refresh(true);
       await onConfigChange?.();
       showSuccess("服务已删除。");
+      return true;
     } catch (error) {
       showError(error);
+      return false;
     } finally {
       setAction(null);
     }
@@ -164,19 +187,24 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
       await onConfigChange?.();
       setView({ name: "detail", providerId: provider.id });
       showSuccess(updated?.codexSwitchWarning ?? `${provider.name} 已接管。打开 Codex 后，本地新旧对话都使用该服务；不支持的模型已切换为该服务的默认模型。`);
+      return true;
     } catch (error) {
       showError(error);
+      return false;
     } finally {
       setAction(null);
     }
   }
 
-  async function removeCodex(provider: ApiProvider) {
+  async function removeCodex(provider: ApiProvider, confirmed = false): Promise<boolean> {
     const accountPool = provider.kind === "account_pool";
-    const detail = accountPool
-      ? "账号池 API 服务会继续运行，只有 Codex 接入会被解除。重启 Codex 后恢复原本的配置。"
-      : "本地新旧对话将恢复原生 Codex 服务。请先等待当前回复完成；桌面版会尝试关闭并重新打开 Codex。第三方服务、Key 和模型选择仍保存在 AZT。";
-    if (!window.confirm(`确定解除“${provider.name}”的 Codex 接入吗？\n\n${detail}`)) return;
+    if (!confirmed) {
+      if (!accountPool) {
+        requestSwitch(`解除“${provider.name}”的接管`, "本地新旧对话将恢复原生 Codex 服务。第三方服务、Key 和模型选择仍保存在 AZT。", () => removeCodex(provider, true));
+        return false;
+      }
+      if (!window.confirm(`确定解除“${provider.name}”的 Codex 接入吗？\n\n账号池 API 服务会继续运行，只有 Codex 接入会被解除。重启 Codex 后恢复原本的配置。`)) return false;
+    }
     setFeedback(null);
     setAction(`deactivate:${provider.id}`);
     try {
@@ -212,8 +240,10 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
           showError(new Error(`接入已解除，但 Codex 重启失败：${errorMessage(error)}`));
         }
       }
+      return true;
     } catch (error) {
       showError(error);
+      return false;
     } finally {
       setAction(null);
     }
@@ -253,6 +283,15 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
           onDelete={() => void removeProvider(selectedProvider)}
           onSync={() => void runProviderAction("sync", selectedProvider)}
           onInspect={(modelIds) => void runProviderAction("inspect", selectedProvider, modelIds)}
+          onContextWindow={async (modelId, value) => {
+            setAction(`context:${selectedProvider.id}`);
+            try {
+              const updated = await setProviderContextWindow(selectedProvider.id, modelId, value);
+              if (!updated) throw new Error("服务未返回保存结果，请重试。");
+              setProviders((previous) => replaceProvider(previous, updated));
+              showSuccess("上下文窗口已保存，下次接入 Codex 时生效。");
+            } finally { setAction(null); }
+          }}
           onActivate={() => setView({ name: "codex", providerId: selectedProvider.id })}
         />
       )}
@@ -263,7 +302,11 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
           saving={action === `activate:${selectedProvider.id}`}
           disconnecting={action === `deactivate:${selectedProvider.id}`}
           onBack={() => setView({ name: "detail", providerId: selectedProvider.id })}
-          onActivate={(modelIds, defaultModelId) => void applyCodex(selectedProvider, modelIds, defaultModelId)}
+          onActivate={(modelIds, defaultModelId) => requestSwitch(
+            selectedProvider.activeForCodex ? "保存 Codex 模型设置" : `接管到“${selectedProvider.name}”`,
+            `本地新旧对话将使用“${selectedProvider.name}”及所选模型，不支持的模型将调整为默认模型“${defaultModelId}”。`,
+            () => applyCodex(selectedProvider, modelIds, defaultModelId),
+          )}
           onDeactivate={() => void removeCodex(selectedProvider)}
         />
       )}
@@ -275,7 +318,15 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
         onClose={() => { if (action !== "save") setDrawerOpen(false); }}
         onSave={saveProvider}
       />
-      {feedback && <div className={`provider-feedback is-${feedback.tone}`} role={feedback.tone === "error" ? "alert" : "status"}>
+      {switchDialog && <CodexSwitchDialog
+        title={switchDialog.title}
+        detail={switchDialog.detail}
+        busy={Boolean(action)}
+        error={feedback?.tone === "error" ? feedback.text : undefined}
+        onClose={() => { if (!confirmingSwitch.current) { setSwitchDialog(null); setFeedback(null); } }}
+        onConfirm={() => void confirmSwitch()}
+      />}
+      {feedback && !switchDialog && <div className={`provider-feedback is-${feedback.tone}`} role={feedback.tone === "error" ? "alert" : "status"}>
         {feedback.tone === "error" && <AlertCircle size={16} />}
         <span>{feedback.text}</span>
         {feedback.tone === "error" && <button className="provider-icon-button" type="button" aria-label="关闭错误提示" onClick={() => setFeedback(null)}><X size={16} /></button>}

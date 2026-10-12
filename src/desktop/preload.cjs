@@ -1,6 +1,9 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-if (process.isMainFrame) contextBridge.exposeInMainWorld("desktopApp", { isDesktop: true });
+if (process.isMainFrame) contextBridge.exposeInMainWorld("desktopApp", {
+  isDesktop: true,
+  openExternal: (url) => ipcRenderer.invoke("desktop:open-external", url),
+});
 
 if (process.isMainFrame && process.platform === "darwin") {
   contextBridge.exposeInMainWorld("desktopUpdater", {

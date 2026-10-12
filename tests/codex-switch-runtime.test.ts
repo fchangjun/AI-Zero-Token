@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertNoActiveCodexTurns, assertNoRunningCodexClients, parseCodexOpenFiles, type CodexOpenFile } from "../src/core/services/codex-switch-runtime.ts";
+import { assertNoActiveCodexTurns, assertNoRunningCodexClients, parseCodexOpenFiles, prepareCodexClientsForSwitch, type CodexOpenFile } from "../src/core/services/codex-switch-runtime.ts";
 
 let home: string;
 let rollout: string;
@@ -22,6 +22,99 @@ function event(type: string, timestamp = new Date().toISOString()): string {
 }
 
 describe("Codex switch runtime checks", () => {
+  test("an already closed client proceeds immediately without requesting a quit", async () => {
+    let quits = 0;
+    expect(await prepareCodexClientsForSwitch(home, {
+      inspect: async () => [],
+      desktop: { runningApps: async () => [], quit: async () => { quits++; } },
+    })).toEqual([]);
+    expect(quits).toBe(0);
+  });
+
+  test("waits for backend handles after the desktop main process has exited", async () => {
+    let mainRunning = true;
+    let reads = 0;
+    const apps = await prepareCodexClientsForSwitch(home, {
+      timeoutMs: 1000, pollIntervalMs: 5,
+      inspect: async () => ++reads < 4 ? [owner("state_5.sqlite-shm")] : [],
+      desktop: {
+        runningApps: async () => mainRunning ? ["/Applications/ChatGPT.app"] : [],
+        quit: async () => { mainRunning = false; },
+      },
+    });
+    expect(reads).toBe(4);
+    expect(apps).toEqual(["/Applications/ChatGPT.app"]);
+  });
+
+  test("manual quit still waits for a lingering backend even when no desktop app remains", async () => {
+    let reads = 0;
+    expect(await prepareCodexClientsForSwitch(home, {
+      timeoutMs: 1000, pollIntervalMs: 5,
+      inspect: async () => ++reads < 3 ? [owner("state_5.sqlite")] : [],
+    })).toEqual([]);
+    expect(reads).toBe(3);
+  });
+
+  test("times out with remaining owners and stops polling instead of retrying indefinitely", async () => {
+    let reads = 0;
+    let observedSignal: AbortSignal | undefined;
+    await expect(prepareCodexClientsForSwitch(home, {
+      timeoutMs: 40, pollIntervalMs: 5,
+      inspect: async (_, signal) => { observedSignal = signal; reads++; return [owner("state_5.sqlite", "codex", 987654)]; },
+    })).rejects.toThrow("codex（PID 987654");
+    expect(observedSignal?.aborted).toBe(true);
+    const count = reads;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(reads).toBe(count);
+  });
+
+  test("the shared deadline also bounds a quit request that never finishes", async () => {
+    const started = Date.now();
+    let signal: AbortSignal | undefined;
+    await expect(prepareCodexClientsForSwitch(home, {
+      timeoutMs: 40,
+      inspect: async () => [],
+      desktop: {
+        runningApps: async () => ["/Applications/ChatGPT.app"],
+        quit: async (_, current) => { signal = current; await new Promise(() => {}); },
+      },
+    })).rejects.toThrow("等待 Codex 退出已超时");
+    expect(signal?.aborted).toBe(true);
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  test("a late inspection cannot quit the desktop after the timeout response", async () => {
+    let finish!: (files: CodexOpenFile[]) => void;
+    let quits = 0;
+    await expect(prepareCodexClientsForSwitch(home, {
+      timeoutMs: 30,
+      inspect: () => new Promise((resolve) => { finish = resolve; }),
+      desktop: { runningApps: async () => ["/Applications/ChatGPT.app"], quit: async () => { quits++; } },
+    })).rejects.toThrow("超时");
+    finish([]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(quits).toBe(0);
+  });
+
+  for (const content of [event("task_started"), "{unfinished"]) test(`active or uncertain replies prevent an automatic quit: ${content.slice(0, 20)}`, async () => {
+    await fs.writeFile(rollout, content);
+    let quits = 0;
+    await expect(prepareCodexClientsForSwitch(home, {
+      inspect: async () => [owner("sessions/fixture.jsonl", "codex", 987654)],
+      desktop: { runningApps: async () => ["/Applications/ChatGPT.app"], quit: async () => { quits++; } },
+    })).rejects.toThrow("尚未修改会话设置");
+    expect(quits).toBe(0);
+  });
+
+  test("process inspection failures stop immediately without a quit", async () => {
+    let quits = 0;
+    await expect(prepareCodexClientsForSwitch(home, {
+      inspect: async () => { throw new Error("inspection unavailable"); },
+      desktop: { runningApps: async () => ["/Applications/ChatGPT.app"], quit: async () => { quits++; } },
+    })).rejects.toThrow("inspection unavailable");
+    expect(quits).toBe(0);
+  });
+
   for (const limitedPath of [undefined, "/usr/bin:/bin"]) {
     test.skipIf(process.platform !== "darwin")(`inspects real macOS file handles with PATH ${limitedPath ?? "unset"}`, async () => {
       const handle = await fs.open(path.join(home, "state_5.sqlite"), "w+");

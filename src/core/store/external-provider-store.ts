@@ -1,3 +1,4 @@
+import { MAX_CONTEXT_WINDOW, resolveContextWindow } from "../models/context-window.js";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -58,6 +59,8 @@ export type ExternalProviderModelInspectionState = {
 };
 
 export type ExternalProviderModel = {
+  /** Manual override; discovery only updates contextWindow. */
+  contextWindowOverride?: number;
   id: string;
   displayName?: string;
   contextWindow?: number;
@@ -111,6 +114,8 @@ export type ExternalProviderRecord = {
 };
 
 export type PublicExternalProviderModel = Omit<ExternalProviderModel, "inspection" | "capabilities"> & {
+  effectiveContextWindow: number;
+  contextWindowSource: "api" | "default" | "manual";
   capabilities?: Partial<ExternalProviderModelCapabilities>;
   inspection: Omit<ExternalProviderModelInspectionState, "status"> & {
     status: ExternalProviderModelStatus | "unknown";
@@ -363,6 +368,8 @@ function sanitizeProviderForPublic(provider: ExternalProviderRecord): PublicExte
       } : undefined : latest ?? model.capabilities;
       return {
         ...model,
+        effectiveContextWindow: resolveContextWindow(model),
+        contextWindowSource: model.contextWindowOverride !== undefined ? "manual" as const : model.contextWindow !== undefined ? "api" as const : "default" as const,
         capabilities,
         inspection: {
           ...model.inspection,
@@ -859,6 +866,25 @@ export async function deleteExternalProviderWithCodex(
   }, options);
 }
 
+export async function setExternalProviderModelContextWindow(
+  providerId: string, modelId: string, value: number | null,
+): Promise<PublicExternalProvider> {
+  if (value !== null && (!Number.isInteger(value) || value < 1 || value > MAX_CONTEXT_WINDOW)) {
+    throw Object.assign(new Error("上下文窗口必须是 1 到 4,000,000 之间的整数。"), { statusCode: 400 });
+  }
+  return mutateStore((store) => {
+    const provider = requireProvider(store, providerId);
+    const model = provider.models.find((item) => item.id === modelId);
+    if (!model) throw Object.assign(new Error("没有找到这个模型。"), { statusCode: 404 });
+    const before = resolveContextWindow(model);
+    if (value === null) delete model.contextWindowOverride;
+    else model.contextWindowOverride = value;
+    if (model.selectedForCodex && before !== resolveContextWindow(model)) provider.codexNeedsApply = true;
+    model.updatedAt = provider.updatedAt = Date.now();
+    return toPublicExternalProvider(provider);
+  });
+}
+
 export async function saveExternalProviderModels(
   providerId: string,
   inputs: ExternalProviderModelInput[],
@@ -887,7 +913,7 @@ function applyModelCatalog(
   const seenIds = new Set(uniqueInputs.map((input) => cleanModelId(input.id)));
   const models = uniqueInputs.map((input) => mergeModelInput(
     existingById.get(input.id.trim()),
-    { ...input, source: input.source ?? "api" },
+    { ...input, source: input.source ?? "api", contextWindow: input.source === "manual" ? input.contextWindow : input.contextWindow ?? 0 },
     syncedAt,
   ));
   if (retainMissing) {
@@ -904,6 +930,9 @@ function applyModelCatalog(
         updatedAt: syncedAt,
       });
     }
+  }
+  if (models.some((model) => model.selectedForCodex && resolveContextWindow(model) !== resolveContextWindow(existingById.get(model.id) ?? {}))) {
+    provider.codexNeedsApply = true;
   }
   provider.models = models;
   if (provider.defaultModelId && !models.some((model) => model.id === provider.defaultModelId)) {
@@ -1322,7 +1351,7 @@ export function buildExternalProviderActivation(provider: ExternalProviderRecord
     catalogModels: selectedModels.map((model) => ({
       id: model.id,
       ...(model.displayName ? { displayName: model.displayName } : {}),
-      ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
+      contextWindow: resolveContextWindow(model),
       ...(model.capabilities?.reasoningEfforts.length
         ? { reasoningEfforts: [...model.capabilities.reasoningEfforts] }
         : model.reasoningEfforts?.length

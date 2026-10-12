@@ -1,7 +1,7 @@
-import { BarChart3, BookOpenText, Boxes, Home, ImageUp, LayoutDashboard, ListChecks, Settings, ShieldCheck, Wifi, Wrench, type LucideIcon } from "lucide-react";
+import { BarChart3, BookOpenText, Boxes, CalendarDays, Home, ImageUp, LayoutDashboard, ListChecks, Settings, ShieldCheck, Wifi, Wrench, type LucideIcon } from "lucide-react";
 import { useT } from "@/i18n";
 
-export type AppRoute = "launch" | "overview" | "accounts" | "providers" | "usage" | "tester" | "image-bed" | "tools" | "docs" | "network" | "logs" | "settings";
+export type AppRoute = "launch" | "overview" | "accounts" | "providers" | "usage" | "reset-calendar" | "tester" | "image-bed" | "tools" | "docs" | "network" | "logs" | "settings";
 
 export type NavRoute = {
   id: AppRoute;
@@ -15,6 +15,7 @@ export function buildRoutes(t: (key: string) => string): NavRoute[] {
     { id: "overview", label: t("routes.overview"), icon: LayoutDashboard },
     { id: "providers", label: t("routes.providers"), icon: Boxes },
     { id: "usage", label: t("routes.usage"), icon: BarChart3 },
+    { id: "reset-calendar", label: t("routes.reset-calendar"), icon: CalendarDays },
     { id: "tester", label: t("routes.tester"), icon: ShieldCheck },
     { id: "image-bed", label: t("routes.image-bed"), icon: ImageUp },
     { id: "tools", label: t("routes.tools"), icon: Wrench },
@@ -28,7 +29,7 @@ export function buildRoutes(t: (key: string) => string): NavRoute[] {
 export function readRouteFromHash(): AppRoute {
   const value = window.location.hash.replace(/^#\/?/, "").split("/")[0];
   if (value === "accounts") return "providers";
-  const supported: AppRoute[] = ["launch", "overview", "accounts", "providers", "usage", "tester", "image-bed", "tools", "docs", "network", "logs", "settings"];
+  const supported: AppRoute[] = ["launch", "overview", "accounts", "providers", "usage", "reset-calendar", "tester", "image-bed", "tools", "docs", "network", "logs", "settings"];
   return supported.includes(value as AppRoute) ? (value as AppRoute) : "overview";
 }
 

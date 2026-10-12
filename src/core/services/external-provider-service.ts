@@ -26,6 +26,7 @@ import {
   listExternalProviders,
   recordExternalProviderInspection,
   saveExternalProviderModels,
+  setExternalProviderModelContextWindow,
   updateExternalProvider,
   type ExternalProviderModelInput,
   type ExternalProviderModelSource,
@@ -227,6 +228,14 @@ export class ExternalProviderService {
         inspectionJobs.delete(providerId);
       }
       return deleted;
+    }, providerId);
+  }
+
+  async setContextWindow(providerId: string, modelId: string, value: number | null): Promise<PublicExternalProvider> {
+    return mutate(async () => {
+      await this.migrateLegacyProviderOnce();
+      const provider = await setExternalProviderModelContextWindow(providerId, modelId, value);
+      return (await this.withActualCodexStatus([provider]))[0];
     }, providerId);
   }
 

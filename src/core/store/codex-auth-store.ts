@@ -1,3 +1,4 @@
+import { DEFAULT_CONTEXT_WINDOW } from "../models/context-window.js";
 import { isReasoningEffort, type ReasoningEffort } from "../models/reasoning-effort.js";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -1011,7 +1012,7 @@ function buildCodexCatalogEntry(
   priority: number,
   baseInstructions: string,
 ): Record<string, unknown> {
-  const contextWindow = model.contextWindow ?? 128_000;
+  const contextWindow = model.contextWindow ?? DEFAULT_CONTEXT_WINDOW;
   const reasoningDescriptions: Record<ReasoningEffort, string> = {
     none: "No reasoning",
     minimal: "Minimal reasoning for the fastest responses",

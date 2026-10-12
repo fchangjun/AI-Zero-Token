@@ -36,6 +36,7 @@ const elements = {
   list: document.getElementById("annotationList"),
   copy: document.getElementById("copyPrompt"),
   insert: document.getElementById("insertIntoCodex"),
+  feedbackNotice: document.getElementById("feedbackNotice"),
   toast: document.getElementById("toast"),
 };
 
@@ -103,6 +104,7 @@ let activeAnnotationId = null;
 let selectionDraft = null;
 let fileSelectionAnchor = null;
 let toastTimer = null;
+let verifiedComposerAvailable = false;
 const fileCache = new Map();
 
 elements.response.addEventListener("mouseup", captureResponseSelection);
@@ -124,6 +126,10 @@ initialize().catch(showError);
 
 async function initialize() {
   if (!token) throw new Error("缺少本地访问令牌，请重新打开 Response Reviewer。");
+  const runtime = await api("/api/runtime");
+  verifiedComposerAvailable = runtime.composerMode === "verified";
+  elements.feedbackNotice.hidden = verifiedComposerAvailable;
+  if (!verifiedComposerAvailable) elements.feedbackNotice.textContent = "后台仍是旧版服务：请在没有进行中的网关请求时重启 AZT，再从 Review 重新打开。当前仍可批注和复制指令。";
   updateAnnotationMode();
   if (responseId) {
     const loaded = await waitForResponse(responseId, 30);
@@ -187,7 +193,7 @@ function renderResponseShell() {
   renderTabs();
   renderAnnotationList();
   elements.copy.disabled = false;
-  elements.insert.disabled = false;
+  elements.insert.disabled = !verifiedComposerAvailable;
   elements.status.textContent = "已保存到本地";
 }
 
@@ -817,7 +823,7 @@ function setFileSelection(lineStart, lineEnd, selectedQuote = null) {
 
 async function saveAnnotation(event) {
   event.preventDefault();
-  if (!activeResponse) return;
+  if (!activeResponse || elements.form.querySelector('[type="submit"]').disabled) return;
   const comment = elements.comment.value.trim();
   if (!comment) {
     elements.comment.focus();
@@ -831,20 +837,30 @@ async function saveAnnotation(event) {
     ? { targetType: "file", fileId: activeTarget.fileId }
     : { targetType: "response" };
   const target = { ...activeTarget };
+  const submit = elements.form.querySelector('[type="submit"]');
+  submit.disabled = true;
   elements.status.textContent = "正在保存…";
-  await api(`/api/responses/${encodeURIComponent(responseId)}/annotations`, {
-    method: "POST",
-    body: { ...baseTarget, ...(selectionDraft || {}), kind, comment },
-  });
-  elements.comment.value = "";
-  await selectResponse(responseId, { target });
-  showToast(kind === "suggestion" ? "替换建议已保存" : "评论已保存");
+  let saved = false;
+  try {
+    await api(`/api/responses/${encodeURIComponent(responseId)}/annotations`, {
+      method: "POST",
+      body: { ...baseTarget, ...(selectionDraft || {}), kind, comment },
+    });
+    saved = true;
+    elements.comment.value = "";
+    await selectResponse(responseId, { target });
+    showToast(kind === "suggestion" ? "替换建议已保存" : "评论已保存");
+  } catch (error) {
+    elements.status.textContent = saved ? "批注已保存，刷新失败" : "保存失败，意见已保留";
+    showToast(saved ? "批注已保存；请重新打开记录查看，不要重复添加。" : error.message || String(error));
+  } finally { submit.disabled = false; }
 }
 
 async function handleAnnotationListClick(event) {
   const deleteButton = event.target.closest("[data-delete-annotation]");
   if (deleteButton) {
-    await deleteAnnotation(deleteButton.dataset.deleteAnnotation);
+    try { await deleteAnnotation(deleteButton.dataset.deleteAnnotation); }
+    catch (error) { showToast(`删除失败：${error.message || String(error)}`); }
     return;
   }
   const focusButton = event.target.closest("[data-focus-annotation]");
@@ -989,9 +1005,13 @@ async function copyPrompt() {
 
 async function insertIntoCodex() {
   if (!activeResponse) return;
+  if (!verifiedComposerAvailable) {
+    showToast("请先重新启动 AZT，加载新的回填服务；当前仍可复制指令。");
+    return;
+  }
   const idleLabel = elements.insert.textContent;
   elements.insert.disabled = true;
-  elements.insert.textContent = "正在打开…";
+  elements.insert.textContent = "正在回填…";
 
   try {
     if (!activeResponse.threadKey) {
@@ -999,11 +1019,12 @@ async function insertIntoCodex() {
       return;
     }
 
-    await api(`/api/responses/${encodeURIComponent(responseId)}/composer`, {
+    const result = await api(`/api/responses/${encodeURIComponent(responseId)}/composer`, {
       method: "POST",
       body: {},
     });
-    showToast("已请求打开对应任务并预填；请检查输入框，未出现时使用“复制指令”。不会自动发送。");
+    if (!result.composer?.prefilled || result.composer.threadKey !== activeResponse.threadKey) throw new Error("未能确认对应输入框已写入。");
+    showToast("已放入对应 Codex 输入框，尚未发送；请检查后自行发送。");
   } catch (error) {
     const detail = shorten(error.message || String(error), 100);
     showToast(`未能放入输入框，请使用“复制指令”：${detail}`);

@@ -22,6 +22,7 @@ export function ProviderDetail(props: {
   onSync: () => void;
   onInspect: (modelIds?: string[]) => void;
   onActivate: () => void;
+  onContextWindow: (modelId: string, value: number | null) => Promise<void>;
 }) {
   const [search, setSearch] = useState("");
   const [detailModelId, setDetailModelId] = useState<string>();
@@ -117,7 +118,7 @@ export function ProviderDetail(props: {
       </div>
 
       {props.provider.inspectionJob?.status === "failed" && <div className="provider-inline-error" role="alert">检测未完成：{props.provider.inspectionJob.error}。已完成的结果已保存，可重新检测。</div>}
-      {detailModel && <ModelInspectionDrawer model={detailModel} busy={Boolean(props.action)} onClose={() => setDetailModelId(undefined)} onInspect={() => props.onInspect([detailModel.id])} />}
+      {detailModel && <ModelInspectionDrawer key={detailModel.id} onContextWindow={(value) => props.onContextWindow(detailModel.id, value)} model={detailModel} busy={Boolean(props.action)} onClose={() => setDetailModelId(undefined)} onInspect={() => props.onInspect([detailModel.id])} />}
       {props.action?.startsWith(`inspect:${props.provider.id}:`) && (
         <div className="provider-progress-card">
           <Loader2 className="provider-spin" size={18} />

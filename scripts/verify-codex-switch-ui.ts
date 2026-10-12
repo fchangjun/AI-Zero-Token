@@ -26,6 +26,7 @@ await writeFile(rollout, '{"type":"session_meta","payload":{"id":"ui-fixture","m
 const { codexSqlite, readThreadSnapshot, sqlString } = await import("../dist/core/store/codex-thread-state.js");
 const { startProviderFixture } = await import("../tests/fixtures/provider.ts");
 const { createApp } = await import("../dist/server/app.js");
+const { prepareCodexClientsForSwitch } = await import("../dist/core/services/codex-switch-runtime.js");
 const db = join(home, "state_5.sqlite");
 await codexSqlite(db, `PRAGMA journal_mode=WAL;
 CREATE TABLE threads (id TEXT PRIMARY KEY, model_provider TEXT NOT NULL, model TEXT, reasoning_effort TEXT, rollout_path TEXT, title TEXT, archived INTEGER, updated_at INTEGER);
@@ -37,7 +38,16 @@ const originalHistory = hash(await readFile(rollout));
 const originalAuth = hash(await readFile(join(home, "auth.json")));
 const b = await startProviderFixture(); b.state.models = [{ id: "fixture-b-model", display_name: "UI fixture B", context_window: 128000 }];
 const c = await startProviderFixture(); c.state.models = [{ id: "fixture-c-model", display_name: "UI fixture C", context_window: 128000 }];
-const app = createApp();
+// A synthetic lingering backend exercises the production deadline without
+// closing the real Codex client that may be hosting the verification task.
+let backendBlocked = false;
+let switchRequests = 0;
+const app = createApp({ onPrepareCodexSwitch: async () => {
+  switchRequests++;
+  await prepareCodexClientsForSwitch(home, {
+    inspect: async () => backendBlocked ? [{ pid: 987654, command: "codex", file: db, relativePath: "state_5.sqlite" }] : [],
+  });
+} });
 await app.listen({ host: "127.0.0.1", port: 0 });
 const address = app.server.address();
 if (!address || typeof address === "string") throw new Error("UI fixture failed to bind.");
@@ -70,6 +80,7 @@ async function snapshot() {
   const providers = JSON.parse(await readFile(join(state, "external-providers.json"), "utf8").catch(() => '{"providers":[]}'));
   const evidence = JSON.stringify({
     timestamp: new Date().toISOString(),
+    switchRequests,
     threads: (await readThreadSnapshot(db)).settings,
     rootProvider: /^model_provider\s*=\s*"([^"]+)"/m.exec(config)?.[1],
     baseUrl: /^base_url\s*=\s*"([^"]+)"/m.exec(config)?.[1],
@@ -84,7 +95,7 @@ async function snapshot() {
 }
 console.log(JSON.stringify({ url, root, db, desktopEntry,
   services: { B: { baseUrl: b.baseUrl, key: "fixture-ui-b" }, C: { baseUrl: c.baseUrl, key: "fixture-ui-c" } },
-  commands: ["idle", "read", "write", "release", "snapshot", "quit"],
+  commands: ["idle", "read", "write", "release", "backend-block", "backend-release", "snapshot", "quit"],
   note: "Click the production UI to create, activate, switch and deactivate services. Desktop quit/reopen hooks are not enabled in this disposable browser test.",
 }));
 await hold("idle");
@@ -96,6 +107,10 @@ input.on("line", (line) => {
     const command = line.trim();
     if (command === "idle" || command === "read" || command === "write") await hold(command);
     else if (command === "release") await release();
+    else if (command === "backend-block" || command === "backend-release") {
+      backendBlocked = command === "backend-block";
+      console.log(JSON.stringify({ backendBlocked }));
+    }
     else if (command === "snapshot") await snapshot();
     else if (command === "quit") await shutdown();
   }).catch((error) => console.error(error));

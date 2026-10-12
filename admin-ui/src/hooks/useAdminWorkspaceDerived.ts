@@ -38,6 +38,7 @@ export function useAdminWorkspaceDerived(state: DerivedSource): WorkspaceDerived
     accounts: t("pageDescriptions.accounts"),
     providers: t("pageDescriptions.providers"),
     usage: t("pageDescriptions.usage"),
+    "reset-calendar": t("pageDescriptions.reset-calendar"),
     tester: t("pageDescriptions.tester"),
     "image-bed": t("pageDescriptions.image-bed"),
     tools: t("pageDescriptions.tools"),

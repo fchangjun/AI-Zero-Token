@@ -503,3 +503,56 @@ describe("managed external providers", () => {
     } finally { await app.close(); }
   });
 });
+
+
+describe("provider context windows", () => {
+  test("uses API metadata or 272K, preserves manual overrides across refresh, and applies only on activation", async () => {
+    const provider = await create();
+    const find = (p: typeof provider, id = "model-ready") => p.models.find((m) => m.id === id)!;
+    expect(find(provider)).toMatchObject({ effectiveContextWindow: 128000, contextWindowSource: "api" });
+    expect(find(provider, "model-busy")).toMatchObject({ effectiveContextWindow: 272000, contextWindowSource: "default" });
+    await service.activate(provider.id, ["model-ready", "model-busy"], "model-ready");
+    const catalogPath = `${process.env.CODEX_HOME}/model-catalogs/ai-zero-token-models.json`;
+    const beforeCatalog = await readFile(catalogPath, "utf8");
+    const beforeConfig = await readFile(configPath, "utf8");
+    const defaultEntry = JSON.parse(beforeCatalog).models.find((m: { slug: string }) => m.slug === "model-busy");
+    expect(defaultEntry).toMatchObject({ context_window: 272000, max_context_window: 272000, effective_context_window_percent: 95 });
+    const changed = await service.setContextWindow(provider.id, "model-ready", 500000);
+    expect(find(changed)).toMatchObject({ contextWindow: 128000, contextWindowOverride: 500000, effectiveContextWindow: 500000, contextWindowSource: "manual" });
+    expect(changed.codexNeedsApply).toBe(true);
+    expect(await readFile(catalogPath, "utf8")).toBe(beforeCatalog);
+    expect(await readFile(configPath, "utf8")).toBe(beforeConfig);
+    fixture.state.models[0].context_window = 400000;
+    const synced = await service.sync(provider.id);
+    expect(find(synced)).toMatchObject({ contextWindow: 400000, effectiveContextWindow: 500000, contextWindowSource: "manual" });
+    await service.activate(provider.id, ["model-ready"], "model-ready");
+    expect(JSON.parse(await readFile(catalogPath, "utf8")).models[0]).toMatchObject({ context_window: 500000, max_context_window: 500000 });
+    expect(find((await new ExternalProviderService().get(provider.id))!)).toMatchObject({ effectiveContextWindow: 500000 });
+    expect(find(await service.setContextWindow(provider.id, "model-ready", null))).toMatchObject({ effectiveContextWindow: 400000, contextWindowSource: "api" });
+    fixture.state.models = [{ id: "model-ready" }];
+    const noMetadata = await service.sync(provider.id);
+    expect(find(noMetadata)).toMatchObject({ effectiveContextWindow: 272000, contextWindowSource: "default" });
+    expect(find(noMetadata).contextWindowOverride).toBeUndefined();
+    expect(find(noMetadata).contextWindow).toBeUndefined();
+  });
+
+  test("manual window endpoint validates input, rejects remote writes, and supports restoring defaults", async () => {
+    const provider = await create();
+    const app = createApp();
+    const url = `/_gateway/admin/providers/${provider.id}/context-window`;
+    try {
+      for (const contextWindow of [0, -1, 1.5, 4000001, "272000"]) {
+        const result = await app.inject({ method: "PUT", url, payload: { modelId: "model-busy", contextWindow } });
+        expect(result.statusCode).toBe(400);
+      }
+      expect((await app.inject({ method: "PUT", url, remoteAddress: "203.0.113.1", payload: { modelId: "model-busy", contextWindow: 500000 } })).statusCode).toBe(403);
+      expect((await app.inject({ method: "PUT", url, payload: { modelId: "missing-model", contextWindow: 500000 } })).statusCode).toBe(404);
+      const saved = await app.inject({ method: "PUT", url, payload: { modelId: "model-busy", contextWindow: 500000 } });
+      expect(saved.statusCode).toBe(200);
+      expect(saved.body).not.toContain(token);
+      const restored = await app.inject({ method: "PUT", url, payload: { modelId: "model-busy", contextWindow: null } });
+      expect(restored.statusCode).toBe(200);
+      expect(restored.json().provider.models.find((m: { id: string }) => m.id === "model-busy")).toMatchObject({ effectiveContextWindow: 272000, contextWindowSource: "default" });
+    } finally { await app.close(); }
+  });
+});

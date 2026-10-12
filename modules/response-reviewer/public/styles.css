@@ -1038,6 +1038,14 @@ button:disabled {
   animation: review-pulse 1.05s ease-out;
 }
 
+.feedback-notice {
+  grid-column: 1 / -1;
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: light-dark(#79540b, #e6be59);
+}
+
 @keyframes review-pulse {
   0%,
   100% {

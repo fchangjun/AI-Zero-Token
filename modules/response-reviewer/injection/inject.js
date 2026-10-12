@@ -2,10 +2,16 @@
   const MODULE_ID = "response-reviewer";
   const MARKER = "codex-response-reviewer";
   const namespace = (window.__aztReviewerModules ||= {});
+  const nativeTabs = namespace[MODULE_ID]?.nativeTabs || new Map();
   namespace[MODULE_ID]?.destroy?.();
 
   const state = {
     active: true,
+    // Keep the bridge protocol stable for an AZT process still running the
+    // previous connector; revision controls feature upgrades after restart.
+    version: 2,
+    revision: 3,
+    nativeTabs,
     config: window.__aztReviewerPendingConfig || {},
     observer: null,
     scanScheduled: false,
@@ -101,10 +107,15 @@
     const actionBar = actionGroup.parentElement;
     const messageRoot = actionBar?.parentElement;
     if (!messageRoot) return null;
-    const markdownRoot = messageRoot.querySelector(
+    const markdownRoots = [...messageRoot.querySelectorAll(
       '[data-markdown-text-style="assistant-message"]',
-    );
-    if (markdownRoot) return markdownRoot;
+    )].filter((root) => !root.parentElement?.closest('[data-markdown-text-style="assistant-message"]'));
+    if (markdownRoots.length === 1) return markdownRoots[0];
+    if (markdownRoots.length > 1) {
+      const combined = document.createElement("div");
+      for (const root of markdownRoots) combined.append(root.cloneNode(true));
+      return combined;
+    }
 
     const clone = messageRoot.cloneNode(true);
     clone
@@ -139,7 +150,7 @@
     const seen = new Set();
     const files = [];
     const candidates = responseRoot.querySelectorAll(
-      "[data-prompt-link-href], a[href]",
+      "[data-prompt-link-href], [data-file-reference], a[href]",
     );
     for (const element of candidates) {
       const filePath = localFilePathFor(element);
@@ -177,12 +188,8 @@
     }
 
     const element = node;
-    if (discardedTags.has(element.tagName)) {
-      if (element.tagName === "IMG" && element.getAttribute("alt")) {
-        return document.createTextNode(`[图片：${element.getAttribute("alt")}]`);
-      }
-      return document.createDocumentFragment();
-    }
+    const copyMode = element.getAttribute("data-markdown-copy");
+    if (copyMode === "exclude") return document.createDocumentFragment();
 
     const filePath = localFilePathFor(element);
     const fileId = filePath ? fileIdsByPath.get(filePath) : null;
@@ -196,6 +203,25 @@
         filePath.split(/[\\/]/).filter(Boolean).at(-1) ||
         filePath;
       return reference;
+    }
+
+    if (discardedTags.has(element.tagName)) {
+      if (element.tagName === "IMG" && element.getAttribute("alt")) {
+        return document.createTextNode(`[图片：${element.getAttribute("alt")}]`);
+      }
+      return document.createDocumentFragment();
+    }
+    // Codex now renders code with divs plus copy-text, not always PRE/CODE.
+    if (copyMode === "code-block") {
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = markdownCopyText(element);
+      pre.append(code);
+      return pre;
+    }
+    if (copyMode === "rich-block") {
+      const content = element.querySelector("[data-markdown-copy-content]");
+      return content ? semanticClone(content, fileIdsByPath) : document.createDocumentFragment();
     }
 
     let output;
@@ -231,6 +257,49 @@
       output.append(semanticClone(child, fileIdsByPath));
     }
     return output;
+  }
+
+  function markdownCopyText(node) {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent || "";
+    if (node.nodeType !== Node.ELEMENT_NODE || node.getAttribute("data-markdown-copy") === "exclude") return "";
+    const source = node.getAttribute("data-markdown-copy-text");
+    if (source !== null) return source;
+    if (node.tagName === "BR") return "\n";
+    return [...node.childNodes].map(markdownCopyText).join("");
+  }
+
+  async function prefill({ threadKey, prompt } = {}) {
+    const failure = (error) => ({ prefilled: false, error });
+    const matchingTask = () => state.active && threadKey && activeThreadRow()?.getClientRects().length > 0 && currentTaskContext().threadKey === threadKey;
+    if (!matchingTask()) return failure("当前任务已切换，未写入其他任务；请切回原任务重试。");
+    if (typeof prompt !== "string" || !prompt.trim() || prompt.length > 256 * 1024) return failure("审阅指令无效。");
+    const editors = [...document.querySelectorAll('.ProseMirror[contenteditable="true"], [role="textbox"][contenteditable="true"], [role="textbox"][contenteditable="plaintext-only"]')]
+      .filter((element) => element.getClientRects().length && element.getBoundingClientRect().width > 0 &&
+        getComputedStyle(element).visibility !== "hidden" && !element.closest('[inert], [aria-hidden="true"]'));
+    if (editors.length !== 1) return failure("无法唯一识别 Codex 输入框，请使用“复制指令”。");
+    const editor = editors[0];
+    // Chromium can represent spaces as NBSP and paragraph boundaries with an
+    // extra blank line. Compare logical text, never just the success boolean.
+    const normalize = (value) => value.replace(/\r\n?/g, "\n").replace(/\u00a0/g, " ").replace(/\u200b/g, "").replace(/\n{2,}/g, "\n\n").trim();
+    const text = () => normalize(editor.innerText);
+    if (text() || editor.querySelector('img, [contenteditable="false"], [data-file-reference]')) {
+      return failure("对应任务已有草稿，未覆盖或追加。请先处理草稿，再重试；也可复制指令自行合并。");
+    }
+    editor.focus();
+    if (!matchingTask() || !editor.isConnected || text()) return failure("任务或草稿已变化，未写入，请重试。");
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    const selection = getSelection();
+    selection.removeAllRanges(); selection.addRange(range);
+    // Follow the editor's input/undo path. Never assign innerHTML, overwrite a
+    // draft, synthesize Enter, click Send or replay a queued edit.
+    const inserted = document.execCommand("insertText", false, prompt);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    if (!inserted || !matchingTask() || !editor.isConnected || text() !== normalize(prompt)) {
+      return failure("未能确认完整写入，请检查 Codex 输入框；不会自动重试或发送。");
+    }
+    return { prefilled: true, threadKey };
   }
 
   function activeThreadRow() {
@@ -399,9 +468,7 @@
     return reviewUrl.toString();
   }
 
-  async function saveReviewSnapshot(link, actionGroup, id, snapshot) {
-    const task = currentTaskContext();
-    link.setAttribute("aria-busy", "true");
+  async function saveReviewSnapshot(link, actionGroup, id, snapshot, task) {
     try {
       const saved = await serviceRequest({
         method: "POST",
@@ -424,12 +491,81 @@
     } catch (error) {
       link.title = `Response Reviewer: ${error.message}`;
       throw error;
-    } finally {
-      link.removeAttribute("aria-busy");
     }
   }
 
-  // Removable experimental side panel, not Codex's private native browser API.
+  function taskScope(task) {
+    return task.threadKey || location.href;
+  }
+
+  function validatedReviewUrl(value, responseId) {
+    const expected = new URL(reviewUrlFor(responseId));
+    const actual = new URL(value);
+    if (actual.protocol !== "http:" || actual.hostname !== "127.0.0.1" ||
+        actual.origin !== expected.origin || actual.pathname !== expected.pathname ||
+        actual.username || actual.password ||
+        actual.searchParams.get("token") !== expected.searchParams.get("token") ||
+        actual.searchParams.get("response") !== responseId) {
+      throw new Error("审阅地址无效，请在 AZT 中重新打开记录。");
+    }
+    return actual.toString();
+  }
+
+  async function openNativeReview(url, task, scope) {
+    if (!state.active || taskScope(currentTaskContext()) !== scope) {
+      throw new Error("回复已保存，但当前对话已切换；请回到原对话再点击 Review。");
+    }
+    if (!task.threadKey) {
+      throw new Error("无法确认当前 Codex 对话，未打开侧边标签；请使用备用入口。");
+    }
+    if (typeof window.electronBridge?.sendMessageFromView !== "function") {
+      throw new Error("此窗口未提供 Codex 内置浏览器接入。");
+    }
+    let browserTabId = nativeTabs.get(scope);
+    if (!browserTabId) {
+      browserTabId = `manual:${crypto.randomUUID()}`;
+      nativeTabs.set(scope, browserTabId);
+    }
+    // Version-dependent host UI event, not a public extension API. This goes
+    // straight to the browser panel handler (which checks browser capability),
+    // never to the generic link router that can fall back to an external browser.
+    window.dispatchEvent(new MessageEvent("message", { data: {
+      type: "toggle-browser-panel", open: true, url, browserTabId,
+      conversationId: task.threadKey,
+      source: "manual", initiator: "open_in_browser_bridge", presentationIntent: "split",
+    } }));
+    const deadline = Date.now() + 2500;
+    do {
+      if (!state.active || taskScope(currentTaskContext()) !== scope) {
+        throw new Error("当前对话已切换；请回到原对话查看已保存的审阅。");
+      }
+      const panel = document.querySelector(`[data-browser-sidebar-browser-tab-id="${browserTabId}"]`);
+      if (panel && panel.getBoundingClientRect().width > 0 && panel.getBoundingClientRect().height > 0) return;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    } while (Date.now() < deadline);
+    throw new Error("未检测到 Codex 内置浏览器面板；请检查浏览器是否启用，或使用下方备用入口。");
+  }
+
+  function showOpenFailure(wrapper, message, url) {
+    wrapper.querySelector(`.${MARKER}-fallback`)?.remove();
+    const notice = document.createElement("span");
+    notice.className = `${MARKER}-fallback`;
+    notice.setAttribute("role", "alert");
+    notice.style.cssText = "display:block;max-width:520px;padding:8px;font:12px system-ui;white-space:normal";
+    const detail = document.createElement("span");
+    detail.textContent = message;
+    notice.append(detail);
+    if (url) {
+      const fallback = document.createElement("button");
+      fallback.type = "button";
+      fallback.textContent = "在临时浮层打开";
+      fallback.onclick = () => openReviewPanel(url);
+      notice.append(document.createTextNode(" "), fallback);
+    }
+    wrapper.append(notice);
+  }
+
+  // Explicit fallback only; successful Review clicks use Codex's browser panel.
   function openReviewPanel(url, message = "") {
     let panel = document.getElementById("azt-reviewer-panel");
     if (!panel) {
@@ -517,6 +653,7 @@
       event.preventDefault();
       event.stopPropagation();
       if (link.getAttribute("aria-busy") === "true") return;
+      wrapper.querySelector(`.${MARKER}-fallback`)?.remove();
       const snapshot = responseSnapshotFor(actionGroup);
       if (
         !state.config.serviceReady ||
@@ -527,15 +664,26 @@
         link.title = !state.config.serviceReady
           ? "Response Reviewer Server 未就绪"
           : "未能读取这条回复";
+        showOpenFailure(wrapper, link.title, null);
         return;
       }
+      const task = currentTaskContext();
+      const scope = taskScope(task);
+      let reviewUrl = null;
+      link.setAttribute("aria-busy", "true");
       try {
-        const saved = await saveReviewSnapshot(link, actionGroup, responseId, snapshot);
-        if (state.active) openReviewPanel(saved.reviewUrl);
+        const saved = await saveReviewSnapshot(link, actionGroup, responseId, snapshot, task);
+        if (!state.active) return;
+        reviewUrl = validatedReviewUrl(saved.reviewUrl, responseId);
+        await openNativeReview(reviewUrl, task, scope);
       } catch (error) {
-        if (state.active) openReviewPanel(null, `保存失败：${error.message}`);
+        if (state.active) showOpenFailure(wrapper, `${reviewUrl ? "回复已保存，打开失败" : "保存失败"}：${error.message}`, reviewUrl);
+      } finally {
+        link.removeAttribute("aria-busy");
       }
     });
+    // Middle-click must not open an unsaved response in the system browser.
+    link.addEventListener("auxclick", (event) => { event.preventDefault(); event.stopPropagation(); });
 
     wrapper.append(link);
     (sourceWrapper || copyButton).insertAdjacentElement("afterend", wrapper);
@@ -574,6 +722,7 @@
       if (responseId) frame.src = reviewUrlFor(responseId);
     }
   };
+  state.prefill = prefill;
   state.status = () => {
     const taskContext = currentTaskContext();
     return {

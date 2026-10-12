@@ -1,7 +1,6 @@
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
-import { openCodexComposer } from "./codex-composer.mjs";
 import {
   acknowledgeOutboxItem,
   addAnnotation,
@@ -40,7 +39,9 @@ const contentTypes = new Map([
 export async function createServer({
   host = "127.0.0.1",
   port = 43127,
-  openComposer = openCodexComposer,
+  openComposer = async () => {
+    throw Object.assign(new Error("Codex 未接入，请在 AZT 启用回复按钮接入，或使用“复制指令”。"), { statusCode: 409 });
+  },
   root = dataRoot(),
   frameOrigins = [],
 } = {}) {
@@ -119,6 +120,7 @@ export async function createServer({
         protocolVersion: SERVER_PROTOCOL_VERSION,
         instanceId: identity.instanceId,
         baseUrl,
+        composerMode: "verified",
       });
       return;
     }
@@ -250,10 +252,17 @@ export async function createServer({
         sendJson(response, 409, { error: "当前审阅没有绑定 Codex 任务。" });
         return;
       }
+      if (saved.workspaceSource === "known-workspace-file-match") {
+        sendJson(response, 409, { error: "此记录仅按文件路径推断了项目，不能确认原 Codex 任务。请使用“复制指令”。" });
+        return;
+      }
       const composer = await openComposer({
         threadKey: saved.threadKey,
         prompt: compileReviewPrompt(saved),
       });
+      if (composer?.prefilled !== true || composer.threadKey !== saved.threadKey) {
+        throw Object.assign(new Error("未能确认指令已写入对应输入框，请检查 Codex；不要重复点击，必要时使用复制指令。"), { statusCode: 502 });
+      }
       sendJson(response, 200, { composer });
       return;
     }

@@ -12,7 +12,12 @@ export type ReviewSummary = {
   id: string; title: string; projectDir: string | null; threadKey: string | null;
   updatedAt: string; annotationCount: number; scopeId: string;
 };
-export function startManagedReviewer(options: { root: string; frameOrigins: string[] }): Promise<ReviewerInstance>;
+export type ComposerRequest = { threadKey: string; prompt: string };
+export type ComposerResult = { prefilled: true; threadKey: string };
+export function startManagedReviewer(options: {
+  root: string; frameOrigins: string[];
+  openComposer?: (request: ComposerRequest) => Promise<ComposerResult>;
+}): Promise<ReviewerInstance>;
 export function reviewerHistory(root: string): Promise<ReviewSummary[]>;
 export function importLegacyReviewer(root: string, source: string): Promise<{
   imported: number; skipped: number; source: string; workspaceReconfirmationRequired: boolean;

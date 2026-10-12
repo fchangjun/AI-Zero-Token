@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.0.19 - 2026-10-12
+
+- Reset calendar details now combine the matching Chinese reference translation and English announcement in one compact card, with concise source metadata and a copy-source action. Reset-type explanations expand from a single-line guide; duplicate announcement labels, full URL displays, and the external-browser action have been removed.
+- Added a Codex reset calendar with Beijing-time announcement history, regular/banked reset filters, source details, current public signals, and scheduled announcements that remain pending until execution is confirmed.
+- Added background public-data synchronization, persistent local history and notification preferences, one notification per signal/confirmation stage, desktop notification testing, and click-through to the calendar. Initial synchronization imports history silently; network failures retain cached records and retry with backoff.
+- Added per-model context-window settings for external providers, showing whether values come from the upstream API, a manual override, or the default. Manual values survive model refresh; applying the service again updates the Codex catalog. Model selection now sorts by availability while keeping all models selectable and places primary actions at the top.
+- Added explicit close-and-confirm dialogs before changing Codex connections. Opening or cancelling a dialog does not change configuration; confirmed preparation has a shared 15-second deadline, preserves active-reply and database-lock checks, and supports retry without forcing clients to quit.
+- Improved the experimental Response Reviewer integration to open saved reviews in Codex's built-in browser side panel, reuse a tab within the same conversation, and offer an explicit embedded fallback. Improved capture of code, tables, lists and file references, prevented duplicate actions, and surfaced recoverable errors.
+- Added verified current-conversation composer prefill for Reviewer: it only writes into an empty draft in the matching conversation, refuses ambiguous or stale targets, and never sends automatically. Older backends require a restart before this capability becomes available.
+- Updated the Chinese user guide and added reset-calendar documentation and isolated UI acceptance coverage.
+
+Public reset announcements do not guarantee that an individual account's quota has recovered. Reviewer integration remains experimental and depends on the installed Codex version. Users on 2.0.16/2.0.17 whose in-app downloads fail should manually install this version once.
+
 ## 2.0.18 - 2026-09-30
 
 - Fixed macOS update downloads failing on GitHub redirects in Electron. Follow only validated official redirects, retry initial download connection failures through the matching GitHub asset API, and retain byte-count and SHA-256 verification. Network, file-write, and disk-space failures now have distinct messages.
