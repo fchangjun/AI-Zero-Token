@@ -94,8 +94,8 @@ describe("Codex provider switch", () => {
     expect(await fs.readFile(config, "utf8")).toBe(cConfig);
     await service.deactivate(c.id);
     expect(await data()).toEqual([
-      { id: "archived", model_provider: "openai", model: "gpt-native", reasoning_effort: "high" },
-      { id: "new", model_provider: "openai", model: "gpt-native", reasoning_effort: "high" },
+      { id: "archived", model_provider: "openai", model: null, reasoning_effort: null },
+      { id: "new", model_provider: "openai", model: null, reasoning_effort: null },
       { id: "t1", model_provider: "openai", model: "gpt-native-other", reasoning_effort: "high" },
     ]);
     const restored = await fs.readFile(config, "utf8");
@@ -117,7 +117,7 @@ describe("Codex provider switch", () => {
     await service.deactivate(b.id);
     const restored = await fs.readFile(config, "utf8");
     expect(restored).toContain('model_provider = "openai"');
-    expect(restored).toContain('model = "gpt-native"');
+    expect(restored).not.toMatch(/^model\s*=/m);
     expect(restored).not.toContain("openai_base_url");
     expect(restored).toContain("[model_providers.legacy]");
   });
@@ -129,7 +129,172 @@ describe("Codex provider switch", () => {
     await service.activate(b.id, ["b-model"], "b-model");
     await service.deactivate(b.id);
     expect((await data()).find((row) => row.id === "t1")?.model).toBe("gpt-native-other");
-    expect(await fs.readFile(config, "utf8")).toContain('model = "gpt-native-other"');
+    expect(await fs.readFile(config, "utf8")).not.toMatch(/^model\s*=/m);
+  });
+
+  test("disconnects offline without auth, cache or explicit native settings after B → C and new conversations", async () => {
+    await fs.rm(config);
+    await fs.rm(path.join(home, "models_cache.json"));
+    await fs.rm(path.join(home, "auth.json"));
+    await codexSqlite(db, "UPDATE threads SET model=NULL, reasoning_effort=NULL WHERE id='t1'");
+    const originalRollout = await fs.readFile(rollout, "utf8");
+    const b = await create(); const c = await create("C", ["c-model"]);
+    await service.activate(b.id, ["b-model"], "b-model");
+    const saved = JSON.parse(await fs.readFile(getCodexSwitchStatePath(), "utf8"));
+    expect(saved).toEqual({ version: 2, home, native: { model: null, effort: null, catalog: null },
+      nativeThreads: { t1: { model: null, reasoning_effort: null } } });
+    expect((await fs.stat(getCodexSwitchStatePath())).mode & 0o777).toBe(0o600);
+    await codexSqlite(db, `INSERT INTO threads VALUES ('new','azt_active','b-model','high','${rollout}',NULL,'new title',0,12,2)`);
+    await service.activate(c.id, ["c-model"], "c-model");
+    expect(JSON.parse(await fs.readFile(getCodexSwitchStatePath(), "utf8"))).toEqual(saved);
+    await service.deactivate(c.id);
+    expect((await data()).every(row => row.model_provider === "openai" && row.model === null && row.reasoning_effort === null)).toBe(true);
+    const restored = await fs.readFile(config, "utf8");
+    expect(restored).toContain('model_provider = "openai"');
+    expect(restored).not.toMatch(/^(model|model_reasoning_effort|model_catalog_json|openai_base_url)\s*=/m);
+    expect(restored).not.toContain("experimental_bearer_token");
+    expect((await service.list()).activeProviderId).toBeUndefined();
+    expect(JSON.parse(await fs.readFile(getCodexSwitchStatePath(), "utf8")).nativeThreads).toEqual({});
+    expect(await fs.readFile(rollout, "utf8")).toBe(originalRollout);
+    expect(await fs.stat(path.join(home, "auth.json")).then(() => true, () => false)).toBe(false);
+    expect(await fs.stat(path.join(home, "models_cache.json")).then(() => true, () => false)).toBe(false);
+    expect(await codexSqlite(db, "SELECT title,tokens_used FROM threads WHERE id='new'", true)).toEqual([{ title: "new title", tokens_used: 12 }]);
+  });
+
+  test("preserves null thread preferences without inheriting global or third-party effort", async () => {
+    await codexSqlite(db, "UPDATE threads SET model=NULL, reasoning_effort=NULL WHERE id='t1'");
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    await codexSqlite(db, "UPDATE threads SET reasoning_effort='medium'");
+    await service.deactivate(b.id);
+    expect((await data()).find(row => row.id === "t1")).toEqual({ id: "t1", model_provider: "openai", model: null, reasoning_effort: null });
+    expect(await fs.readFile(config, "utf8")).toContain('model = "gpt-native"');
+    expect(await fs.readFile(config, "utf8")).toContain('model_reasoning_effort = "high"');
+  });
+
+  test("preserves original preferences even when the current model cache has different models and efforts", async () => {
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    await fs.writeFile(path.join(home, "models_cache.json"), JSON.stringify({ models: [{ slug: "unrelated", supported_reasoning_levels: [{ effort: "low" }] }] }));
+    await service.deactivate(b.id);
+    expect((await data()).find(row => row.id === "t1")).toEqual({ id: "t1", model_provider: "openai", model: "gpt-native-other", reasoning_effort: "high" });
+    expect(await fs.readFile(config, "utf8")).toContain('model = "gpt-native"');
+    expect(await fs.readFile(config, "utf8")).toContain('model_reasoning_effort = "high"');
+  });
+
+  for (const catalogFirst of [true, false]) test(`restores unavailable custom catalog and model with catalogFirst=${catalogFirst}`, async () => {
+    const catalogLine = 'model_catalog_json = "missing-native-catalog.json"\n';
+    await fs.writeFile(config, catalogFirst ? catalogLine + nativeConfig : nativeConfig + catalogLine);
+    await fs.writeFile(path.join(home, "models_cache.json"), "not JSON");
+    const b = await create(); const c = await create("C", ["c-model"]);
+    await service.activate(b.id, ["b-model"], "b-model");
+    await service.activate(c.id, ["c-model"], "c-model");
+    await service.deactivate(c.id);
+    const restored = await fs.readFile(config, "utf8");
+    expect(restored).toContain('model = "gpt-native"');
+    expect(restored).toContain(catalogLine.trim());
+    expect(restored).not.toContain("AI Zero Token managed Codex model");
+    expect(restored).not.toContain("managed Codex provider state");
+  });
+
+  test("migrates v1 records that previously could take over but could not disconnect", async () => {
+    await fs.writeFile(config, 'model_provider = "openai"\n');
+    await fs.rm(path.join(home, "models_cache.json"));
+    await fs.rm(path.join(home, "auth.json"));
+    await codexSqlite(db, "UPDATE threads SET model=NULL, reasoning_effort=NULL WHERE id='t1'");
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    await fs.writeFile(getCodexSwitchStatePath(), JSON.stringify({ version: 1, home, native: {}, nativeThreads: { t1: { model: null, reasoning_effort: null } } }));
+    await service.deactivate(b.id);
+    expect((await data()).every(row => row.model_provider === "openai" && row.model === null)).toBe(true);
+    expect(JSON.parse(await fs.readFile(getCodexSwitchStatePath(), "utf8"))).toEqual({ version: 2, home, native: { model: null, effort: null, catalog: null }, nativeThreads: {} });
+  });
+
+  test("v1 migration replaces an inferred global model with the original omitted model from its marker", async () => {
+    await fs.writeFile(config, 'model_provider = "openai"\n');
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    await fs.writeFile(getCodexSwitchStatePath(), JSON.stringify({ version: 1, home, native: { model: "cache-inferred" },
+      nativeThreads: { t1: { model: "gpt-native-other", reasoning_effort: null } } }));
+    await service.deactivate(b.id);
+    expect(await fs.readFile(config, "utf8")).not.toMatch(/^model\s*=/m);
+    expect((await data()).find(row => row.id === "t1")).toEqual({ id: "t1", model_provider: "openai", model: "gpt-native-other", reasoning_effort: null });
+  });
+
+  test("v1 migration reads catalog-first markers without mistaking the third-party model for a native model", async () => {
+    await fs.writeFile(config, 'model_catalog_json = "original.json"\n' + nativeConfig);
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    await fs.writeFile(getCodexSwitchStatePath(), JSON.stringify({ version: 1, home, native: { model: "wrong-inferred-model", effort: "high" }, nativeThreads: {} }));
+    await service.deactivate(b.id);
+    const restored = await fs.readFile(config, "utf8");
+    expect(restored).toContain('model = "gpt-native"');
+    expect(restored).toContain('model_catalog_json = "original.json"');
+    expect(restored).not.toContain("managed Codex model");
+  });
+
+  test("missing state recovers matching original markers but does not capture a third-party effort", async () => {
+    await fs.writeFile(config, 'model_catalog_json = "original.json"\n' + nativeConfig);
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    await fs.rm(getCodexSwitchStatePath());
+    await fs.appendFile(config, "\n");
+    await service.deactivate(b.id);
+    const restored = await fs.readFile(config, "utf8");
+    expect(restored).toContain('model = "gpt-native"');
+    expect(restored).toContain('model_catalog_json = "original.json"');
+    expect(restored).not.toMatch(/^model_reasoning_effort\s*=/m);
+    expect((await data()).every(row => row.model === null && row.reasoning_effort === null)).toBe(true);
+  });
+
+  test("a legacy openai address override is not captured as a native model or native thread preference", async () => {
+    await fs.writeFile(config, nativeConfig + 'openai_base_url = "https://third.example.test/v1"\n');
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    expect(JSON.parse(await fs.readFile(getCodexSwitchStatePath(), "utf8")).native).toEqual({ model: null, effort: null, catalog: null });
+    await service.deactivate(b.id);
+    expect(await fs.readFile(config, "utf8")).not.toMatch(/^(model|model_reasoning_effort|openai_base_url)\s*=/m);
+    expect((await data()).every(row => row.model === null && row.reasoning_effort === null)).toBe(true);
+  });
+
+  test("a failed v1 migration restores the original recovery file and active service", async () => {
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    await fs.writeFile(getCodexSwitchStatePath(), JSON.stringify({ version: 1, home, native: {}, nativeThreads: { t1: { model: null, reasoning_effort: null } } }));
+    const before = await files(); const rows = await data();
+    await expect(new CodexProviderSwitch().commit(undefined, '{"version":1,"providers":[]}', async () => { throw new Error("fixture commit failed"); })).rejects.toThrow("fixture commit failed");
+    expect(await files()).toEqual(before);
+    expect(await data()).toEqual(rows);
+    expect((await service.list()).activeProviderId).toBe(b.id);
+    expect(await fs.stat(`${getCodexSwitchStatePath()}.pending`).then(() => true, () => false)).toBe(false);
+  });
+
+  test("a new takeover after disconnect captures the user's current native preferences", async () => {
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    await service.deactivate(b.id);
+    await fs.writeFile(config, 'model_provider = "openai"\n');
+    await codexSqlite(db, "UPDATE threads SET model=NULL, reasoning_effort=NULL");
+    await service.activate(b.id, ["b-model"], "b-model");
+    await service.deactivate(b.id);
+    expect(await fs.readFile(config, "utf8")).not.toMatch(/^model\s*=/m);
+    expect((await data()).every(row => row.model === null && row.reasoning_effort === null)).toBe(true);
+  });
+
+  test("malformed recovery records are rejected before changing config or conversations", async () => {
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    for (const state of [
+      { version: 2, home, native: {}, nativeThreads: {} },
+      { version: 2, home, native: { model: null, effort: null, catalog: null }, nativeThreads: { t1: { model: 42 } } },
+      { version: 3, home, native: {}, nativeThreads: {} },
+      { version: 1, home: "/wrong-home", native: {}, nativeThreads: {} },
+    ]) {
+      await fs.writeFile(getCodexSwitchStatePath(), JSON.stringify(state));
+      const before = await files(); const rows = await data();
+      await expect(service.deactivate(b.id)).rejects.toThrow();
+      expect(await files()).toEqual(before); expect(await data()).toEqual(rows);
+    }
   });
 
   test("rolls back config, model catalog, preferences, DB and selection after a failure following the DB commit", async () => {

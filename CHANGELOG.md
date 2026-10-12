@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.20 - 2026-10-13
+
+- Fixed disconnecting an external Codex service failing when the original default model was implicit or the native model cache was unavailable. Restoring the native connection no longer requires a login, network model refresh, or readable model catalog.
+- Preserve exact native global and per-conversation preferences, including unset models and reasoning levels. Conversations created under a third-party service return to the native provider with unset model/effort fields so Codex resolves its configured or built-in defaults; conversation contents remain intact.
+- Added versioned nullable recovery snapshots and transactional migration of existing records. Matching config markers recover original model/catalog values rather than retaining inferred cache defaults, while failed migrations roll back to the previous files and conversation settings.
+- Fixed model markers being confused with model-catalog markers when configuration fields appear in a different order or services are applied repeatedly.
+- Added offline recovery, legacy migration, missing/corrupt cache, explicit-null preference, marker-order and rollback regressions, plus real Codex resume/request acceptance for both existing and newly created conversations in an isolated loopback-only environment.
+
 ## 2.0.19 - 2026-10-12
 
 - Reset calendar details now combine the matching Chinese reference translation and English announcement in one compact card, with concise source metadata and a copy-source action. Reset-type explanations expand from a single-line guide; duplicate announcement labels, full URL displays, and the external-browser action have been removed.

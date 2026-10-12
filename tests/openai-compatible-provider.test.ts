@@ -517,6 +517,26 @@ describe("OpenAI-compatible provider inspection", () => {
 });
 
 describe("Codex provider configuration lifecycle", () => {
+  for (const previousModel of [undefined, "previous-model"]) test(`catalog-first markers preserve the original model ${previousModel ?? "omission"} across repeated applies`, async () => {
+    const codexHome = await mkdtemp(join(tmpdir(), "azt-codex-marker-order-"));
+    temporaryDirectories.push(codexHome);
+    process.env.CODEX_HOME = codexHome;
+    const configPath = join(codexHome, "config.toml");
+    await writeFile(configPath, 'model_catalog_json = "original.json"\nmodel_provider = "openai"\n'
+      + (previousModel ? `model = "${previousModel}"\n` : ""));
+    for (const model of ["third-a", "third-b"]) await applyGatewayToCodexProviderConfig({
+      baseUrl: "https://gateway.example.test/v1", providerId: "external-test", kind: "openai_compatible",
+      bearerToken: "fixture-token", model, catalogModels: [{ id: model }],
+    });
+    await removeGatewayFromCodexProviderConfig({ providerId: "external-test" });
+    const restored = await readFile(configPath, "utf8");
+    expect(restored).toContain('model_catalog_json = "original.json"');
+    expect(restored).toContain('model_provider = "openai"');
+    if (previousModel) expect(restored).toContain(`model = "${previousModel}"`);
+    else expect(restored).not.toMatch(/^model\s*=/m);
+    expect(restored).not.toContain("AI Zero Token managed Codex model");
+  });
+
   test("apply/remove restores the previous root model and model_provider", async () => {
     const codexHome = await mkdtemp(join(tmpdir(), "azt-codex-config-test-"));
     temporaryDirectories.push(codexHome);

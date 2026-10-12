@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import {
   ACTIVE_CODEX_PROVIDER_ID, buildCodexSwitchFiles, getCodexConfigPath, getCodexHomeDir,
-  parseRootString, readNativeCodexSettings, type CodexCatalogModelInput, type NativeCodexSettings,
+  parseRootString, readManagedNativeCodexSettings, readNativeCodexSettings, type CodexCatalogModelInput, type NativeCodexSettings,
 } from "../store/codex-auth-store.js";
 import { backupThreadDatabase, codexSqlite, readThreadSnapshot, updateThreadSettings, type ThreadSettings, type ThreadSnapshot } from "../store/codex-thread-state.js";
 import { getStateDir } from "../store/state-paths.js";
@@ -12,10 +12,9 @@ import { explainCodexDatabaseError, stoppedCodexRuntime, type CodexSwitchRuntime
 export type ThirdPartySwitchTarget = {
   baseUrl: string; bearerToken: string; model: string; catalogModels: CodexCatalogModelInput[]; displayName: string;
 };
-type SwitchState = {
-  version: 1; home: string; native: NativeCodexSettings;
-  nativeThreads: Record<string, { model: string | null; reasoning_effort: string | null }>;
-};
+type NativeSnapshot = { model: string | null; effort: string | null; catalog: string | null };
+type NativeThreadSettings = { model: string | null; reasoning_effort: string | null };
+type SwitchState = { version: 2; home: string; native: NativeSnapshot; nativeThreads: Record<string, NativeThreadSettings> };
 type FileChange = { file: string; before: string | null; after: string; index: number };
 type Journal = {
   version: 1; home: string; directory: string; files: FileChange[];
@@ -43,18 +42,48 @@ async function exists(file: string): Promise<boolean> {
 }
 function sameSettings(left: ThreadSettings[], right: ThreadSettings[]): boolean { return JSON.stringify(left) === JSON.stringify(right); }
 
-async function readNativeModels(native: NativeCodexSettings): Promise<Array<{ id: string; efforts?: string[] }>> {
-  const catalog = native.catalog ? path.resolve(getCodexHomeDir(), native.catalog) : path.join(getCodexHomeDir(), "models_cache.json");
-  const raw = await readOptional(catalog);
-  if (!raw) return [];
-  try {
-    const data = JSON.parse(raw.toString());
-    if (!Array.isArray(data.models)) return [];
-    return data.models.filter((item: any) => typeof item.slug === "string" && item.visibility !== "hide")
-      .sort((a: any, b: any) => (a.priority ?? 100) - (b.priority ?? 100))
-      .map((item: any) => ({ id: item.slug, efforts: Array.isArray(item.supported_reasoning_levels)
-        ? item.supported_reasoning_levels.map((value: any) => value.effort).filter((value: unknown) => typeof value === "string") : undefined }));
-  } catch { throw new Error("原生 Codex 模型目录无法读取，请先修复模型目录后重试。"); }
+function nativeSnapshot(settings: NativeCodexSettings): NativeSnapshot {
+  return { model: settings.model ?? null, effort: settings.effort ?? null, catalog: settings.catalog ?? null };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function readSwitchState(raw: Buffer | undefined, config: string, home: string): SwitchState {
+  if (!raw) return {
+    version: 2, home,
+    native: nativeSnapshot({ ...readNativeCodexSettings(config), ...readManagedNativeCodexSettings(config) }),
+    nativeThreads: Object.create(null),
+  };
+  let value: unknown;
+  try { value = JSON.parse(raw.toString()); }
+  catch { throw new Error("Codex 恢复记录无法读取，未执行切换。请保留记录和备份以便修复。"); }
+  if (!isRecord(value) || (value.version !== 1 && value.version !== 2) || value.home !== home
+    || !isRecord(value.native) || !isRecord(value.nativeThreads)) throw new Error("切换状态与当前 Codex 目录不匹配。");
+  const field = (item: Record<string, unknown>, key: string, optional = false): string | null => {
+    const result = item[key];
+    if (result === null || (optional && result === undefined)) return null;
+    if (typeof result === "string") return result;
+    throw new Error("Codex 恢复记录格式无效，未执行切换。请保留记录和备份以便修复。");
+  };
+  const native: NativeSnapshot = {
+    model: field(value.native, "model", value.version === 1),
+    effort: field(value.native, "effort", value.version === 1),
+    catalog: field(value.native, "catalog", value.version === 1),
+  };
+  if (value.version === 1) {
+    // v1 filled missing defaults from a cache or thread. Matching markers retain the actual original value.
+    const original = readManagedNativeCodexSettings(config);
+    if (Object.hasOwn(original, "model")) native.model = original.model ?? null;
+    if (Object.hasOwn(original, "catalog")) native.catalog = original.catalog ?? null;
+  }
+  const nativeThreads: SwitchState["nativeThreads"] = Object.create(null);
+  for (const [id, settings] of Object.entries(value.nativeThreads)) {
+    if (!isRecord(settings)) throw new Error("Codex 对话恢复记录格式无效，未执行切换。");
+    nativeThreads[id] = { model: field(settings, "model"), reasoning_effort: field(settings, "reasoning_effort") };
+  }
+  return { version: 2, home, native, nativeThreads };
 }
 
 function chooseEffort(current: string | null | undefined, supported: readonly string[] | undefined): string | null {
@@ -151,11 +180,10 @@ export class CodexProviderSwitch {
     if (process.env.OPENAI_BASE_URL) throw new Error("环境变量 OPENAI_BASE_URL 覆盖了 Codex 地址，请先移除后再切换。");
     const raw = (await readOptional(getCodexConfigPath()))?.toString() ?? "";
     const stateRaw = await readOptional(getCodexSwitchStatePath());
-    const state: SwitchState = stateRaw ? JSON.parse(stateRaw.toString()) : { version: 1, home, native: readNativeCodexSettings(raw), nativeThreads: {} };
-    if (state.version !== 1 || state.home !== home || !state.native || !state.nativeThreads) throw new Error("切换状态与当前 Codex 目录不匹配。");
-    if ((parseRootString(raw, "model_provider") ?? "openai") === "openai" && !parseRootString(raw, "openai_base_url")) state.native = readNativeCodexSettings(raw);
-    const nativeModels = await readNativeModels(state.native);
-    if (!state.native.model || (nativeModels.length && !nativeModels.some((model) => model.id === state.native.model))) state.native.model = nativeModels[0]?.id;
+    const state = readSwitchState(stateRaw, raw, home);
+    if ((parseRootString(raw, "model_provider") ?? "openai") === "openai" && !parseRootString(raw, "openai_base_url")) {
+      state.native = nativeSnapshot(readNativeCodexSettings(raw));
+    }
     const dbFile = path.join(home, "state_5.sqlite");
     let snapshot: ThreadSnapshot | undefined;
     if (await exists(dbFile)) { snapshot = await readThreadSnapshot(dbFile); await assertNoProjectOverrides(dbFile); }
@@ -169,25 +197,21 @@ export class CodexProviderSwitch {
         if (files.some((file) => file.endsWith(".jsonl"))) throw new Error("发现会话文件但缺少会话数据库，请先让 Codex 完成索引后再切换。");
       }
     }
-    if (!state.native.model) {
-      const original = !parseRootString(raw, "openai_base_url")
-        ? snapshot?.settings.find((row) => row.model_provider === "openai" && row.model)?.model : undefined;
-      state.native.model = original ?? Object.values(state.nativeThreads).find((row) => row.model)?.model ?? undefined;
-    }
-    state.native.effort = chooseEffort(state.native.effort, nativeModels.find((model) => model.id === state.native.model)?.efforts) ?? undefined;
-    if (!target && snapshot?.settings.length && !state.native.model) throw new Error("无法确定原生默认模型。请先让原生 Codex 更新模型目录，再解除接管。");
     const after = snapshot?.settings.map((row): ThreadSettings => {
       if (target) {
-        if (row.model_provider === "openai" && !parseRootString(raw, "openai_base_url")) state.nativeThreads[row.id] = { model: row.model, reasoning_effort: row.reasoning_effort };
+        if (row.model_provider === "openai" && !parseRootString(raw, "openai_base_url") && !Object.hasOwn(state.nativeThreads, row.id)) {
+          state.nativeThreads[row.id] = { model: row.model, reasoning_effort: row.reasoning_effort };
+        }
         const selected = target.catalogModels.find((model) => model.id === row.model) ?? target.catalogModels.find((model) => model.id === target.model)!;
         return { id: row.id, model_provider: ACTIVE_CODEX_PROVIDER_ID, model: selected.id, reasoning_effort: chooseEffort(row.reasoning_effort, selected.reasoningEfforts ?? []) };
       }
       const preferred = state.nativeThreads[row.id];
-      const model = preferred?.model && (!nativeModels.length || nativeModels.some((item) => item.id === preferred.model)) ? preferred.model : state.native.model!;
-      return { id: row.id, model_provider: "openai", model, reasoning_effort: chooseEffort(preferred?.reasoning_effort ?? state.native.effort, nativeModels.find((item) => item.id === model)?.efforts) };
+      return { id: row.id, model_provider: "openai", model: preferred?.model ?? null, reasoning_effort: preferred?.reasoning_effort ?? null };
     });
     if (!target) state.nativeThreads = {};
-    const generated = await buildCodexSwitchFiles(raw, state.native, target);
+    const generated = await buildCodexSwitchFiles(raw, {
+      model: state.native.model ?? undefined, effort: state.native.effort ?? undefined, catalog: state.native.catalog ?? undefined,
+    }, target);
     const writes = [
       { file: getCodexConfigPath(), content: generated.config },
       ...(generated.catalog === undefined ? [] : [{ file: path.join(home, "model-catalogs", "ai-zero-token-models.json"), content: generated.catalog }]),

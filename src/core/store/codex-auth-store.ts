@@ -573,16 +573,21 @@ type ManagedModelMarker = {
   previous?: string;
 };
 
+function isManagedModelMarkerLine(line: string | undefined): boolean {
+  const text = line?.trim();
+  return Boolean(text?.startsWith(MANAGED_MODEL_MARKER_PREFIX) && !text.startsWith(MANAGED_CATALOG_MARKER_PREFIX));
+}
+
 function parseManagedModelMarker(raw: string): ManagedModelMarker | undefined {
   const lines = raw.split(/\r?\n/);
   const firstTableLine = findFirstTableLine(lines);
   for (let index = 0; index < firstTableLine; index += 1) {
     const line = lines[index]?.trim();
-    if (!line?.startsWith(MANAGED_MODEL_MARKER_PREFIX)) {
+    if (!isManagedModelMarkerLine(line)) {
       continue;
     }
     try {
-      const encoded = line.slice(MANAGED_MODEL_MARKER_PREFIX.length).trim();
+      const encoded = line!.slice(MANAGED_MODEL_MARKER_PREFIX.length).trim();
       const parsed = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as unknown;
       if (!isRecord(parsed) || typeof parsed.managed !== "string") {
         return undefined;
@@ -602,7 +607,7 @@ function removeManagedModelMarker(raw: string): string {
   const lines = raw.split(/\r?\n/);
   const firstTableLine = findFirstTableLine(lines);
   for (let index = 0; index < firstTableLine; index += 1) {
-    if (lines[index]?.trim().startsWith(MANAGED_MODEL_MARKER_PREFIX)) {
+    if (isManagedModelMarkerLine(lines[index])) {
       lines.splice(index, 1);
       break;
     }
@@ -1484,14 +1489,28 @@ export function withCodexProviderConfigLock<T>(operation: () => Promise<T>, allo
 
 export type NativeCodexSettings = { model?: string; effort?: string; catalog?: string };
 
+/** Only capture an actual native configuration; third-party settings are not native defaults. */
 export function readNativeCodexSettings(raw: string): NativeCodexSettings {
-  const restored = restoreManagedRootModelCatalog(restoreManagedRootModel(restoreManagedRootProvider(raw).raw).raw).raw;
-  if ((parseRootModelProvider(restored) ?? "openai") !== "openai") return {};
+  if ((parseRootModelProvider(raw) ?? "openai") !== "openai" || parseRootString(raw, "openai_base_url")) return {};
   return {
-    model: parseRootModel(restored),
-    effort: parseRootString(restored, "model_reasoning_effort"),
-    catalog: parseRootModelCatalogPath(restored),
+    model: parseRootModel(raw),
+    effort: parseRootString(raw, "model_reasoning_effort"),
+    catalog: parseRootModelCatalogPath(raw),
   };
+}
+
+/** Recover only fields for which a matching marker records a previous native value (including absence). */
+export function readManagedNativeCodexSettings(raw: string): NativeCodexSettings {
+  const provider = parseManagedProviderMarker(raw);
+  if (!provider || provider.managed !== parseRootModelProvider(raw)
+    || (provider.previous !== undefined && provider.previous !== "openai")) return {};
+  const native: NativeCodexSettings = {};
+  const model = parseManagedModelMarker(raw);
+  const catalog = parseManagedCatalogMarker(raw);
+  if (model && model.managed === parseRootModel(raw)) native.model = model.previous;
+  if (catalog && catalog.managed === parseRootModelCatalogPath(raw)) native.catalog = catalog.previous;
+  // There is no legacy effort marker: never recover a third-party effort as a native preference.
+  return native;
 }
 
 /** Build the complete write set before the switch journal or any target file is changed. */

@@ -1,12 +1,20 @@
 # Run with python3 scripts/verify-codex-provider-switch.py.
 # Uses an installed Codex app-server, temporary homes, synthetic keys and local endpoints.
-import json,os,pathlib,subprocess,threading,queue,time,tempfile,shutil
+import json,os,pathlib,subprocess,threading,queue,time,tempfile,shutil,sys
 from http.server import ThreadingHTTPServer,BaseHTTPRequestHandler
 repo=pathlib.Path(__file__).resolve().parent.parent
 root=pathlib.Path(tempfile.mkdtemp(prefix='azt-product-switch-'))
 binary=os.environ.get('CODEX_TEST_BINARY') or shutil.which('codex')
 if not binary:raise RuntimeError('Set CODEX_TEST_BINARY to an installed Codex binary.')
 codex_home=root/'codex-home';codex_home.mkdir(exist_ok=True)
+if sys.platform!='darwin' or not shutil.which('sandbox-exec'):
+ raise RuntimeError('This offline acceptance uses macOS sandbox-exec to restrict all child networking to loopback.')
+protected=[pathlib.Path.home()/name for name in ['.codex','.ai-zero-token','.agents']]
+policy='(version 1)\n(allow default)\n(deny network*)\n(allow network-inbound (local ip "localhost:*"))\n(allow network-outbound (remote ip "localhost:*"))\n'
+policy+='(deny file-read* file-write* '+ ' '.join('(subpath '+json.dumps(str(p))+')' for p in protected)+')\n'
+(root/'offline.sb').write_text(policy)
+sandbox=['/usr/bin/sandbox-exec','-f',str(root/'offline.sb')]
+safe_env={'PATH':os.environ['PATH'],'TMPDIR':str(root),'CODEX_HOME':str(codex_home),'RUST_LOG':'error'}
 requests=[]
 transport_attempts=[]
 phase_records=[]
@@ -66,9 +74,12 @@ class Client:
  def __init__(self):
   self.q=queue.Queue();self.seq=0;self.pending=[]
   self.log=(root/'stderr.log').open('a')
-  self.p=subprocess.Popen([binary,'app-server','--listen','stdio://'],cwd=root,env={**{k:v for k,v in os.environ.items() if not k.startswith(('CODEX_','OPENAI_'))},'CODEX_HOME':str(codex_home),'HTTP_PROXY':base,'HTTPS_PROXY':base,'ALL_PROXY':base,'NO_PROXY':'127.0.0.1,localhost','http_proxy':base,'https_proxy':base,'all_proxy':base,'no_proxy':'127.0.0.1,localhost'},stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,text=True,bufsize=1)
+  # Redirect native transport in this child only; the saved config remains a real native baseline.
+  overrides=['-c','openai_base_url='+json.dumps(base+'/native/v1')] if active_phase.get('name','').startswith('native') else []
+  self.p=subprocess.Popen(sandbox+[binary,*overrides,'app-server','--listen','stdio://'],cwd=root,env=safe_env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=self.log,text=True,bufsize=1)
   threading.Thread(target=self.reader,daemon=True).start()
-  self.rpc('initialize',{'clientInfo':{'name':'azt-switch-eval','version':'0.0.0'},'capabilities':{'experimentalApi':True}})
+  try:self.rpc('initialize',{'clientInfo':{'name':'azt-switch-eval','version':'0.0.0'},'capabilities':{'experimentalApi':True}})
+  except BaseException:self.close();raise
   self.p.stdin.write(json.dumps({'method':'initialized'})+'\n');self.p.stdin.flush()
  def reader(self):
   for line in self.p.stdout:
@@ -112,6 +123,7 @@ native_auth={'auth_mode':'chatgpt','OPENAI_API_KEY':None,'tokens':{'id_token':jw
 
 
 records=[];c=None;tid=None
+binary_version=subprocess.check_output(sandbox+[binary,'--version'],env=safe_env,text=True).strip()
 worker=root/'switch.ts'
 worker.write_text('import { ExternalProviderService } from '+json.dumps(str(repo/'src/core/services/external-provider-service.ts'))+''';
 const service=new ExternalProviderService();
@@ -131,7 +143,7 @@ auth_hash=hashlib.sha256((codex_home/'auth.json').read_bytes()).hexdigest()
 models=codex_home/'native-models.json'
 models.write_text(json.dumps({'models':[catalog_entry('gpt-5.4')]}))
 (codex_home/'models_cache.json').write_bytes(models.read_bytes())
-(codex_home/'config.toml').write_text('model_provider = "openai"\nmodel = "gpt-5.4"\nmodel_reasoning_effort = "high"\nopenai_base_url = '+json.dumps(base+'/native/v1')+'\nmodel_catalog_json = '+json.dumps(str(models))+'\ncli_auth_credentials_store = "file"\nchatgpt_base_url = '+json.dumps(base+'/chatgpt')+'\n[analytics]\nenabled = false\n[feedback]\nenabled = false\n[features]\napps = false\n')
+(codex_home/'config.toml').write_text('model_provider = "openai"\nmodel = "gpt-5.4"\nmodel_reasoning_effort = "high"\nmodel_catalog_json = '+json.dumps(str(models))+'\ncli_auth_credentials_store = "file"\nchatgpt_base_url = '+json.dumps(base+'/chatgpt')+'\n[analytics]\nenabled = false\n[feedback]\nenabled = false\n[features]\napps = false\n')
 try:
  for name in ['native-start','third-b','third-c','native-restored']:
   active_phase={'name':name};expected_auth='Bearer '+(jwt if name.startswith('native') else 'fixture-key-'+name[-1])
@@ -141,16 +153,14 @@ try:
    before=hashlib.sha256(rollout.read_bytes()).hexdigest()
    native=name=='native-restored'
    args={'action':'native' if native else name,'baseUrl':base+'/'+name+'/v1','key':'fixture-key-'+name[-1],'model':'fixture-'+name+'-model'}
-   env={**{k:v for k,v in os.environ.items() if not k.startswith(('CODEX_','OPENAI_','AI_ZERO_TOKEN_'))},'CODEX_HOME':str(codex_home),'AI_ZERO_TOKEN_HOME':str(root/'azt-home')}
-   completed=subprocess.run(['bun',str(worker),json.dumps(args)],cwd=repo,env=env,capture_output=True,text=True,timeout=60)
+   env={**safe_env,'AI_ZERO_TOKEN_HOME':str(root/'azt-home')}
+   completed=subprocess.run(sandbox+['bun',str(worker),json.dumps(args)],cwd=root,env=env,capture_output=True,text=True,timeout=60)
    if completed.returncode:raise RuntimeError(completed.stderr)
    assert hashlib.sha256(rollout.read_bytes()).hexdigest()==before,'AZT edited JSONL'
    assert hashlib.sha256((codex_home/'auth.json').read_bytes()).hexdigest()==auth_hash,'AZT replaced native auth'
    if native:
     config=(codex_home/'config.toml').read_text()
     assert 'model_provider = "openai"' in config and 'experimental_bearer_token' not in config and 'openai_base_url' not in config
-    # Redirect the native transport only in this offline fixture, after validating restoration.
-    (codex_home/'config.toml').write_text('openai_base_url = '+json.dumps(base+'/native/v1')+'\n'+config)
   c=Client()
   if tid is None:
    reply=c.rpc('thread/start',{'cwd':str(root),'approvalPolicy':'never','sandbox':'read-only'});tid=reply['thread']['id']
@@ -165,8 +175,65 @@ try:
   if name.startswith('third'):assert all(r['transport']=='http' and r['reasoningEffort'] is None and not r['officialAccountHeaderPresent'] and r['model']=='fixture-'+name+'-model' for r in actual)
   record={'phase':name,'threadId':tid,'provider':reply['modelProvider'],'model':reply['model'],'requests':actual}
   records.append(record);print(json.dumps(record),flush=True)
+ # Reproduce an account-free installation with an existing conversation whose native model was implicit.
+ c.close();c=None
+ (codex_home/'config.toml').write_text('model_provider = "openai"\ncli_auth_credentials_store = "file"\n[analytics]\nenabled = false\n[feedback]\nenabled = false\n[features]\napps = false\n')
+ (codex_home/'auth.json').unlink()
+ (codex_home/'models_cache.json').unlink(missing_ok=True)
+ db=sqlite3.connect(codex_home/'state_5.sqlite')
+ db.execute('UPDATE threads SET model=NULL,reasoning_effort=NULL WHERE id=?',(tid,));db.commit();db.close()
+ def switch_without_account(action):
+  args={'action':action,'baseUrl':base+'/'+action+'/v1','key':'fixture-key-'+action[-1],'model':'fixture-'+action+'-model'}
+  result=subprocess.run(sandbox+['bun',str(worker),json.dumps(args)],cwd=root,env={**safe_env,'AI_ZERO_TOKEN_HOME':str(root/'azt-home')},capture_output=True,text=True,timeout=60)
+  if result.returncode:raise RuntimeError(result.stderr)
+  assert not (codex_home/'auth.json').exists(),'switch created login credentials'
+  assert not (codex_home/'models_cache.json').exists(),'switch required or created a model cache'
+ switch_without_account('third-d')
+ active_phase={'name':'third-d'};expected_auth='Bearer fixture-key-d'
+ c=Client();c.rpc('thread/resume',{'threadId':tid});c.turn(tid,'Continue marker-first.')
+ new=c.rpc('thread/start',{'cwd':str(root),'approvalPolicy':'never','sandbox':'read-only'})['thread']['id']
+ c.turn(new,'marker-first-new-thread');c.close();c=None
+ switch_without_account('third-e')
+ db=sqlite3.connect(codex_home/'state_5.sqlite')
+ paths={row[0]:pathlib.Path(row[1]) for row in db.execute('SELECT id,rollout_path FROM threads')}
+ db.close()
+ before={key:hashlib.sha256(file.read_bytes()).hexdigest() for key,file in paths.items()}
+ saved=json.loads((root/'azt-home/.state/codex-switch-state.json').read_text())
+ assert saved['version']==2 and saved['native']=={'model':None,'effort':None,'catalog':None}
+ assert saved['nativeThreads'][tid]=={'model':None,'reasoning_effort':None} and new not in saved['nativeThreads']
+ switch_without_account('native')
+ assert {key:hashlib.sha256(file.read_bytes()).hexdigest() for key,file in paths.items()}==before,'AZT changed conversation messages'
+ db=sqlite3.connect(codex_home/'state_5.sqlite')
+ rows=db.execute('SELECT id,model_provider,model,reasoning_effort FROM threads').fetchall();db.close()
+ assert len(rows)==2 and all(row[1:]==('openai',None,None) for row in rows)
+ restored_config=(codex_home/'config.toml').read_text()
+ assert not any(line.startswith(('model =','model_catalog_json =','model_reasoning_effort =','openai_base_url =')) for line in restored_config.splitlines())
+ assert 'experimental_bearer_token' not in restored_config
+ active_phase={'name':'native-default-no-auth'};expected_auth='Bearer '+jwt
+ c=Client()
+ offline_models=c.rpc('model/list',{'limit':100,'includeHidden':False})['data']
+ default=next(model['model'] for model in offline_models if model.get('isDefault'))
+ for thread_id in [tid,new]:
+  reply=c.rpc('thread/resume',{'threadId':thread_id})
+  assert reply['modelProvider']=='openai' and reply['model']==default
+  assert 'marker-first' in json.dumps(reply['thread']['turns'])
+  record={'phase':active_phase['name'],'threadId':thread_id,'provider':reply['modelProvider'],'model':reply['model'],'hasAuth':(codex_home/'auth.json').exists(),'hasCache':(codex_home/'models_cache.json').exists(),'turnCount':len(reply['thread']['turns'])}
+  assert not record['hasAuth'] and not record['hasCache']
+  records.append(record);print(json.dumps(record),flush=True)
+ c.close();c=None
+ # Synthetic auth is added only now to validate actual resumed inference against the loopback server.
+ (codex_home/'auth.json').write_text(json.dumps(native_auth))
+ active_phase={'name':'native-default-local-turn'};expected_auth='Bearer '+jwt
+ c=Client()
+ for thread_id in [tid,new]:
+  reply=c.rpc('thread/resume',{'threadId':thread_id});n=len(requests);c.turn(thread_id,'Continue with the native default.')
+  actual=[r for r in requests[n:] if r['inputCount']>0]
+  assert actual and all(r['model']==default and r['path']=='/native/v1/responses' and r['hasEarlierMarker'] and r['authMatchesTarget'] for r in actual)
+  record={'phase':active_phase['name'],'threadId':thread_id,'provider':reply['modelProvider'],'model':reply['model'],'requests':actual}
+  records.append(record);print(json.dumps(record),flush=True)
+
 finally:
  if c:c.close()
  server.shutdown()
- (root/'report.json').write_text(json.dumps({'scope':'actual AZT switch implementation; actual Codex; synthetic credentials and local endpoints; native transport redirected by fixture','records':records},indent=2))
+ (root/'report.json').write_text(json.dumps({'scope':'actual AZT switch implementation; actual Codex; loopback-only sandbox; temporary homes and synthetic credentials; native transport redirected only in test children','codexVersion':binary_version,'records':records},indent=2))
  print('REPORT:',root/'report.json')
