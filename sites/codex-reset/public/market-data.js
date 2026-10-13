@@ -20,7 +20,7 @@ export function assertMarket(data) {
   const ids = ['go', 'plus', 'pro100', 'pro200', 'pro500'];
   if (!Array.isArray(data.plans) || data.plans.length !== ids.length || new Set(data.plans.map(p => p.id)).size !== ids.length) throw new Error('需提供五个完整且不重复的订阅档位');
   for (const plan of data.plans) {
-    if (!ids.includes(plan.id) || typeof plan.name !== 'string' || !plan.name || !positive(plan.usd) || !validDate(plan.updatedAt) || !httpsHost(plan.url, ['priceai.cc', 'chatgpt.com', 'openai.com'])) throw new Error(`档位信息无效：${plan.id}`);
+    if (!ids.includes(plan.id) || typeof plan.name !== 'string' || !plan.name || !positive(plan.usd) || !validDate(plan.updatedAt)) throw new Error(`档位信息无效：${plan.id}`);
     if (!Array.isArray(plan.quotes) || !plan.quotes.length || plan.quotes.length > 2000) throw new Error(`档位缺少报价：${plan.id}`);
     const seen = new Set();
     for (const q of plan.quotes) {

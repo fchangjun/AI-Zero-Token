@@ -12,7 +12,7 @@ async function files(directory) {
   }
   return result;
 }
-for (const dir of ['public', 'scripts', 'lib']) {
+for (const dir of ['public', 'scripts']) {
   for (const filename of await files(path.join(root, dir))) {
     const result = spawnSync(process.execPath, ['--check', filename], { stdio: 'inherit' });
     if (result.status !== 0) process.exit(result.status || 1);

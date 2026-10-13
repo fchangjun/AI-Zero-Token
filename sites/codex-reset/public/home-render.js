@@ -7,7 +7,7 @@ export const homeAmount = value => Number.isFinite(value) ? value.toLocaleString
 export const homeTime = value => Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) : '未提供时间';
 const e = escapeHome;
 const flag = code => /^[A-Z]{2}$/.test(code) ? [...code].map(character => String.fromCodePoint(character.charCodeAt(0) + 127397)).join('') : '◉';
-const safeSource = value => { try { const url = new URL(value); return url.protocol === 'https:' && ['x.com', 'twitter.com', 'codex-resets.com', 'ai-resets.com'].includes(url.hostname) ? url.href : ''; } catch { return ''; } };
+const safeSource = value => { try { const url = new URL(value); return url.protocol === 'https:' && ['x.com', 'twitter.com', 'codex-resets.com'].includes(url.hostname) ? url.href : ''; } catch { return ''; } };
 
 function renderDeal(deal) {
   const pro = deal.planId !== 'plus';

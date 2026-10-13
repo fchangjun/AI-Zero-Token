@@ -55,7 +55,6 @@ function renderDetails() {
   quotes.sort((a,b)=>state.sort==='region'?a.region.localeCompare(b.region,'zh-CN') : a.rmb===null?1:b.rmb===null?-1:((a.rmb-b.rmb)*(state.sort==='desc'?-1:1)||a.country.localeCompare(b.country)));
   $('detail-summary').innerHTML=`<strong>${e(plan.name)}</strong> · ${new Set(quotes.map(q=>q.country)).size} 个地区 / ${quotes.length} 条报价`;
   $('detail-baseline').textContent=`标准美元价 $${plan.usd} / 月 ≈ ¥${amount(plan.usd*fx.rates.CNY)} / 月`;
-  $('priceai-link').href=plan.url;
   $('no-results').hidden=quotes.length>0;
   $('price-rows').innerHTML=quotes.slice(0,state.limit).map(q=>`<tr><td><div class="table-region"><span class="flag" aria-hidden="true">${flag(q.country)}</span><div><strong>${e(q.region)}</strong><small>${e(q.country)} · ${CHANNELS[q.channel]}</small></div></div></td><td><div class="table-local">${e(q.label)}<small>${e(q.currency)} / 月</small></div></td><td><div class="table-rmb" title="汇率 ${time(q.fxUpdatedAt)} · 北京时间">${q.rmb===null?'暂无汇率':`¥${amount(q.rmb)}`}</div></td><td><span class="saving ${q.savings<0?'expensive':''}">${saving(q)}</span></td><td><a class="table-source" href="${e(q.source)}" target="_blank" rel="noopener noreferrer" aria-label="查看${e(q.region)}${CHANNELS[q.channel]}价格依据">官方来源 ↗</a></td></tr>`).join('');
   $('table-count').textContent=`已显示 ${Math.min(state.limit,quotes.length)} / ${quotes.length} 条报价`;

@@ -16,7 +16,7 @@ const dateFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai',
 const escapeHTML = (value = '') => String(value).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateLabel = (date) => Number.isFinite(Date.parse(date)) ? dateFormat.format(new Date(date)) : '时间未提供';
 const dayKey = (date) => new Date(Date.parse(date) + 8 * 3600000).toISOString().slice(0,10);
-const safeUrl = (url) => { try { const u = new URL(url); return u.protocol === 'https:' && ['x.com','twitter.com','codex-resets.com','ai-resets.com'].includes(u.hostname) ? u.href : ''; } catch { return ''; } };
+const safeUrl = (url) => { try { const u = new URL(url); return u.protocol === 'https:' && ['x.com','twitter.com','codex-resets.com'].includes(u.hostname) ? u.href : ''; } catch { return ''; } };
 const getText = (r) => String(r?.text || '').replace(/https:\/\/t\.co\/\S+/g, '').trim();
 function summary(r) { return r?.summaryZh || ''; }
 function titleFor(r) { return r?.status === 'scheduled' ? 'Codex 重置已有新预告' : r?.source?.type === 'observed' ? '发现一条额度重置观测记录' : r?.reset_type === 'banked' ? 'Codex 储备重置有新记录' : 'Codex 额度重置有新记录'; }

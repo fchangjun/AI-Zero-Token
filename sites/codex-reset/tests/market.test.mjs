@@ -1,22 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { parseAmount, parsePricePage, parseFx, PLANS } from '../lib/market.mjs';
+import { parseFx } from '../public/market-data.js';
 import { convertQuote, rankedRegions } from '../public/market-utils.js';
 const data=JSON.parse(fs.readFileSync(new URL('../public/data/prices.json',import.meta.url)));
 
-test('locale currency amounts keep thousands and decimals distinct',()=>{
-  for(const [label,channel,expected] of [
-    ['CLP 428,563','web_direct',428563],['₹1,694.07','web_direct',1694.07],
-    ['5 599,00 kr','app_store',5599],['R$ 2.599,90','app_store',2599.9],
-    ['14.199.000đ','app_store',14199000],['Rp 9,399juta','app_store',9399000],
-    ['Rp 75ribu','app_store',75000],['HUF199,990.00','app_store',199990],
-    ['599,00 USD','app_store',599],['¥84,000','app_store',84000],
-  ])assert.equal(parseAmount(label,channel),expected,label);
-  assert.equal(parseAmount('¥0','web_direct'),null);
-  assert.equal(parseAmount('not available','web_direct'),null);
-});
-test('all captured rows have positive amounts and official provenance',()=>{
+test('all captured rows have positive amounts and official lookup links',()=>{
   assert.deepEqual(data.plans.map(p=>p.usd),[8,20,100,200,500]);
   for(const p of data.plans){
     assert.equal(new Set(p.quotes.map(q=>q.country+q.channel)).size,p.quotes.length);
@@ -49,8 +38,7 @@ test('stale FX and the older side of cross rates are exposed',()=>{
   const q=convertQuote({amount:20,currency:'EUR'},fx,20);
   assert.equal(q.fxUpdatedAt,'2026-10-12T00:00:00Z');assert.equal(q.fxStale,true);
 });
-test('changed upstream HTML and incomplete FX fail closed',()=>{
-  assert.throws(()=>parsePricePage('<html>maintenance</html>',PLANS[0]));
+test('incomplete FX fails closed',()=>{
   assert.throws(()=>parseFx({result:'success',base:'EUR',rates:{CNY:7}}));
   assert.throws(()=>parseFx({result:'success',base:'USD',rates:{CNY:7}}));
 });

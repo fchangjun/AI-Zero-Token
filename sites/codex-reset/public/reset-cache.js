@@ -1,5 +1,5 @@
 const validDate=value=>typeof value==='string'&&Number.isFinite(Date.parse(value));
-const safeUrl=value=>{try{const url=new URL(value);return url.protocol==='https:'&&['x.com','twitter.com','codex-resets.com','ai-resets.com'].includes(url.hostname)?url.href:'';}catch{return '';}};
+const safeUrl=value=>{try{const url=new URL(value);return url.protocol==='https:'&&['x.com','twitter.com','codex-resets.com'].includes(url.hostname)?url.href:'';}catch{return '';}};
 const validSource=source=>source&&((source.type==='observed'&&Boolean(safeUrl(source.url)))||(source.type==='x_post'&&source.author==='thsottiaux'&&/^https:\/\/(?:x|twitter)\.com\/thsottiaux\/status\/\d+(?:[/?#]|$)/.test(safeUrl(source.url))));
 const validRecord=record=>record&&typeof record.id==='string'&&record.id.length>0&&validDate(record.announced_at)&&['regular','banked'].includes(record.reset_type)&&validSource(record.source);
 const validStat=value=>value===null||(Number.isFinite(value)&&value>=0);

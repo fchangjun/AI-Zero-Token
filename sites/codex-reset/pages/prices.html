@@ -30,7 +30,7 @@
 
     </section>
 
-    <section class="regional-section" id="regional-prices" aria-labelledby="details-heading"><div class="section-heading"><div><span class="eyebrow muted">02 / EXPLORE EVERY REGION</span><h2 id="details-heading">好价格，经得起比较。</h2></div><a id="priceai-link" href="https://priceai.cc/official-prices/chatgpt__plus-monthly" target="_blank" rel="noopener noreferrer" class="text-link">查看 PriceAI 完整列表 ↗</a></div>
+    <section class="regional-section" id="regional-prices" aria-labelledby="details-heading"><div class="section-heading"><div><span class="eyebrow muted">02 / EXPLORE EVERY REGION</span><h2 id="details-heading">好价格，经得起比较。</h2></div></div>
       <div class="price-panel"><div class="detail-toolbar"><div class="plan-tabs" role="group" aria-label="订阅档位"><button data-plan="go" aria-pressed="false">Go <small>$8</small></button><button data-plan="plus" class="selected" aria-pressed="true">Plus <small>$20</small></button><button data-plan="pro100" aria-pressed="false">Pro <small>$100</small></button><button data-plan="pro200" aria-pressed="false">Pro <small>$200</small></button><button data-plan="pro500" aria-pressed="false">Pro <small>$500</small></button></div><div class="table-filters"><label class="search-box"><span aria-hidden="true">⌕</span><input id="region-search" type="search" placeholder="搜索地区、代码或币种" aria-label="搜索地区、代码或币种"></label><select id="detail-channel" aria-label="地区价格渠道"><option value="all">全部渠道</option><option value="web_direct">官网直购</option><option value="app_store">iOS Store</option></select><select id="price-sort" aria-label="价格排序"><option value="asc">价格从低到高</option><option value="desc">价格从高到低</option><option value="region">按地区名称</option></select></div></div>
       <div class="detail-summary"><span id="detail-summary">正在读取报价</span><span id="detail-baseline">标准美元价 —</span></div>
       <div class="price-table-scroll"><table class="price-table"><thead><tr><th scope="col">地区 / 渠道</th><th scope="col">当地原价</th><th scope="col">人民币估算 <span>↕</span></th><th scope="col">相对标准价</th><th scope="col">报价依据</th></tr></thead><tbody id="price-rows"></tbody></table></div><p id="no-results" class="empty-prices" hidden>没有匹配的地区，试试国家代码或货币代码。</p><div class="table-footer"><span id="table-count">—</span><button class="button secondary" id="load-prices" hidden>查看更多地区 ↓</button><a href="#ranking-heading">回到 Top 3 ↑</a></div></div>
@@ -43,12 +43,12 @@
     </section>
     <details class="data-details" id="data-methodology"><summary>数据说明</summary><div>
       <p id="price-status" role="status">报价更新时间</p><p id="fx-time">汇率更新时间</p>
-      <p>地区报价来自 <a href="https://priceai.cc/official-prices/platforms/chatgpt" target="_blank" rel="noopener noreferrer">PriceAI</a>，汇率来自 <a href="https://exchangerate.dev/docs/api-reference" target="_blank" rel="noopener noreferrer">ExchangeRate.dev</a>（日内行情约延迟 15 分钟）。每 5 分钟尝试更新，网络不可用时保留已保存数据。</p>
+      <p>地区价格使用本站以静态 JSON 维护的历史参考快照，每条保留官方查询地址；更新报价后随站点发布。人民币换算采用 <a href="https://exchangerate.dev/docs/api-reference" target="_blank" rel="noopener noreferrer">ExchangeRate.dev</a> 参考汇率（日内行情约延迟 15 分钟），浏览器每 5 分钟尝试刷新汇率，网络不可用时保留已保存数据。</p>
       <p>比较 ChatGPT 月度订阅，覆盖官网与 iOS 已收录地区；每个地区取最低价，不含零元促销。省幅相对美区标准月价，人民币为估算，购买资格、税费与成交价以官方结账页为准。</p>
       <p>美区档位参考 <a href="https://learn.chatgpt.com/docs/pricing" target="_blank" rel="noopener noreferrer">OpenAI 定价</a>，核对日期 <span id="usd-verified">2026-10-13</span>。本站为独立第三方信息页。</p>
     </div></details>
   </main>
-  <footer class="wrap"><span class="footer-brand">↗ <b>CODEX 情报站</b><span>让每次选择，都有依据。</span></span><span><a href="https://priceai.cc/official-prices/platforms/chatgpt" target="_blank" rel="noopener noreferrer">PriceAI ↗</a><a href="https://exchangerate.dev" target="_blank" rel="noopener noreferrer">ExchangeRate.dev ↗</a><a href="/resets">重置动态 ↗</a><a href="{{AZT_REPO_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="repo" data-azt-placement="footer">AI Zero Token 项目 ↗</a></span></footer>
+  <footer class="wrap"><span class="footer-brand">↗ <b>CODEX 情报站</b><span>让每次选择，都有依据。</span></span><span><a href="/">今日情报 ↗</a><a href="/resets">重置动态 ↗</a><a href="{{AZT_REPO_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="repo" data-azt-placement="footer">AI Zero Token 项目 ↗</a></span></footer>
   <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/prices.js"></script>
 </body></html>
