@@ -1,0 +1,23 @@
+{
+  "name": "codex-intel-station",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Codex 情报站：静态地区比价、额度重置动态和通告分享",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node scripts/preview.mjs --watch",
+    "preview": "node scripts/preview.mjs",
+    "build": "node scripts/build-static.mjs",
+    "build:static": "node scripts/build-static.mjs",
+    "package:static": "node scripts/package-static.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "test:data": "node --test tests/*.test.mjs",
+    "data:check": "node scripts/market-data.mjs check",
+    "data:import": "node scripts/market-data.mjs import",
+    "data:update-fx": "node scripts/market-data.mjs update-fx"
+  }
+}

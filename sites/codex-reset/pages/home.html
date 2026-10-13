@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173e32">
+  <title>情报总览 · Codex 情报站</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/home.css"><link rel="stylesheet" href="/intel-share.css">
+</head>
+<body class="home-page">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="site-header wrap">
+    <a class="brand" href="/"><span class="brand-icon" aria-hidden="true">↗</span><span>Codex 情报站<small>THE CODEX INTELLIGENCE</small></span></a>
+    <nav aria-label="主导航"><a href="/" class="active" aria-current="page">情报总览</a><a href="/prices/">订阅比价</a><a href="/resets/">重置动态</a></nav>
+    <div class="header-actions">
+      <button class="button dark header-share" data-share-intel aria-label="分享今日情报">分享<span class="share-label-rest">今日情报</span><span aria-hidden="true">↗</span></button>
+      <a class="header-github" href="{{AZT_REPO_URL}}" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看 AI Zero Token（新窗口）" title="GitHub · AI Zero Token" data-azt-action="repo" data-azt-placement="header"><svg viewBox="0 0 16 16" width="23" height="23" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+    </div>
+  </header>
+  <main class="wrap" id="main">
+    <section class="home-hero" aria-labelledby="home-title">
+      <div class="hero-copy"><div class="eyebrow"><span class="live-dot"></span> <span id="home-hero-label">YOUR DAILY CODEX BRIEF</span></div><h1 id="home-title">好价格，新信号。<span>一眼看清。</span></h1><p>重置通告 × 全球订阅比价，一份情报就够了。</p></div>
+      <aside class="hero-note" aria-label="价格覆盖范围"><span id="home-region-count">— <small>已收录地区</small></span><span>官方渠道 · 人民币参考价</span></aside>
+    </section>
+
+    <div id="home-feed">
+    <!-- home-prices:start -->
+    <section id="home-prices-section" class="featured-section" aria-labelledby="featured-title">
+      <div class="section-heading home-section-heading"><div><span class="eyebrow muted" id="home-prices-eyebrow">01 / SUBSCRIPTION SHORTLIST</span><h2 id="featured-title">Plus 与 Pro，哪里订阅更划算？</h2></div><a class="home-more" href="/prices/">查看完整比价 <span aria-hidden="true">↗</span></a></div>
+      <div class="featured-deals" id="featured-deals"><p class="home-empty">正在整理已收录地区的订阅报价。</p></div>
+      <div class="home-data-bar"><button id="home-refresh" class="text-button">更新价格 ↻</button></div>
+      <p class="home-data-alert" id="home-data-alert" role="status" hidden></p>
+    </section>
+    <!-- home-prices:end -->
+
+    <!-- home-resets:start -->
+    <section id="home-resets-section" class="home-resets-section" aria-labelledby="home-resets-title">
+      <div class="section-heading home-section-heading"><div><span class="eyebrow muted" id="home-resets-eyebrow">02 / CODEX RESET WATCH</span><h2 id="home-resets-title">下一次重置，有消息了吗？</h2></div><a class="home-more" href="/resets/">重置日历与历史 <span aria-hidden="true">↗</span></a></div>
+      <div id="home-reset-grid" class="home-reset-grid"><p class="home-empty">正在读取公开重置记录。</p></div>
+      <div class="reset-provenance"><button id="home-reset-refresh" class="text-button">更新通告 ↻</button></div>
+    </section>
+    <!-- home-resets:end -->
+    </div>
+
+    <section class="home-azt" id="azt" aria-labelledby="home-azt-title"><div class="home-azt-symbol" aria-hidden="true">↗</div><div class="home-azt-copy"><span class="eyebrow">WITH AI ZERO TOKEN</span><h2 id="home-azt-title">把额度，用在真正的工作上。</h2><p>用 AI Zero Token 管理本地账号池、接入外部 API，在桌面端查看重置日历。</p></div><div class="home-azt-actions"><a class="button dark" href="{{AZT_DOWNLOAD_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="download" data-azt-placement="home-card">下载 AI Zero Token <span aria-hidden="true">↗</span></a><a href="{{AZT_GUIDE_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="guide" data-azt-placement="home-card">先看看使用指南 →</a></div></section>
+    <details class="data-details" id="data-methodology"><summary>数据说明</summary><div>
+      <p id="home-market-time">报价与汇率更新时间</p><p id="home-reset-time" role="status">通告更新时间</p><p id="home-reset-note"></p>
+      <p>地区报价来自 PriceAI，人民币按参考汇率估算；最低价限于已收录地区与渠道，价差相对美区标准月价。购买资格、税费与成交价以结账页为准。</p>
+      <p>重置消息来自 Codex Resets 与 X 原帖；时间均为北京时间。<a href="/prices/#data-methodology">查看完整数据说明 ↗</a></p>
+    </div></details>
+  </main>
+  <footer class="wrap"><span class="footer-brand">↗ <b>CODEX 情报站</b><span>让每次选择，都有依据。</span></span><span><a href="https://priceai.cc/official-prices/platforms/chatgpt" target="_blank" rel="noopener noreferrer">PriceAI ↗</a><a href="https://codex-resets.com" target="_blank" rel="noopener noreferrer">Codex Resets ↗</a><a href="{{AZT_REPO_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="repo" data-azt-placement="footer">AI Zero Token 项目 ↗</a></span></footer>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/home.js"></script>
+</body>
+</html>

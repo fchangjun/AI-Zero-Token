@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173e32"><meta name="description" content="Codex 情报站：ChatGPT 各档位全球地区比价、人民币汇率换算、每档最便宜的 Top 3，以及 Codex 重置动态和中英文通告分享。">
+  <title>今日比价 · Codex 情报站</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/intel-share.css"><link rel="stylesheet" href="/prices.css">
+</head>
+<body class="prices-page">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="site-header wrap">
+    <a class="brand" href="/"><span class="brand-icon" aria-hidden="true">↗</span><span>Codex 情报站<small>THE CODEX INTELLIGENCE</small></span></a>
+    <nav aria-label="主导航"><a href="/">情报总览</a><a href="/prices/" class="active" aria-current="page">订阅比价</a><a href="/resets">重置动态</a></nav>
+    <div class="header-actions">
+      <button class="button dark header-share" data-share-intel aria-label="分享今日情报">分享<span class="share-label-rest">今日情报</span><span aria-hidden="true">↗</span></button>
+      <a class="header-github" href="{{AZT_REPO_URL}}" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看 AI Zero Token（新窗口）" title="GitHub · AI Zero Token" data-azt-action="repo" data-azt-placement="header"><svg viewBox="0 0 16 16" width="23" height="23" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+    </div>
+  </header>
+  <main class="wrap" id="main">
+    <section class="price-hero">
+      <div><div class="eyebrow"><span class="live-dot"></span> GLOBAL PRICES. LOCAL INSIGHTS.</div><h1>全球价格，<br><span>一眼比明白。</span><i aria-hidden="true">✳</i></h1><p>比较官方月度订阅价格，统一换算成人民币。</p><div class="hero-tags"><span>5 个订阅档位</span><span id="region-count">正在读取地区</span><span>官网 / iOS</span></div></div>
+      <aside class="fx-card" aria-labelledby="fx-title"><div class="card-top"><span class="eyebrow" id="fx-title">人民币换算基准</span><span class="fx-icon" aria-hidden="true">⇄</span></div><div class="fx-number"><span>$1 <small>USD</small></span><b>=</b><strong id="fx-rate">—</strong></div><div class="fx-card-rule"></div><div class="fx-meta"><span><i class="live-dot"></i><span id="fx-state">正在读取参考汇率</span></span><button class="text-button" id="refresh-market">检查更新 ↻</button></div></aside>
+    </section>
+
+    <section class="ranking-section" aria-labelledby="ranking-heading">
+      <div class="section-heading ranking-heading"><div><span class="eyebrow muted" id="report-date">01 / TODAY'S SHORTLIST</span><h2 id="ranking-heading">每个档位，最低价 Top 3<span class="heading-dot">.</span></h2></div><div class="channel-switch" role="group" aria-label="比价渠道"><button data-channel="all" class="selected" aria-pressed="true">全部渠道</button><button data-channel="web_direct" aria-pressed="false">官网直购</button><button data-channel="app_store" aria-pressed="false">iOS Store</button></div></div>
+      <div class="ranking-note">按人民币参考价排序</div>
+      <div id="market-alert" class="market-alert" role="status" hidden></div>
+      <div class="ranking-board"><div class="ranking-labels" aria-hidden="true"><span>订阅档位 / 标准美元价</span><span><b>01</b> 最低价格</span><span><b>02</b> 第二低价</span><span><b>03</b> 第三低价</span></div><div id="rankings" aria-live="polite"><div class="loading-prices">正在为你整理各档位的全球价格…</div></div></div>
+
+    </section>
+
+    <section class="regional-section" id="regional-prices" aria-labelledby="details-heading"><div class="section-heading"><div><span class="eyebrow muted">02 / EXPLORE EVERY REGION</span><h2 id="details-heading">好价格，经得起比较。</h2></div><a id="priceai-link" href="https://priceai.cc/official-prices/chatgpt__plus-monthly" target="_blank" rel="noopener noreferrer" class="text-link">查看 PriceAI 完整列表 ↗</a></div>
+      <div class="price-panel"><div class="detail-toolbar"><div class="plan-tabs" role="group" aria-label="订阅档位"><button data-plan="go" aria-pressed="false">Go <small>$8</small></button><button data-plan="plus" class="selected" aria-pressed="true">Plus <small>$20</small></button><button data-plan="pro100" aria-pressed="false">Pro <small>$100</small></button><button data-plan="pro200" aria-pressed="false">Pro <small>$200</small></button><button data-plan="pro500" aria-pressed="false">Pro <small>$500</small></button></div><div class="table-filters"><label class="search-box"><span aria-hidden="true">⌕</span><input id="region-search" type="search" placeholder="搜索地区、代码或币种" aria-label="搜索地区、代码或币种"></label><select id="detail-channel" aria-label="地区价格渠道"><option value="all">全部渠道</option><option value="web_direct">官网直购</option><option value="app_store">iOS Store</option></select><select id="price-sort" aria-label="价格排序"><option value="asc">价格从低到高</option><option value="desc">价格从高到低</option><option value="region">按地区名称</option></select></div></div>
+      <div class="detail-summary"><span id="detail-summary">正在读取报价</span><span id="detail-baseline">标准美元价 —</span></div>
+      <div class="price-table-scroll"><table class="price-table"><thead><tr><th scope="col">地区 / 渠道</th><th scope="col">当地原价</th><th scope="col">人民币估算 <span>↕</span></th><th scope="col">相对标准价</th><th scope="col">报价依据</th></tr></thead><tbody id="price-rows"></tbody></table></div><p id="no-results" class="empty-prices" hidden>没有匹配的地区，试试国家代码或货币代码。</p><div class="table-footer"><span id="table-count">—</span><button class="button secondary" id="load-prices" hidden>查看更多地区 ↓</button><a href="#ranking-heading">回到 Top 3 ↑</a></div></div>
+    </section>
+
+
+    <section class="azt-card" id="azt" aria-labelledby="azt-heading">
+      <div class="azt-card-intro"><span class="eyebrow">YOUR LOCAL AI WORKSPACE</span><h2 id="azt-heading">AI Zero Token</h2><p>管理本地账号池、接入外部 API、查看重置日历。</p></div>
+      <div class="azt-card-action"><span class="azt-wordmark"><span aria-hidden="true">↗</span> AI Zero Token</span><div class="azt-actions"><a class="button dark" href="{{AZT_DOWNLOAD_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="download" data-azt-placement="prices-card">下载桌面端 <span aria-hidden="true">↗</span></a><a class="button secondary" href="{{AZT_GUIDE_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="guide" data-azt-placement="prices-card">阅读使用指南</a></div><small>macOS / Windows · 本地单用户工具</small></div>
+    </section>
+    <details class="data-details" id="data-methodology"><summary>数据说明</summary><div>
+      <p id="price-status" role="status">报价更新时间</p><p id="fx-time">汇率更新时间</p>
+      <p>地区报价来自 <a href="https://priceai.cc/official-prices/platforms/chatgpt" target="_blank" rel="noopener noreferrer">PriceAI</a>，汇率来自 <a href="https://exchangerate.dev/docs/api-reference" target="_blank" rel="noopener noreferrer">ExchangeRate.dev</a>（日内行情约延迟 15 分钟）。每 5 分钟尝试更新，网络不可用时保留已保存数据。</p>
+      <p>比较 ChatGPT 月度订阅，覆盖官网与 iOS 已收录地区；每个地区取最低价，不含零元促销。省幅相对美区标准月价，人民币为估算，购买资格、税费与成交价以官方结账页为准。</p>
+      <p>美区档位参考 <a href="https://learn.chatgpt.com/docs/pricing" target="_blank" rel="noopener noreferrer">OpenAI 定价</a>，核对日期 <span id="usd-verified">2026-10-13</span>。本站为独立第三方信息页。</p>
+    </div></details>
+  </main>
+  <footer class="wrap"><span class="footer-brand">↗ <b>CODEX 情报站</b><span>让每次选择，都有依据。</span></span><span><a href="https://priceai.cc/official-prices/platforms/chatgpt" target="_blank" rel="noopener noreferrer">PriceAI ↗</a><a href="https://exchangerate.dev" target="_blank" rel="noopener noreferrer">ExchangeRate.dev ↗</a><a href="/resets">重置动态 ↗</a><a href="{{AZT_REPO_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="repo" data-azt-placement="footer">AI Zero Token 项目 ↗</a></span></footer>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/prices.js"></script>
+</body></html>

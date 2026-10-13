@@ -1,0 +1,116 @@
+# Codex 情报站
+
+全球订阅比价、Codex 重置动态与中英文通告分享。网站源码放在 AI Zero Token 项目的 `sites/codex-reset/`，可以独立构建和部署，不依赖 AZT 桌面应用、数据库或常驻后端。
+
+## 构建与静态部署
+
+使用 Node.js 22 或以上版本，在本目录运行：
+
+```sh
+npm run build
+```
+
+构建脚本只使用 Node.js 内置模块；单独生成静态站点不需要安装项目依赖，也可直接运行 `node scripts/build-static.mjs`。构建过程不请求外部接口。
+
+输出目录为 `out/`，包含汇总首页 `index.html`、完整比价页 `prices/index.html`、通告页 `resets/index.html`，以及所有样式、脚本、头像与 JSON 数据。将整个目录上传到支持静态文件的托管平台即可。平台配置：
+
+| 配置项 | 值 |
+| --- | --- |
+| 项目目录 | `sites/codex-reset` |
+| 构建命令 | `node scripts/build-static.mjs` |
+| 发布目录 | `out` |
+| 服务端 / 数据库 / 环境变量 | 无需配置 |
+
+页面链接和资源使用相对路径，支持独立域名以及 GitHub Pages 一类的子目录部署。首页展示 Plus 与可切换档位的 Pro 美区/最低地区对比，并汇总重置通告。比价详情支持 `prices/?plan=pro200&country=PH&channel=web_direct#regional-prices`。全站统一使用「分享今日情报」：一张精简图片包含最新重置信号、北京时间参考时点、Tibo 中英文摘录，以及 Plus / Pro 最低价；旧 `resets/?share=latest` 入口仍会打开这一功能。建议使用 HTTPS，以支持浏览器的剪贴板与系统分享能力；不支持系统分享的浏览器仍可保存 PNG 或复制文字。通过本地 HTTP 服务预览，避免用 `file://` 打开 ES 模块页面。
+
+工程已移除 Next、Vinext、React、Cloudflare Worker、API 路由与数据库脚手架；`package.json` 没有第三方依赖。`npm run dev` 构建并监听文件变化，`npm run preview` 预览当前源码，两者仅启动本机静态文件预览，不是部署所需的服务端。默认地址为 `http://127.0.0.1:4173/`。修改构建脚本后重启预览。
+
+在 AZT 仓库根目录也可以运行：
+
+```sh
+npm run site:dev
+npm run site:check
+npm run site:build
+npm run site:package
+```
+
+`site:package` 输出 `sites/codex-reset/outputs/codex-intel-static.zip`。解压后直接得到静态站文件，不含 Node 运行时、源码凭据、Worker 或数据库。AZT 桌面和 npm 发布仍使用原来的命令，站点不会进入其安装包。
+
+### 多平台配置
+
+Vercel 和 Netlify 已分别提供 `vercel.json`、`netlify.toml`，导入 AZT 仓库时把项目根目录 / Base directory 设为 `sites/codex-reset`。构建命令 `npm run build`、发布目录 `out`；不要选择 Next.js 框架或配置 Functions。字段参考 [Vercel](https://vercel.com/docs/project-configuration/vercel-json) 与 [Netlify](https://docs.netlify.com/build/configure-builds/file-based-configuration/) 官方文档。其他静态托管平台使用同样目录，或直接上传解压后的 ZIP。
+
+正式站点部署到 [GitHub Pages](https://fchangjun.github.io/AI-Zero-Token/)。根仓库的 `.github/workflows/codex-intel-static.yml` 在 `master` 的站点文件变更后自动检查、打包并部署 `out/`，Pull Request 只检查和打包，也可手动触发。仓库 Settings → Pages 的 Source 设为 GitHub Actions。工作流读取 Pages 的真实 URL，构建时设置 `SITE_URL` 和 `SITE_INDEXABLE=true`，保留 `.nojekyll`，并提供可下载的静态 ZIP；本地默认配置仍用于私有 Sites 预览。
+
+### 正式域名与 SEO
+
+`site.config.json` 集中维护站名、站点 URL、是否允许索引和 AZT 下载/指南/项目地址。当前配置是私有 Sites 预览地址，默认 `indexable: false`。公开部署时填写实际正式域名并将 `indexable` 设为 `true`，或在构建环境设置：
+
+```sh
+SITE_URL=https://example.com/intel/ SITE_INDEXABLE=true npm run build
+# 或用跨平台命令参数
+npm run build -- --site-url https://example.com/intel/ --indexable
+```
+
+上面的域名仅为填写格式示例。打包 ZIP 时同样可用 `SITE_URL` / `SITE_INDEXABLE`，也可修改配置后运行 `npm run package:static`。构建生成 canonical、Open Graph、Twitter card、JSON-LD、sitemap.xml、robots.txt 和 404 页，并把榜单、地区表与近期通告预渲染为 HTML。页面不执行 JS 时仍能读到数据和来源；交互筛选及图片分享需要 JS。社交封面已作为本地 PNG 保存。
+
+搜索引擎通常只读取域名根路径的 robots.txt，子目录部署还需由域名所有者在根 robots 中声明相应规则或 sitemap。修改 SEO 配置不会开放私有站点。多个部署镜像建议选择一个正式主域名作为 canonical，避免内容重复。
+
+### AZT 引流入口
+
+三个页面提供桌面下载、使用指南与 GitHub 项目入口；分享图保留 Tibo/X 来源并在底部标注 AZT。链接自动携带 `utm_source=codex-intel`、`utm_medium=website` 和页面对应的 `utm_campaign`。这些参数只是来源标记，不代表已接入访问统计；当前没有第三方统计脚本、追踪 Cookie 或数据收集服务。
+
+## 维护地区价格
+
+`public/data/prices.json` 是地区价格的唯一维护源。报价与汇率分别保留时间，构建不会把旧数据的日期改成今天。
+
+```sh
+# 修改 JSON 后检查结构、价格与必要字段
+npm run data:check
+
+# 导入已核对的新快照（先校验，再写入维护文件）
+npm run data:import -- /absolute/path/to/prices.json
+
+# 只更新汇率，不改写地区价格的核对时间
+npm run data:update-fx
+
+# 将更新后的数据重新打包，再部署整个 out/ 目录
+npm run build:static
+```
+
+价格不需要随每次访问重新采集。建议在确认官方价格或档位发生变化时更新报价；定期复核也应保留每条价格的真实来源和核对时间。不要只修改时间以制造新鲜数据，也不要将未经确认的地区价格填成零。此项目没有创建自动更新任务；以后如需定时更新，可在 CI 中运行审核后的数据更新流程并重新部署。
+
+现有地区价格快照来自此前收录的 PriceAI ChatGPT 地区报价，保留官网直购、Apple App Store 的渠道及原始来源。后续更新应使用获准使用的数据或自行核对官方来源，仓库公开不等于生产报价数据可任意再分发。标准美元档位参考 [OpenAI 定价说明](https://learn.chatgpt.com/docs/pricing)，核对日期由数据文件记录。
+
+人民币估算 = 当地原价 ÷ 每美元对应当地货币 × 美元兑人民币汇率。排序使用原始精度，显示保留两位小数。Top 3 是各档位、所选渠道内的三个不同地区，同地区只取最低报价；缺失汇率、零元促销和未确认报价不参与排名。比较的是 ChatGPT 月度订阅，不是 API 余额或额外 Codex 点数。税费、银行汇差、支付手续费及购买资格以最终官方结账为准。
+
+## 网络不稳定时
+
+构建会把价格与通告快照直接内嵌到对应 HTML。访问者拿到页面和静态资源后，即使外部汇率或通告接口超时，也能先看到打包时的数据，之后再尝试更新；失败时保留可用快照并显示时间和连接状态。浏览器缓存只是补充，清理缓存不会删除部署包中的快照。
+
+外部汇率用于更新人民币估算，地区原价不会依赖访客实时请求第三方报价网站。汇率来源为 [ExchangeRate.dev](https://exchangerate.dev/docs/api-reference)，免费数据可能有延迟，不应将最近可用汇率标成逐秒实时行情。
+
+这不保证首次完全断网时能打开网站：HTML、脚本、样式仍需从静态托管站点加载。本项目未提供 Service Worker 离线安装。当前方案解决的是外部数据接口不稳定导致页面无内容的问题。
+
+## 通告与分享
+
+`public/snapshot.json` 保存已核对的通告快照与中文译文。重置动态来源于 [Codex Resets 公共 API](https://codex-resets.com/api/docs)，中文信息编排参考 [AI Resets](https://ai-resets.com/)。更新快照时保留 API 生成时间、实际采集时间、原帖地址和原文，译文不确定时不要伪装成完整翻译。
+
+统一情报卡保留 Tibo 头像、X 来源、发布时间、中英文关键消息，以及独立整理的 Plus / Pro 价格。图片固定为 1080 × 1160，长文明确标注摘录，不再分成价格和通告两套分享，也无需选择配色、尺寸或附录。分享使用打开窗口时的价格、汇率与通告快照；后续数据更新不改动已经预览的图片。支持保存 PNG、复制摘要和系统分享回退，所有图片均在浏览器生成。有核对译文时优先显示中文译文。图片不显示长说明、完整来源网址或逐卡报价时间；X 原帖仍在复制摘要中保留，报价与汇率时间集中在各页面的「数据说明」。
+
+首页优先展示有效的未来预告，或 24 小时内的新公开通告；没有新消息时，订阅比价在前。预告参考时点过后仍等待完成确认，最多继续置顶 24 小时；更晚的完成记录会覆盖旧预告。有新预告时重点显示预计北京时间与倒计时；只有预告但没有时间时突出“已有预告”。没有有效新预告时，首页、重置详情与分享图都突出最近一次已确认重置的确认通告时间和中英文原帖，超过 24 小时也保留这一展示，仅将比价模块移至首页前面。原帖仅给出 EOD 等模糊窗口时标为参考时间；不按历史间隔预测，也不把倒计时归零当作已完成。静态预渲染和浏览器使用同一判断规则，打开页面后每 30 秒校准显示。
+
+## 源码与发布历史
+
+本目录是 AZT 主仓库中的普通目录，不再含嵌套 `.git`。原 Sites 提交历史保留在本机忽略目录 `.state/sites/codex-reset-source/`，仅用于独立同步 Sites 云端源码。不要在正式源码目录或 AZT 根目录运行 Sites source helper，发布约束见 [AGENTS.md](AGENTS.md)。普通静态托管无需该发布目录。
+
+## 验证
+
+```sh
+npm run check
+npm run data:check
+npm run build
+npm run package:static
+```
+
+静态页面可独立部署，不需要运行 AZT 桌面发布流程。站点是独立第三方信息页，与 OpenAI 无隶属关系；不读取个人额度，不提供代付，也不会代用户向社群发送消息。

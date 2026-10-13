@@ -1,0 +1,10 @@
+{
+  "siteName": "Codex 情报站",
+  "siteUrl": "https://azt-reset-radar.regal-root-8569.chatgpt.site/",
+  "indexable": false,
+  "azt": {
+    "repoUrl": "https://github.com/fchangjun/AI-Zero-Token",
+    "downloadUrl": "https://github.com/fchangjun/AI-Zero-Token/releases/latest",
+    "guideUrl": "https://github.com/fchangjun/AI-Zero-Token/blob/master/docs/GETTING_STARTED.zh-CN.md"
+  }
+}

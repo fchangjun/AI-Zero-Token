@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "generatedAt": "2026-10-13T02:10:43.167Z",
+  "status": {
+    "latest_reset": {
+      "id": "2109132167112782291",
+      "reset_type": "regular",
+      "announced_at": "2026-10-11T04:01:09.000Z",
+      "text": "Put the reset in the bag. All propagated. https://t.co/HGxaD3Zdcj",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2109132167112782291"
+      },
+      "summaryZh": "本次普通额度重置已完成。",
+      "translationZh": "这次重置已完成，现已全部生效。"
+    },
+    "scheduled_reset": {
+      "id": "2109812360596865224",
+      "status": "scheduled",
+      "reset_type": "regular",
+      "announced_at": "2026-10-13T01:03:59.000Z",
+      "scheduled_for": "2026-10-13T07:00:00.000Z",
+      "text": "Global reset landing by EOD PST time. Enjoy",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2109812360596865224"
+      },
+      "summaryZh": "Tibo 预告将进行一次全局额度重置，仍待完成确认。",
+      "translationZh": "全局重置将于太平洋标准时间（PST）今天结束前生效。尽情使用吧。"
+    },
+    "active_watch": null,
+    "stats": {
+      "total": 60,
+      "last_reset_at": "2026-10-11T04:01:09.000Z",
+      "days_since_last": 1.9,
+      "avg_interval_days": 6.6
+    }
+  },
+  "records": [
+    {
+      "id": "2109132167112782291",
+      "reset_type": "regular",
+      "announced_at": "2026-10-11T04:01:09.000Z",
+      "text": "Put the reset in the bag. All propagated. https://t.co/HGxaD3Zdcj",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2109132167112782291"
+      },
+      "summaryZh": "本次普通额度重置已完成。",
+      "translationZh": "这次重置已完成，现已全部生效。"
+    },
+    {
+      "id": "2108040921044639779",
+      "reset_type": "banked",
+      "announced_at": "2026-10-08T03:44:55.000Z",
+      "text": "Confirmed landed across all accounts. How are we doing so far? https://t.co/tzw7dNX4pN",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2108040921044639779"
+      },
+      "summaryZh": "本次储备重置已到账。"
+    }
+  ],
+  "historyComplete": false
+}

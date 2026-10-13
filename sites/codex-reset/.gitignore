@@ -1,0 +1,22 @@
+/node_modules/
+/out/
+/outputs/
+/qa/
+/work/
+*.tar
+*.tar.gz
+/.static-build-*/
+/.sites-runtime/
+/.agents/
+/.codex/
+/.vercel/
+/.netlify/
+/.env*
+*.log
+.DS_Store
+# Rebuildable artifacts from the former framework scaffold
+/dist/
+/.next/
+/.vinext/
+/.wrangler/
+*.tsbuildinfo

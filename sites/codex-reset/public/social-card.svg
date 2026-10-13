@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f5f5ef"/>
+  <rect x="800" width="400" height="630" fill="#173e32"/>
+  <circle cx="1050" cy="316" r="205" fill="none" stroke="#386250" stroke-width="2"/>
+  <circle cx="1050" cy="316" r="145" fill="none" stroke="#386250" stroke-width="2"/>
+  <path d="M941 337 1065 214M976 214h89v90" fill="none" stroke="#d4e87c" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="96" cy="90" r="9" fill="#557659"/>
+  <text x="119" y="98" fill="#173e32" font-family="Arial,sans-serif" font-size="22" letter-spacing="3">THE CODEX INTELLIGENCE</text>
+  <text x="78" y="262" fill="#173e32" font-family="PingFang SC,Noto Sans CJK SC,Arial,sans-serif" font-size="79" font-weight="700">Codex 情报站</text>
+  <text x="82" y="338" fill="#57705e" font-family="PingFang SC,Noto Sans CJK SC,Arial,sans-serif" font-size="30">全球地区比价 · 额度重置动态</text>
+  <path d="M82 399H710" stroke="#d8ddd3" stroke-width="2"/>
+  <text x="82" y="458" fill="#173e32" font-family="PingFang SC,Noto Sans CJK SC,Arial,sans-serif" font-size="24">人民币估算  /  标准美元价  /  中英文通告分享</text>
+  <text x="82" y="551" fill="#6c796c" font-family="Arial,sans-serif" font-size="20" letter-spacing="2">POWERED BY AI ZERO TOKEN</text>
+</svg>

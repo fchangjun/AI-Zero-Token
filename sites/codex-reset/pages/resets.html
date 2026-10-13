@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173e32"><meta name="description" content="用中文了解 Codex 公开重置公告，查看历史日历，一键分享含 Tibo 头像和中英文原帖的通告图片。">
+  <title>重置动态 · Codex 情报站</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/home.css"><link rel="stylesheet" href="/reset-detail.css"><link rel="stylesheet" href="/intel-share.css">
+</head>
+<body class="reset-page">
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <header class="site-header wrap">
+    <a class="brand" href="/"><span class="brand-icon" aria-hidden="true">↻</span><span>Codex 情报站<small>THE CODEX INTELLIGENCE</small></span></a>
+    <nav aria-label="主导航"><a href="/">情报总览</a><a href="/prices/">订阅比价</a><a href="/resets" class="active" aria-current="page">重置动态</a></nav>
+    <div class="header-actions">
+      <button class="button dark header-share" data-share-intel aria-label="分享今日情报">分享<span class="share-label-rest">今日情报</span><span aria-hidden="true">↗</span></button>
+      <a class="header-github" href="{{AZT_REPO_URL}}" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看 AI Zero Token（新窗口）" title="GitHub · AI Zero Token" data-azt-action="repo" data-azt-placement="header"><svg viewBox="0 0 16 16" width="23" height="23" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg></a>
+    </div>
+  </header>
+  <main class="wrap" id="main">
+    <section class="intro" id="overview">
+      <div><div class="eyebrow"><span class="live-dot"></span> CODEX RESET TRACKER</div><h1 id="reset-detail-title">重置动态，<span>持续记录。</span></h1><p id="reset-detail-description">公开通告与历史重置记录。</p></div>
+      <div class="intro-aside"><span class="issue">THE RESET REPORT <b>↙</b></span><div class="date-today" id="today-label"></div><button class="text-button" id="refresh-button">↻ 刷新数据</button></div>
+    </section>
+
+    <section class="reset-detail-signal" aria-label="最新重置信号"><div id="reset-detail-grid" class="home-reset-grid"><p>正在读取公开重置信号。</p></div></section>
+
+    <section class="stats" aria-label="历史统计"><div><span>已收录重置</span><strong id="stat-total">—</strong><small>次公开记录</small></div><div><span>平均重置间隔</span><strong id="stat-average">—</strong><small>天 · 历史平均</small></div><div><span>历史最长间隔</span><strong id="stat-longest">—</strong><small>天 · 历史记录</small></div></section>
+
+    <section class="calendar-section" id="history"><div class="section-heading"><div><span class="eyebrow muted">01 / RESET CALENDAR</span><h2>把每一次重置，记下来。</h2></div><select id="calendar-range" aria-label="日历时间范围"><option value="26">最近 26 周</option><option value="52">最近 52 周</option></select></div><div class="calendar-panel"><div class="calendar-top"><span><i class="live-dot"></i> 重置足迹</span><span class="legend"><i class="cell regular"></i>常规重置<i class="cell banked"></i>储备重置<i class="cell"></i>无记录</span></div><div class="calendar-scroll"><div class="heatmap-months" id="heatmap-months"></div><div class="heatmap-body"><div class="day-labels"><span>一</span><span>三</span><span>五</span><span>日</span></div><div class="heatmap" id="heatmap" aria-label="重置历史日历"></div></div></div><div class="calendar-footer"><span id="calendar-detail" aria-live="polite">点击有颜色的日期，查看当天公告</span><span>按北京时间归档</span></div></div></section>
+
+    <section class="announcements-section" id="announcements"><div class="section-heading"><div><span class="eyebrow muted">02 / THE ANNOUNCEMENTS</span><h2>新消息，值得一起知道。</h2></div><a href="https://codex-resets.com/zh-CN" target="_blank" rel="noopener noreferrer" class="text-link">访问数据来源 ↗</a></div><div class="announcements-layout announcements-single"><div><div class="list-toolbar"><div class="tabs" role="group" aria-label="公告类型"><button data-filter="all" class="selected" aria-pressed="true">全部公告</button><button data-filter="regular" aria-pressed="false">常规重置</button><button data-filter="banked" aria-pressed="false">储备重置</button></div><button class="text-button" id="clear-date" hidden>清除日期筛选 ×</button></div><div id="announcement-list" aria-live="polite"></div><button class="load-more" id="load-more" hidden>查看更多公告 ↓</button></div></div></section>
+
+    <section class="azt-card" id="azt" aria-labelledby="azt-heading">
+      <div class="azt-card-intro"><span class="eyebrow">YOUR LOCAL AI WORKSPACE</span><h2 id="azt-heading">AI Zero Token</h2><p>管理本地账号池、接入外部 API、查看重置日历。</p></div>
+      <div class="azt-card-action"><span class="azt-wordmark"><span aria-hidden="true">↗</span> AI Zero Token</span><div class="azt-actions"><a class="button dark" href="{{AZT_DOWNLOAD_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="download" data-azt-placement="resets-card">下载桌面端 <span aria-hidden="true">↗</span></a><a class="button secondary" href="{{AZT_GUIDE_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="guide" data-azt-placement="resets-card">阅读使用指南</a></div><small>macOS / Windows · 本地单用户工具</small></div>
+    </section>
+    <details class="data-details" id="data-methodology"><summary>数据说明</summary><div>
+      <p id="sync-state" role="status">通告更新时间</p><p id="reset-time-note"></p>
+      <p>记录来自 <a href="https://codex-resets.com/api/docs" target="_blank" rel="noopener noreferrer">Codex Resets</a> 与 X 原帖，时间均为北京时间。每 5 分钟尝试同步，网络不可用时保留已有记录。</p>
+      <p>预告与历史间隔不代表个人额度已重置；账户实际额度以 Codex 显示为准。本站为独立第三方信息页。</p>
+    </div></details>
+  </main>
+  <footer class="wrap"><span class="footer-brand">↻ <b>CODEX 情报站</b><span>让创造持续发生。</span></span><span>参考与数据：<a href="https://ai-resets.com/" target="_blank" rel="noopener noreferrer">AI Resets ↗</a><a href="https://codex-resets.com/zh-CN" target="_blank" rel="noopener noreferrer">Codex Resets ↗</a><a href="{{AZT_REPO_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="repo" data-azt-placement="footer">AI Zero Token 项目 ↗</a></span></footer>
+
+
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
+</body></html>
