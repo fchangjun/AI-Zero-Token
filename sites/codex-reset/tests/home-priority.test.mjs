@@ -31,7 +31,7 @@ test('scheduled reset is first in static HTML with a qualified clock and matchin
   }
 });
 
-test('reference deadline transitions to waiting, then old news returns prices to the top', () => {
+test('reference deadline stays pending while older news returns prices to the top', () => {
   const due = renderHome(template, market, snapshot, Date.parse('2026-10-13T07:00:00Z'));
   assert.match(due, /data-reset-focus="overdue"/);
   assert.match(due, /id="home-reset-countdown">待确认<\/strong>/);
@@ -41,10 +41,12 @@ test('reference deadline transitions to waiting, then old news returns prices to
   assert.deepEqual(order(quiet), ['home-prices-section', 'home-resets-section']);
   assert.deepEqual(order(quiet), getHomeLayout(getResetFocus(snapshot, later)).sectionIds);
   assert.match(quiet, /<body class="home-page">/);
-  assert.match(quiet, /data-reset-focus="quiet"/);
-  assert.match(quiet, /id="home-reset-target">12:00<\/strong>/);
+  assert.match(quiet, /data-reset-focus="overdue"/);
+  assert.match(quiet, /id="home-reset-target">15:00<\/strong>/);
+  assert.match(quiet, /id="home-reset-countdown">待确认<\/strong>/);
+  assert.match(quiet, /data-reset-panel="latest"/);
+  assert.match(quiet, /data-reset-panel="next"/);
   assert.match(quiet, /id="home-prices-eyebrow">01 \/ SUBSCRIPTION SHORTLIST/);
-  assert.doesNotMatch(quiet, /id="home-reset-target">15:00/);
   assert.equal((quiet.match(/data-share-intel/g) || []).length, 1);
   assert.doesNotMatch(quiet, /data-share-price|\?share=scheduled/);
 });
@@ -70,8 +72,11 @@ test('reset detail shares forecast and confirmed headings with its server-render
   const future = renderResets(detail, snapshot, Date.parse('2026-10-13T04:42:00Z'));
   assert.match(future, /id="reset-detail-title">下一次重置，<span>有新预告/);
   assert.match(future, /id="home-reset-target">15:00/);
-  const quiet = renderResets(detail, snapshot, Date.parse('2026-10-16T04:42:00Z'));
+  const quiet = renderResets(detail, { ...snapshot, status: { ...snapshot.status, scheduled_reset: null } }, Date.parse('2026-10-16T04:42:00Z'));
   assert.match(quiet, /id="reset-detail-title">最近一次重置，<span>已确认/);
   assert.match(quiet, /id="home-reset-target">12:00/);
   assert.doesNotMatch(quiet, /尚未公布|下一次重置时间|home-reset-countdown/);
+  assert.match(quiet, /data-reset-panel="latest"/);
+  assert.match(quiet, /data-reset-panel="next"/);
+  assert.match(quiet, /暂无新预告/);
 });

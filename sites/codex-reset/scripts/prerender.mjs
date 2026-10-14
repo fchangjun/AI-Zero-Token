@@ -75,7 +75,7 @@ export function renderResets(html, data, now = Date.now()) {
   const intervals = records.slice(1).map((r, i) => (Date.parse(records[i].announced_at) - Date.parse(r.announced_at)) / 86400000);
   values['stat-longest'] = data.historyComplete && intervals.length ? Math.max(...intervals).toFixed(1) : '—';
   html = setTexts(html, values);
-  html = replaceElement(html, 'reset-detail-grid', renderHomeResets(data, now).replaceAll('href="./resets/"', 'href="#history"').replaceAll('src="./tibo-avatar.jpg"', 'src="../tibo-avatar.jpg"'));
+  html = replaceElement(html, 'reset-detail-grid', renderHomeResets(data, now).replaceAll('href="./resets/index.html"', 'href="#history"').replaceAll('src="./tibo-avatar.jpg"', 'src="../tibo-avatar.jpg"'));
   html = replaceElement(html, 'announcement-list', records.slice(0, 6).map(record => {
     const text = String(record.text || '').replace(/https:\/\/t\.co\/\S+/g, '').trim();
     const source = safeSource(record.source?.url);

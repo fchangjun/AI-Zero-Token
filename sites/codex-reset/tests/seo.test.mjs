@@ -35,8 +35,11 @@ test('robots, sitemap and AZT links use the configured site and preserve subpath
   assert.match(robotsFile(resolved), /Sitemap: https:\/\/example\.com\/intel\/sitemap\.xml/);
   assert.match(robotsFile({ ...resolved, indexable: true }), /Allow: \/intel\/\n/);
   const sitemap = sitemapFile(resolved, market, reset);
-  assert.match(sitemap, /<loc>https:\/\/example\.com\/intel\/<\/loc>/);
-  assert.match(sitemap, /<loc>https:\/\/example\.com\/intel\/resets\/<\/loc>/);
+  assert.deepEqual([...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(match => match[1]), [
+    'https://example.com/intel/index.html',
+    'https://example.com/intel/prices/index.html',
+    'https://example.com/intel/resets/index.html',
+  ]);
   const links = replaceAztLinks('<a href="{{AZT_DOWNLOAD_URL}}">下载</a><a href="{{AZT_GUIDE_URL}}">指南</a><a href="{{AZT_REPO_URL}}">项目</a>', resolved, 'resets');
   assert.equal(links.includes('{{'), false);
   assert.match(links, /releases\/latest\?utm_source=codex-intel&amp;utm_medium=website&amp;utm_campaign=resets/);
@@ -88,14 +91,24 @@ test('static build contains useful HTML, metadata and portable links without a s
     assert.ok(visible.includes(`行情时间 ${date(market.fx.updatedAt)}`));
     assert.ok(visible.includes(`本地报价 · ${date(market.plans[0].updatedAt)}`));
     assert.match(html, /content="index,follow,max-image-preview:large"/);
-    assert.match(homeHtml, /rel="canonical" href="https:\/\/example\.com\/intel\/"/);
-    assert.match(html, /rel="canonical" href="https:\/\/example\.com\/intel\/prices\/"/);
-    assert.match(resetHtml, /rel="canonical" href="https:\/\/example\.com\/intel\/resets\/"/);
+    for (const [page, markup] of [['index.html', homeHtml], ['prices/index.html', html], ['resets/index.html', resetHtml]]) {
+      const url = `https://example.com/intel/${page}`;
+      assert.equal(markup.match(/rel="canonical" href="([^"]+)"/)[1], url);
+      assert.equal(markup.match(/property="og:url" content="([^"]+)"/)[1], url);
+      const graph = JSON.parse(markup.match(/type="application\/ld\+json">(.*?)<\/script>/s)[1])['@graph'];
+      const website = graph.find(item => item['@type'] === 'WebSite');
+      const collection = graph.find(item => item['@type'] === 'CollectionPage');
+      assert.equal(website.url, 'https://example.com/intel/index.html');
+      assert.equal(website['@id'], `${website.url}#website`);
+      assert.equal(collection.url, url);
+      assert.equal(collection['@id'], `${url}#webpage`);
+      assert.equal(collection.isPartOf['@id'], website['@id']);
+    }
     assert.match(html, /property="og:image" content="https:\/\/example\.com\/intel\/social-card\.png"/);
     const schema = JSON.parse(html.match(/type="application\/ld\+json">(.*?)<\/script>/s)[1]);
     assert.deepEqual(schema['@graph'].map(item => item['@type']), ['WebSite', 'CollectionPage']);
     assert.match(resetHtml, /src="\.\.\/app\.js"/);
-    assert.match(resetHtml, /href="\.\.\/prices\/"/);
+    assert.match(resetHtml, /href="\.\.\/prices\/index\.html"/);
     assert.match(homeHtml, /id="market-snapshot"/);
     assert.match(homeHtml, /id="reset-snapshot"/);
     assert.match(resetHtml, /id="market-snapshot"/);
@@ -108,7 +121,7 @@ test('static build contains useful HTML, metadata and portable links without a s
     assert.equal((resetVisible.match(/class="announcement"/g) || []).length, 6);
     assert.ok(resetVisible.includes(escapeHTML(reset.status.latest_reset.summaryZh)));
     assert.ok(resetVisible.includes(escapeHTML(reset.records[0].source.url)));
-    assert.match(await readFile(path.join(out, '404.html'), 'utf8'), /href="\/intel\/resets\/"/);
+    assert.match(await readFile(path.join(out, '404.html'), 'utf8'), /href="\/intel\/resets\/index\.html"/);
     assert.equal(await readFile(path.join(out, '.nojekyll'), 'utf8'), '');
     assert.ok((await readFile(path.join(out, 'social-card.png'))).length > 1000);
     assert.equal(html.includes('/api/market'), false);

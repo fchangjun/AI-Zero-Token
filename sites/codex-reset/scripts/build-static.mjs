@@ -22,7 +22,9 @@ export function rewriteRootLinks(html, depth = 0) {
   return html.replace(/\b(href|src)(\s*=\s*)(["'])(\/(?!\/)[^"']*)\3/gi,
     (_match, attribute, equals, quote, value) => {
       const [, pathname, suffix] = value.match(/^([^?#]*)(.*)$/);
-      const target = ['/resets', '/prices'].includes(pathname) ? `${pathname}/` : pathname;
+      // Object storage serves exact file keys and may not resolve directory indexes.
+      const target = pathname === '/' ? '/index.html'
+        : /^\/(?:resets|prices)\/?$/.test(pathname) ? `${pathname.replace(/\/$/, '')}/index.html` : pathname;
       return `${attribute}${equals}${quote}${prefix}${target.slice(1)}${suffix}${quote}`;
     });
 }
@@ -42,7 +44,8 @@ export function replaceAztLinks(html, config, campaign) {
 export function addMetadata(html, config, page, modifiedAt) {
   const isResets = page === 'resets';
   const isHome = page === 'home';
-  const url = new URL(isHome ? './' : `${page}/`, config.siteUrl).href;
+  const homeUrl = new URL('index.html', config.siteUrl).href;
+  const url = isHome ? homeUrl : new URL(`${page}/index.html`, config.siteUrl).href;
   const image = new URL('social-card.png', config.siteUrl).href;
   const title = isHome ? `Plus / Pro 订阅好价与重置消息 · ${config.siteName}` : isResets ? `Codex 重置动态与中英文通告分享 · ${config.siteName}` : `ChatGPT 全球地区比价与人民币估算 · ${config.siteName}`;
   const description = isResets
@@ -55,8 +58,8 @@ export function addMetadata(html, config, page, modifiedAt) {
   const schema = {
     '@context': 'https://schema.org',
     '@graph': [
-      { '@type': 'WebSite', '@id': `${config.siteUrl}#website`, name: config.siteName, url: config.siteUrl, inLanguage: 'zh-CN' },
-      { '@type': 'CollectionPage', '@id': `${url}#webpage`, name: title, description, url, inLanguage: 'zh-CN', dateModified: new Date(modifiedAt).toISOString(), isPartOf: { '@id': `${config.siteUrl}#website` } },
+      { '@type': 'WebSite', '@id': `${homeUrl}#website`, name: config.siteName, url: homeUrl, inLanguage: 'zh-CN' },
+      { '@type': 'CollectionPage', '@id': `${url}#webpage`, name: title, description, url, inLanguage: 'zh-CN', dateModified: new Date(modifiedAt).toISOString(), isPartOf: { '@id': `${homeUrl}#website` } },
     ],
   };
   const metadata = `<title>${escapeHTML(title)}</title>
@@ -89,16 +92,16 @@ export function robotsFile(config) {
 
 export function sitemapFile(config, market, reset) {
   const entries = [
-    [config.siteUrl, new Date(Math.max(Date.parse(market.datasetUpdatedAt), Date.parse(reset.generatedAt || reset.capturedAt))).toISOString()],
-    [new URL('prices/', config.siteUrl).href, market.datasetUpdatedAt],
-    [new URL('resets/', config.siteUrl).href, reset.generatedAt || reset.capturedAt],
+    [new URL('index.html', config.siteUrl).href, new Date(Math.max(Date.parse(market.datasetUpdatedAt), Date.parse(reset.generatedAt || reset.capturedAt))).toISOString()],
+    [new URL('prices/index.html', config.siteUrl).href, market.datasetUpdatedAt],
+    [new URL('resets/index.html', config.siteUrl).href, reset.generatedAt || reset.capturedAt],
   ];
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.map(([url, stamp]) => `  <url><loc>${escapeHTML(url)}</loc><lastmod>${new Date(stamp).toISOString()}</lastmod></url>`).join('\n')}\n</urlset>\n`;
 }
 
 function notFoundPage(config) {
   const prefix = new URL(config.siteUrl).pathname;
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,follow"><title>页面未找到 · ${escapeHTML(config.siteName)}</title><link rel="stylesheet" href="${escapeHTML(prefix)}style.css"></head><body><main class="wrap" style="padding-block:100px"><p class="eyebrow">404 / PAGE NOT FOUND</p><h1>这个页面暂时找不到。</h1><p>回到情报站，查看地区比价与公开通告。</p><p><a class="button dark" href="${escapeHTML(prefix)}">返回情报总览 ↗</a> <a class="button secondary" href="${escapeHTML(prefix)}resets/">查看重置动态</a></p></main></body></html>`;
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex,follow"><title>页面未找到 · ${escapeHTML(config.siteName)}</title><link rel="stylesheet" href="${escapeHTML(prefix)}style.css"></head><body><main class="wrap" style="padding-block:100px"><p class="eyebrow">404 / PAGE NOT FOUND</p><h1>这个页面暂时找不到。</h1><p>回到情报站，查看地区比价与公开通告。</p><p><a class="button dark" href="${escapeHTML(prefix)}index.html">返回情报总览 ↗</a> <a class="button secondary" href="${escapeHTML(prefix)}resets/index.html">查看重置动态</a></p></main></body></html>`;
 }
 
 export async function buildStatic(root = projectRoot, options = {}) {

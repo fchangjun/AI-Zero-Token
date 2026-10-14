@@ -49,7 +49,13 @@ test('brief represents scheduled, overdue, recent and quiet without a fabricated
   recentReset.status.latest_reset.announced_at = '2026-10-13T03:00:00Z';
   const recent = getIntelCardData(recentReset, market, { now });
   assert.equal(recent.focus.kind, 'recent'); assert.equal(recent.focus.targetAt, null); assert.equal(recent.focus.timeLabel, '11:00');
-  const quiet = getIntelCardData(snapshot, market, { now: Date.parse('2026-10-17T00:00:00Z') });
+  const pending = getIntelCardData(snapshot, market, { now: Date.parse('2026-10-17T00:00:00Z') });
+  assert.equal(pending.focus.kind, 'overdue');
+  assert.equal(pending.focus.priority, false);
+  assert.equal(pending.focus.countdownValue, '待确认');
+  assert.equal(pending.reset.id, snapshot.status.scheduled_reset.id);
+  assert.doesNotMatch(intelCardCaption(pending), /最近重置确认|已完成/);
+  const quiet = getIntelCardData(recentReset, market, { now: Date.parse('2026-10-17T00:00:00Z') });
   assert.equal(quiet.focus.kind, 'quiet'); assert.equal(quiet.focus.targetAt, null);
   for (const info of [recent, quiet]) {
     assert.equal(info.focus.mode, 'confirmed');

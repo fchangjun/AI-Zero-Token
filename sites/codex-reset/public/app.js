@@ -88,9 +88,9 @@ function render(timeOnly = false) {
   const heading = getResetHeading(focus);
   $('reset-detail-title').innerHTML = `${escapeHTML(heading.title)}<span>${escapeHTML(heading.emphasis)}</span>`;
   $('reset-detail-description').textContent = heading.description;
-  const key = `${focus.kind}:${focus.record?.id || ''}:${focus.targetAt || ''}`;
+  const key = `${focus.kind}:${focus.priority}:${focus.record?.id || ''}:${focus.targetAt || ''}:${focus.latest?.record?.id || ''}:${focus.next?.kind || ''}:${focus.next?.record?.id || ''}`;
   if (!timeOnly || key !== signalKey) {
-    $('reset-detail-grid').innerHTML = renderHomeResets(state.data, now).replaceAll('href="./resets/"', 'href="#history"').replaceAll('src="./tibo-avatar.jpg"', 'src="../tibo-avatar.jpg"');
+    $('reset-detail-grid').innerHTML = renderHomeResets(state.data, now).replaceAll('href="./resets/index.html"', 'href="#history"').replaceAll('src="./tibo-avatar.jpg"', 'src="../tibo-avatar.jpg"');
     signalKey = key;
   } else if ($('home-reset-countdown')) $('home-reset-countdown').textContent = focus.countdownValue;
   $('stat-total').textContent = Number.isFinite(status.stats.total)?status.stats.total:records.length;

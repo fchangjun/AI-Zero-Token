@@ -19,3 +19,10 @@
 
 .reset-page .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
 .reset-page .stats>div:last-child{border-right:0}
+
+/* The same independent completion / forecast panels lead the detailed history. */
+.reset-page .reset-detail-signal .reset-panels{margin-bottom:4px}
+.reset-page .reset-detail-signal .reset-secondary{background:#fafbf4}
+.reset-page .reset-detail-signal .reset-panels-footer{margin-top:-6px}
+
+.reset-page .reset-detail-signal .has-latest>.reset-next-quiet{background:linear-gradient(150deg,#f2eafc,#eae8f7)}

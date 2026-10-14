@@ -52,7 +52,7 @@ function renderResets(clockOnly = false) {
   const now = Date.now();
   const focus = getResetFocus(state.reset, now);
   $('home-reset-note').textContent = focus.note;
-  const key = `${focus.kind}:${focus.record?.id || ''}:${focus.targetAt || ''}`;
+  const key = `${focus.kind}:${focus.priority}:${focus.record?.id || ''}:${focus.targetAt || ''}:${focus.latest?.record?.id || ''}:${focus.next?.kind || ''}:${focus.next?.record?.id || ''}`;
   if (!clockOnly || key !== renderedResetKey) {
     const layout = getHomeLayout(focus);
     const active = document.activeElement;

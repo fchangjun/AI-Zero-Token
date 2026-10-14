@@ -199,7 +199,7 @@ function createController() {
         }
         info = getIntelCardData(reset, market, { proPlanId, now });
         if (!info) throw new Error('暂无可分享的情报，请刷新后重试。');
-        caption = intelCardCaption(info, { pageUrl: assets('./'), aztUrl: projectUrl() });
+        caption = intelCardCaption(info, { pageUrl: assets('./index.html'), aztUrl: projectUrl() });
         node('caption').value = caption;
         node('copy').disabled = !caption;
         filename = `Codex-今日情报-${new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now)}.png`;
