@@ -2,6 +2,8 @@ name: Codex intelligence · GitHub Pages
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
   push:
     branches: [master]
     paths:
@@ -22,8 +24,9 @@ concurrency:
 jobs:
   static-site:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
-      contents: read
+      contents: write
       pages: read
     defaults:
       run:
@@ -33,6 +36,28 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Restore last successful data snapshot
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        run: node scripts/reset-data-branch.mjs restore
+      - name: Cache translation model
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        uses: actions/cache@v4
+        with:
+          path: sites/codex-reset/.cache/translation
+          key: codex-intel-translation-${{ runner.os }}-${{ hashFiles('sites/codex-reset/scripts/translate-reset.mjs') }}
+      - name: Install isolated automation tools
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        run: npm ci --prefix automation/translation --no-audit --no-fund
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+      - name: Refresh public snapshot and Chinese translations
+        id: refresh
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        continue-on-error: true
+        run: npm run data:update-resets -- --translations=outputs/automation-source-snapshot.json
+      - name: Keep the previous deployment when scheduled collection fails
+        if: github.event_name == 'schedule' && steps.refresh.outcome == 'failure'
+        run: exit 1
       - run: npm run check
       - name: Read GitHub Pages URL
         id: pages
@@ -42,6 +67,9 @@ jobs:
         env:
           SITE_URL: ${{ steps.pages.outputs.base_url || 'https://fchangjun.github.io/AI-Zero-Token/' }}
           SITE_INDEXABLE: 'true'
+      - name: Save validated snapshot on the data branch
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master' && steps.refresh.outcome == 'success'
+        run: node scripts/reset-data-branch.mjs save
       - uses: actions/upload-artifact@v4
         with:
           name: codex-intel-static
