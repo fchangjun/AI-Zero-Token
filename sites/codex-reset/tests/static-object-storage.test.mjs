@@ -21,7 +21,7 @@ function exactFileServer(folder, prefix) {
       const filename = path.resolve(folder, pathname.slice(prefix.length));
       if (!filename.startsWith(`${folder}${path.sep}`) || !(await stat(filename)).isFile()) throw new Error('No exact file');
       const body = await readFile(filename);
-      response.writeHead(200, { 'Content-Type': filename.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream' });
+      response.writeHead(200, { 'Content-Type': filename.endsWith('.html') ? 'text/html; charset=utf-8' : filename.endsWith('.png') ? 'image/png' : 'application/octet-stream' });
       response.end(body);
     } catch {
       response.writeHead(404, { 'Content-Type': 'application/json' });
@@ -84,6 +84,12 @@ test('built navigation and browser-rendered cards work without directory indexes
               const link = new URL(href, currentPage);
               if (link.origin !== origin) continue;
               assert.ok(link.pathname.startsWith(prefix), `navigation escaped deployment prefix: ${href}`);
+              if (link.pathname.endsWith('/author-contact.png')) {
+                const response = await fetch(link, { redirect: 'manual' });
+                assert.equal(response.status, 200, `contact image exact key should exist: ${href}`);
+                assert.match(response.headers.get('content-type'), /^image\/png/);
+                continue;
+              }
               assert.ok(link.pathname.endsWith('.html'), `navigation relies on a directory index: ${href}`);
               await requestPage(link);
             }

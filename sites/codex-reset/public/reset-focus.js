@@ -173,9 +173,8 @@ export function getResetState(data, now = Date.now()) {
   }
 
   const rawScheduled = data.status?.scheduled_reset;
-  // The history feed permits legacy completions without a status; the forecast slot does not.
-  const explicitScheduledCompletion = COMPLETED_STATUSES.includes(rawScheduled?.status) ? rawScheduled : null;
-  const records = [data.status?.latest_reset, ...(Array.isArray(data.records) ? data.records : []), explicitScheduledCompletion]
+  // A closed forecast retains its original announcement time; it is not a completion record.
+  const records = [data.status?.latest_reset, ...(Array.isArray(data.records) ? data.records : [])]
     .filter(record => announcedAt(record, current) !== null)
     .sort((a, b) => timestamp(b.announced_at) - timestamp(a.announced_at));
   const completed = records.find(record => record.source?.type === 'x_post' && isCompleted(record));
@@ -197,6 +196,8 @@ export function getResetState(data, now = Date.now()) {
     next = emptyNext(false, '该预告之后已有公开完成通告；下一次重置暂无新预告。');
   } else if (rawScheduled && scheduleAnnouncedAt !== null && ['cancelled', 'canceled'].includes(rawScheduled.status)) {
     next = emptyNext(false, '该重置预告已明确取消；等待下一次公开消息。');
+  } else if (rawScheduled && scheduleAnnouncedAt !== null && COMPLETED_STATUSES.includes(rawScheduled.status)) {
+    next = emptyNext(false, '该预告已结束；最近一次重置时间以独立的确认记录为准。');
   } else if (rawScheduled?.status === 'scheduled' && scheduleAnnouncedAt !== null) {
     const hasTarget = rawScheduled.scheduled_for != null && rawScheduled.scheduled_for !== '';
     const target = timestamp(rawScheduled.scheduled_for);

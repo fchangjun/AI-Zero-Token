@@ -4,7 +4,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173e32"><meta name="description" content="用中文了解 Codex 公开重置公告，查看历史日历，一键分享含 Tibo 头像和中英文原帖的通告图片。">
   <title>重置动态 · Codex 情报站</title>
-  <link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/home.css"><link rel="stylesheet" href="/reset-detail.css"><link rel="stylesheet" href="/intel-share.css">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml"><link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/home.css"><link rel="stylesheet" href="/reset-detail.css"><link rel="stylesheet" href="/intel-share.css"><link rel="stylesheet" href="/contact.css">
 </head>
 <body class="reset-page">
   <a class="skip-link" href="#main">跳到主要内容</a>
@@ -34,6 +34,7 @@
       <div class="azt-card-intro"><span class="eyebrow">YOUR LOCAL AI WORKSPACE</span><h2 id="azt-heading">AI Zero Token</h2><p>管理本地账号池、接入外部 API、查看重置日历。</p></div>
       <div class="azt-card-action"><span class="azt-wordmark"><span aria-hidden="true">↗</span> AI Zero Token</span><div class="azt-actions"><a class="button dark" href="{{AZT_DOWNLOAD_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="download" data-azt-placement="resets-card">下载桌面端 <span aria-hidden="true">↗</span></a><a class="button secondary" href="{{AZT_GUIDE_URL}}" target="_blank" rel="noopener noreferrer" data-azt-action="guide" data-azt-placement="resets-card">阅读使用指南</a></div><small>macOS / Windows · 本地单用户工具</small></div>
     </section>
+    <aside class="subscription-contact" aria-label="订阅重置提醒"><p>如需订阅重置提醒</p><a href="/author-contact.png" target="_blank" rel="noopener noreferrer" data-author-contact aria-haspopup="dialog">联系作者 <span aria-hidden="true">↗</span></a></aside>
     <details class="data-details" id="data-methodology"><summary>数据说明</summary><div>
       <p id="sync-state" role="status">通告更新时间</p><p id="reset-time-note"></p>
       <p>记录来自 <a href="https://codex-resets.com/api/docs" target="_blank" rel="noopener noreferrer">Codex Resets</a> 与 X 原帖，时间均为北京时间。每 5 分钟尝试同步，网络不可用时保留已有记录。</p>
@@ -47,4 +48,5 @@
 
   <div id="toast" role="status" aria-live="polite"></div>
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/contact.js"></script>
 </body></html>

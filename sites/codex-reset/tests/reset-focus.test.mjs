@@ -286,11 +286,22 @@ test('missing, empty and invalid statuses in the forecast slot cannot become con
     const newer = record('2026-10-13T04:01:09Z', { id: 'newer-confirmed' });
     assert.equal(getResetState(makeData(invalid, newer), now).next.kind, 'unavailable');
   }
-  const explicit = schedule({ status: 'confirmed', id: 'explicit-completion' });
-  const confirmed = getResetState(makeData(explicit, null), now);
-  assert.equal(confirmed.latest.mode, 'confirmed');
-  assert.equal(confirmed.latest.record.id, 'explicit-completion');
-  assert.equal(confirmed.next.kind, 'unannounced');
+});
+
+test('terminal forecasts close the preview without treating their announcement time as completion', () => {
+  const previous = record('2026-10-11T04:01:09Z', { id: 'previous-confirmed' });
+  for (const status of ['confirmed', 'completed', 'complete', 'propagated']) {
+    const closed = schedule({ status, id: 'closed-forecast' });
+    const empty = getResetState(makeData(closed, null), now);
+    assert.equal(empty.latest.kind, 'unavailable', status);
+    assert.equal(empty.next.kind, 'unannounced', status);
+    const retained = getResetState(makeData(closed, previous), now);
+    assert.equal(retained.latest.record.id, previous.id, status);
+    assert.equal(retained.latest.confirmedAt, new Date(previous.announced_at).toISOString(), status);
+    assert.equal(retained.next.kind, 'unannounced', status);
+    const completion = record('2026-10-13T04:01:09Z', { id: 'actual-completion' });
+    assert.equal(getResetState(makeData(closed, previous, [completion]), now).latest.record.id, completion.id, status);
+  }
 });
 
 test('a different reset type cannot close a pending forecast, while a matching historical completion can', () => {

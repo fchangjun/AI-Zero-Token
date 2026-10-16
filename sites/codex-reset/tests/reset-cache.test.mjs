@@ -161,8 +161,8 @@ test('explicit terminal completion responses close the forecast without manufact
       const state=getResetState(cached,terminalNow);
       assert.equal(state.next.kind,'unannounced');
       assert.equal(state.latest.mode,'confirmed');
-      assert.equal(state.latest.record.id,incoming.status.scheduled_reset.id);
-      assert.equal(state.latest.confirmedAt,'2026-10-14T03:30:00.000Z');
+      assert.equal(state.latest.record.id,previous.status.latest_reset.id);
+      assert.equal(state.latest.confirmedAt,new Date(previous.status.latest_reset.announced_at).toISOString());
       assert.equal(state.latest.targetAt,null);
       assert.equal(state.focus.countdownValue,'');
       assert.notEqual(state.latest.confirmedAt,previous.status.scheduled_reset.scheduled_for);
