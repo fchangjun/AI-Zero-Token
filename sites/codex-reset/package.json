@@ -1,6 +1,6 @@
 {
   "name": "codex-intel-station",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "description": "Codex 情报站：静态地区比价、额度重置动态和通告分享",
   "type": "module",
@@ -17,6 +17,7 @@
     "test": "node --test tests/*.test.mjs",
     "test:data": "node --test tests/*.test.mjs",
     "data:check": "node scripts/market-data.mjs check",
+    "data:update-resets": "node scripts/update-reset-snapshot.mjs",
     "data:import": "node scripts/market-data.mjs import",
     "data:update-fx": "node scripts/market-data.mjs update-fx"
   }

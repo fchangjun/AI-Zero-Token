@@ -138,6 +138,7 @@ function activeWatch(watch, current, completedAt) {
     text: typeof watch.text === 'string' ? watch.text : '', source: { ...watch.source },
     ...(typeof watch.summaryZh === 'string' ? { summaryZh: watch.summaryZh } : {}),
     ...(typeof watch.translationZh === 'string' ? { translationZh: watch.translationZh } : {}),
+    ...(watch.translationMeta !== undefined ? { translationMeta: watch.translationMeta } : {}),
   };
   return {
     priority: true, kind: 'watch', mode: 'watch', record,

@@ -1,15 +1,6 @@
 {
   "version": 1,
-  "capturedAt": "2026-10-16T05:59:21.744Z",
-  "generatedAt": "2026-10-16T05:58:53.285Z",
-  "historyGeneratedAt": "2026-10-16T05:54:32.175Z",
-  "source": {
-    "name": "Codex Resets",
-    "url": "https://codex-resets.com",
-    "docsUrl": "https://codex-resets.com/api/docs",
-    "statusUrl": "https://codex-resets.com/api/v1/status",
-    "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
-  },
+  "generatedAt": "2026-10-16T07:00:14.978Z",
   "status": {
     "latest_reset": {
       "id": "2110618732666257557",
@@ -21,8 +12,8 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2110618732666257557"
       },
-      "translationZh": "已经全部完成。",
-      "summaryZh": "本次额度重置已完成。"
+      "summaryZh": "本次额度重置已完成。",
+      "translationZh": "已经全部完成。"
     },
     "scheduled_reset": null,
     "active_watch": {
@@ -37,8 +28,8 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2110951585983631505"
       },
-      "translationZh": "@maria_rcks 无法反驳，那就让我们打破这个循环吧。",
-      "summaryZh": "Tibo 的新回复出现重置相关迹象，尚无正式重置预告。"
+      "summaryZh": "Tibo 的新回复出现重置相关迹象，尚无正式重置预告。",
+      "translationZh": "@maria_rcks 无法反驳，那就让我们打破这个循环吧。"
     },
     "stats": {
       "total": 62,
@@ -58,8 +49,8 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2110618732666257557"
       },
-      "translationZh": "已经全部完成。",
-      "summaryZh": "本次额度重置已完成。"
+      "summaryZh": "本次额度重置已完成。",
+      "translationZh": "已经全部完成。"
     },
     {
       "id": "2109873287853707513",
@@ -71,8 +62,8 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2109873287853707513"
       },
-      "translationZh": "这份重置还想配点什么？已经搞定了。",
-      "summaryZh": "本次额度重置已完成。"
+      "summaryZh": "本次额度重置已完成。",
+      "translationZh": "这份重置还想配点什么？已经搞定了。"
     },
     {
       "id": "2109132167112782291",
@@ -84,8 +75,8 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2109132167112782291"
       },
-      "translationZh": "这次重置已完成，现已全部生效。",
-      "summaryZh": "本次普通额度重置已完成。"
+      "summaryZh": "本次普通额度重置已完成。",
+      "translationZh": "这次重置已完成，现已全部生效。"
     },
     {
       "id": "2108040921044639779",
@@ -97,7 +88,14 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2108040921044639779"
       },
-      "summaryZh": "本次储备重置已到账。"
+      "summaryZh": "本次储备重置已到账。",
+      "translationZh": "已经确认所有帐户都上岸了 我们目前进展如何? https://t.co/tzw7dNX4pN",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:46.621Z",
+        "sourceText": "Confirmed landed across all accounts. How are we doing so far? https://t.co/tzw7dNX4pN"
+      }
     },
     {
       "id": "2107676072871600470",
@@ -109,7 +107,14 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2107676072871600470"
       },
-      "summaryZh": "在社区投票后，再次进行普通额度重置。"
+      "summaryZh": "在社区投票后，再次进行普通额度重置。",
+      "translationZh": "我们运了四件被认为很好的东西 一些数学证明, 但投票是明确的, 社区要求重置。我做了校准它,它似乎 游戏被重置的优待, 但这就是现在的规则。\n\n因此,重置已经 https://t.co/mHSI0Pcu4M",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:47.152Z",
+        "sourceText": "We shipped four things that were deemed good to great and some math proofs, but the vote is clear and the community demands a reset. I did calibrate it and it *seems* that the game is rigged in reset's favor, but such are the rules at the moment.\n\nTherefore ... the reset has been https://t.co/mHSI0Pcu4M"
+      }
     },
     {
       "id": "2106131810921136451",
@@ -121,7 +126,14 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2106131810921136451"
       },
-      "summaryZh": "本次额度重置已完成。"
+      "summaryZh": "本次额度重置已完成。",
+      "translationZh": "重置所有已传播的重置,请享用 https://t.co/GaVJhbptR0",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:47.275Z",
+        "sourceText": "Reset all propagated. Enjoy. https://t.co/GaVJhbptR0"
+      }
     },
     {
       "id": "observed-20260929T190000Z",
@@ -132,7 +144,14 @@
         "type": "observed",
         "url": "https://x.com/thsottiaux/status/2105120226027450685"
       },
-      "summaryZh": "数据站记录到一次储备重置，来源类型为观测。"
+      "summaryZh": "数据站记录到一次储备重置，来源类型为观测。",
+      "translationZh": "@theo 嘘嘘",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:47.307Z",
+        "sourceText": "@theo Shhhhhh"
+      }
     },
     {
       "id": "2103911959544610829",
@@ -144,7 +163,14 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2103911959544610829"
       },
-      "summaryZh": "本次普通额度重置已完成。"
+      "summaryZh": "本次普通额度重置已完成。",
+      "translationZh": "所有的通讯都传播了,就这样,周末愉快",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:47.435Z",
+        "sourceText": "Resets all propagated. That will be all. Have a fantastic weekend."
+      }
     },
     {
       "id": "2102463847714247142",
@@ -155,6 +181,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2102463847714247142"
+      },
+      "translationZh": "GPT-6 Sol和Luna都退出了。它们不仅在各方面都是一个重大进步,而且在书面和一般意义上“你试的时候就知道”质量。 \n\n我们还永久降低API价格,使两者都能够用于一吨新的使用案例,并使你的使用量进一步提高,甚至订阅。\n\n还有一件事,我们正在装上银行重置的账户 进入我们Plus,Pro和Business用户的所有账户,我们走吧!\n\nhttps://t.co/00DRh1sRrO",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:48.602Z",
+        "sourceText": "GPT-6 Sol and Luna are out. Not only are they a very significant improvement across the board, but also in writing and general \"you know when you try it\" quality. \n\nWe are also permanently reducing the API price by 50% making both of them viable for a ton of new usecases and making your usage go further too, even on the subscriptions.\n\nAnd one more thing. We are loading a banked reset into all accounts of our Plus, Pro and Business users. Let's go!\n\nhttps://t.co/00DRh1sRrO"
       }
     },
     {
@@ -166,6 +199,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2098685367058612394"
+      },
+      "translationZh": "重置所有传播的,做个好梦 https://t.co/VgKVUixoJG",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:48.743Z",
+        "sourceText": "Reset all propagated. Sweet dreams. https://t.co/VgKVUixoJG"
       }
     },
     {
@@ -176,6 +216,13 @@
       "source": {
         "type": "observed",
         "url": "https://x.com/thsottiaux/status/2097174560412246215"
+      },
+      "translationZh": "所有人重新准备 和Astra一起享受这周 https://t.co/WBM38JotGO",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:48.896Z",
+        "sourceText": "All reset for everyone. Enjoy the week with Astra. https://t.co/WBM38JotGO"
       }
     },
     {
@@ -187,6 +234,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2096035437299237298"
+      },
+      "translationZh": "因为我们今天比计划提前推出Astra, 已经超乎我们高兴, 你对我们非常耐心(并不真正,\n\n祝Astra节快乐 享受一个惊人的周末 \n\nPS: 如果您在 8: 00 PT 前创建账户或升级, 您也会收到账户。 时间仍然要! !",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:49.753Z",
+        "sourceText": "Because we are beyond happy to have Astra rolled out today ahead of schedule and you have been super patient with us (not really, but it’s ok!)… we will do the full banked reset today too for all Plus, Pro and Business users. Lands end of day.\n\nHappy Astra day and enjoy a phenomenal weekend. \n\nPS: If you create the account or upgrade before 8pm PT you will get it too. Still time!"
       }
     },
     {
@@ -198,6 +252,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2095651088502591861"
+      },
+      "translationZh": "每天我们都会给你一个银行重置 每天你无法进入Astra 的 现金支付计划,从今天开始。团队正在移动山上 以便尽快进入。\n\n最早的人会在3小时后降落。如果您没有账户, 仍然有时间创建您的账户 。",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:50.482Z",
+        "sourceText": "We will give one banked reset for every day you don't have access to Astra on your paid ChatGPT plan, starting today.  Team is moving mountains to give access as fast as we can.\n\nFirst one will land in ~ 3 hours. There is still time to create your account if you don't have one."
       }
     },
     {
@@ -209,6 +270,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2094251180121854309"
+      },
+      "translationZh": "昨天我想说的是,我们击中了2 500M活跃用户,并庆祝我们现在已经重新设定了所有付费订阅用户的使用量,用于查特高夫特工作和法典编码。\n\n重置公司有消息再告诉你 https://t.co/7Yc5znAJIc",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:51.058Z",
+        "sourceText": "What I wanted to say yesterday is that we hit 25M active users and to celebrate we have now reset usage for all paid subscriptions for ChatGPT Work and Codex.\n\nSee you see for more news from The Reset Company. https://t.co/7Yc5znAJIc"
       }
     },
     {
@@ -220,6 +288,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2093801758665715784"
+      },
+      "translationZh": "我们正在重新设定所有有偿用户使用代码和聊天点对称工作。\n\n团队全天24小时工作, 浏览数千份报告及航运修补。\n\n取决于您如何使用代码编码, 您应该看到您的使用量比以前在 和之间更远。\n\n我们用一个精细的梳子, 有许多被发现的小东西 长期存在, 这就是我们发现和固定的:\n压缩。 我们保留旧图像在压缩时, 有时使环境大到足以再次触发压缩。 修复后, 用户大量使用图像时使用率下降 。 固定 。\n记忆力。 背景记忆工作者可以继承停止钩子,当它不让他们完成时,继续运行。 这影响了不到百分之一的用户,长尾巴非常糟糕,我们看到了一个例子,检查它能否阻止15000次。 固定了。\n在某些情况下,一套/目标可以完成,然后继续经过预定的停工条件,或者模型可以不停止地重新尝试破损的工具,我们看到从每周津贴的百分之一到百分之一的任何地方都用得上的例子。\n自动操作,有些自定义时间表可以比配置的频率更频繁运行,固定\n- 子剂:小型型号(如Luna)有时在没有明确询问的情况下,就挑选出更有能力的助手,而没有在/快模式下运行的管弦式型号也可以要求分剂运行/快模式。固定式。\n旧的实施工作可能导致反复总结重叠活动,在有些情况下,我们看到它每周消耗的消费量高达每周使用量的五分之一。\n普通轮转会触发额外的背景请求。 这些请求增加了 $ -1 的符号使用量 。 每一次小, 但加起来都是。 我们已经禁用了这个 。\n某些工具结果可以编码两次。 我们还发现工具指示被切断并再次被取回。固定。\n\n防止这些变化的倒退, 我们的团队也会被呼唤。 我们还在努力在应用软件中直接展示你的用法,\n\n也希望各位能享受周六愉快的假期!",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:57.680Z",
+        "sourceText": "We are reseting usage for all paid users of Codex and ChatGPT Work.\n\nPlease continue reading for an update on Codex usage limits. The team has been working around the clock, going through thousands of reports and shipping fixes.\n\nDepending on how you use Codex, you should see your usage go between 10% and 50% further than before.\n\nWe really went with a fine comb, with many uncovered small things being longstanding and here is what we found and fixed:\n- Compaction. We were keeping old images during compaction, sometimes making the context large enough to trigger compaction again. After the fix, usage dropped around 10% for users making heavy use of images. Fixed.\n- Memory. Background memory workers could inherit Stop hooks and keep running when the hook wouldn’t let them finish. This affected fewer than 1% of users, with the long tail being pretty bad and we saw one example thread check whether it could stop 15,000 times. Fixed.\n- Goals. In some cases, a set /goal could finish and then keep going past the intended stop condition, or the model would keep retrying broken tools without stopping. We saw examples consume anywhere from 15% to 70% of a weekly allowance. Fixed.\n- Automations. Some custom schedules could run more frequently than configured. Fixed.\n- Subagents. Smaller models (e.g. Luna) sometimes picked more capable helpers without being explicitly asked. The same was true where the orchestrating model not running in /fast mode could request sub-agents to run /fast. Fixed.\n- Computer History. The older implementation could lead to repeatedly summarizing overlapping activity. For some cases we saw it consume up to one fifth of the weekly usage per week. Fixed.\n- Rolling task summaries. Ordinary turns were triggering extra background requests. These added about 1% to token usage. Small each time, but it adds up. We have disabled this.\n- MCP. Some tool results could be encoded twice. We also found tool instructions getting cut off and fetched again. Fixed.\n\nWe’ve also made architectural changes to prevent these from regressing and our teams will get paged if it happens regardless. We are also working on showing you directly in the app where your usage goes so you don’t have to guess.\n\nGoes without saying that we’re resetting usage limits and I hope you enjoy a very nice Saturday!"
       }
     },
     {
@@ -231,6 +306,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2093014447833116908"
+      },
+      "translationZh": "从来没有睡得更好, 感觉也从未重置过。 给所有聊天和PT工作及 Codx 用户都重新命名我和新用途。 一次重塑我的青春一个按钮 。\n\n星期四快乐",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:58.178Z",
+        "sourceText": "Never slept better and feeling reseted. Brand new me and brand new usage for all ChatGPT Work and Codex users. Regaining my youth one button press at a time.\n\nHappy Thursday"
       }
     },
     {
@@ -241,6 +323,13 @@
       "source": {
         "type": "observed",
         "url": "https://x.com/thsottiaux/status/2092311059197808936"
+      },
+      "translationZh": "@dtzy_88 啊,是的,忘了说",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:58.247Z",
+        "sourceText": "@dtzy_88 Ah yeah, forgot to say"
       }
     },
     {
@@ -252,6 +341,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2091688655828246890"
+      },
+      "translationZh": "星期天好。 重置已被推广到账户中, 我们找到了昨天提到的问题, 并用了一些固定的方法。 您应该感到积极的区别。 明天会有更多信息, 并且会继续沟通 。 https://t.co/6mgUetJnhg",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:58.759Z",
+        "sourceText": "Good Sunday. Reset has been propagated to accounts and we landed some fixes to usage for things mentioned yesterday as issues we found. You should feel a positive difference. More to come tomorrow and will keep communicating. https://t.co/6mgUetJnhg"
       }
     },
     {
@@ -263,6 +359,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2090766694897619318"
+      },
+      "translationZh": "又是我,我来了,带来了好消息 \n\n首先,我们本周某个时候已经为代码代码片的代码片点击了2 000M活动用户。 其次,这是庆祝的原因,在当天,我们将用一个可以用于您自己的 BANKED 重置的 BANKED 工作用户名下, https://t.co/mooGnI0KJO",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:59.470Z",
+        "sourceText": "It's me again. I come bearing great news. \n\nFirst of all, we have hit 20M active users for Codex some time this week. Second of all, this is cause for celebration and during the day we will credit every Codex and ChatGPT Work user with a BANKED reset that you can use at your own https://t.co/mooGnI0KJO"
       }
     },
     {
@@ -274,6 +377,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2087706104814023111"
+      },
+      "translationZh": "旧消息其实是几天前传来的 但过了15点,大家好好享受重置吧 https://t.co/TFRN2SrpCi",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:59.687Z",
+        "sourceText": "Old news actually from a bunch of days ago, but crossed that 15M. Enjoy a nice reset everyone. Landing in the next hour or so, go /fast. https://t.co/TFRN2SrpCi"
       }
     },
     {
@@ -285,6 +395,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2086972802457063486"
+      },
+      "translationZh": "嗨,我很高兴见到你 Hi.\n\n已经办妥了 https://t.co/JRYltKvT0v",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:00:59.831Z",
+        "sourceText": "Hi.\n\nIt is done. https://t.co/JRYltKvT0v"
       }
     },
     {
@@ -296,6 +413,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2086188036493344823"
+      },
+      "translationZh": "包括CC带带。 包括CC带带。 \n\n为了庆祝这个节日, 再加上我哪儿也不去... 我已经重新设定了使用限额 用于所有有偿使用 查特格特工作与代码编码的用户 \n\n玩得开心点! https://t.co/2rtjtOxFt0",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:01:00.658Z",
+        "sourceText": "That's right, GPT-5.6 Sol is awesome and can be used pretty much anywhere, including in the CC harness. \n\nTo celebrate this, together with the fact that I'm not going anywhere... I have reset usage limits for all paid users of ChatGPT Work and Codex. \n\nHave fun out there! https://t.co/2rtjtOxFt0"
       }
     },
     {
@@ -307,6 +431,13 @@
         "type": "x_post",
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2083395449814229287"
+      },
+      "translationZh": "为了庆祝一周的效率 让你运行10万卢纳线 这周末... 没错...\n\n享受吧,请享用",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-16T07:01:01.122Z",
+        "sourceText": "To celebrate a week of efficiency and let you run 100'000 Luna threads this weekend... that's right... wait for it... I have reset usage limits for Codex and ChatGPT Work.\n\nEnjoy."
       }
     },
     {
@@ -740,5 +871,14 @@
     }
   ],
   "historyComplete": true,
+  "capturedAt": "2026-10-16T07:00:43.987Z",
+  "source": {
+    "name": "Codex Resets",
+    "url": "https://codex-resets.com",
+    "docsUrl": "https://codex-resets.com/api/docs",
+    "statusUrl": "https://codex-resets.com/api/v1/status",
+    "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
+  },
+  "historyGeneratedAt": "2026-10-16T06:59:56.887Z",
   "historyCursor": null
 }

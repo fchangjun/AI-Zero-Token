@@ -94,3 +94,15 @@ test('Done and dusted translates only as a complete sentence, preserving unknown
     assert.doesNotMatch(copy.chinese, /已经全部完成|小时|分钟/);
   }
 });
+
+test('translated shortlinks stay in source provenance while displayed bilingual copy stays compact', () => {
+  const text = 'A fresh reset announcement. https://t.co/AbC123';
+  const record = { text, translationZh: '新的重置公告。 https://t.co/AbC123 https://example.com/details',
+    translationMeta: { provider: 'opus-mt-en-zh', modelRevision: 'fixed-revision', translatedAt: '2026-10-16T07:00:00Z', sourceText: text } };
+  const before = structuredClone(record);
+  assert.deepEqual(getResetCopy(record), {
+    english: 'A fresh reset announcement.', chinese: '新的重置公告。 https://example.com/details', label: '自动中文译文', type: 'translation',
+  });
+  assert.deepEqual(record, before, 'display cleanup must preserve the exact original, stored translation and metadata');
+  assert.equal(getResetCopy({ text, translationZh: ' https://t.co/AbC123 ', summaryZh: '已收录公开消息。' }).type, 'summary');
+});

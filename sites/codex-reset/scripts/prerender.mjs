@@ -82,8 +82,8 @@ export function renderResets(html, data, now = Date.now()) {
     const copy = getResetCopy(record);
     const text = copy.english;
     const source = safeSource(record.source?.url);
-    const title = record.summaryZh || copy.chinese;
-    return `<article class="announcement"><div class="announcement-meta"><span class="type-label ${record.reset_type === 'banked' ? 'banked-label' : ''}">${record.reset_type === 'banked' ? '储备重置' : '常规重置'}</span><time datetime="${escapeHTML(record.announced_at)}">${time(record.announced_at)}</time><span>UTC+8</span></div><h3>${escapeHTML(title)}</h3>${text ? `<details><summary>阅读英文原文</summary><p>${escapeHTML(text)}</p></details>` : '<p>本地快照仅保留此条日期与来源，可前往原帖阅读。</p>'}<div class="announcement-actions"><span>${record.source?.type === 'x_post' ? 'Tibo · @thsottiaux' : '数据源观测记录'}</span><div>${source ? `<a href="${escapeHTML(source)}" target="_blank" rel="noopener noreferrer">来源原文 ↗</a>` : ''}</div></div></article>`;
+    const title = copy.chinese;
+    return `<article class="announcement"><div class="announcement-meta"><span class="type-label ${record.reset_type === 'banked' ? 'banked-label' : ''}">${record.reset_type === 'banked' ? '储备重置' : '常规重置'}</span><time datetime="${escapeHTML(record.announced_at)}">${time(record.announced_at)}</time><span>UTC+8</span>${copy.label === '自动中文译文' ? '<span>自动译文</span>' : ''}</div><h3>${escapeHTML(title)}</h3>${text ? `<details><summary>阅读英文原文</summary><p>${escapeHTML(text)}</p></details>` : '<p>本地快照仅保留此条日期与来源，可前往原帖阅读。</p>'}<div class="announcement-actions"><span>${record.source?.type === 'x_post' ? 'Tibo · @thsottiaux' : '数据源观测记录'}</span><div>${source ? `<a href="${escapeHTML(source)}" target="_blank" rel="noopener noreferrer">来源原文 ↗</a>` : ''}</div></div></article>`;
   }).join('') || '<p>暂未收录公开通告。</p>');
   return html;
 }

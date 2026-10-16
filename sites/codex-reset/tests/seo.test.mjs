@@ -119,7 +119,7 @@ test('static build contains useful HTML, metadata and portable links without a s
     assert.match(homeVisible, /data-share-intel/);
     const resetVisible = resetHtml.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
     assert.equal((resetVisible.match(/class="announcement"/g) || []).length, 6);
-    assert.ok(resetVisible.includes(escapeHTML(reset.status.latest_reset.summaryZh)));
+    assert.ok(resetVisible.includes(escapeHTML(reset.status.latest_reset.translationZh || reset.status.latest_reset.summaryZh)));
     assert.ok(resetVisible.includes(escapeHTML(reset.records[0].source.url)));
     assert.match(await readFile(path.join(out, '404.html'), 'utf8'), /href="\/intel\/resets\/index\.html"/);
     assert.equal(await readFile(path.join(out, '.nojekyll'), 'utf8'), '');

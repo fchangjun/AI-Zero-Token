@@ -1,10 +1,14 @@
+import { getRecordTranslation } from './reset-translations.js';
+
 const clean = value => typeof value === 'string' ? value.replace(/\s+/gu, ' ').trim() : '';
+const displayText = value => clean(clean(value).replace(/https?:\/\/t\.co\/[a-z0-9]+(?:[?#][^\s]*)?/giu, ''));
 
 /** Local copy only: retain the original English and distinguish translations from summaries. */
 export function getResetCopy(record, { mode = '' } = {}) {
-  const english = clean(clean(record?.text).replace(/https?:\/\/t\.co\/[a-z0-9]+(?:[?#][^\s]*)?/giu, ''));
-  const translated = clean(record?.translationZh);
-  if (translated) return { english, chinese: translated, label: '中文译文', type: 'translation' };
+  const english = displayText(record?.text);
+  const translated = getRecordTranslation(record);
+  const translatedChinese = translated ? displayText(translated.text) : '';
+  if (translated && translatedChinese) return { english, chinese: translatedChinese, label: translated.automatic ? '自动中文译文' : '中文译文', type: 'translation' };
   const summary = clean(record?.summaryZh);
   if (summary) return { english, chinese: summary, label: '中文速读', type: 'summary' };
 

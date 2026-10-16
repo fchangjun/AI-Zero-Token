@@ -1,0 +1,9 @@
+{
+  "name": "codex-intel-translation-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Build-time English to Chinese translation for the static Codex intelligence site",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "dependencies": { "@huggingface/transformers": "3.8.1" }
+}

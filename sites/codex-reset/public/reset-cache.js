@@ -19,7 +19,7 @@ export const isResetDataset=data=>Boolean(data&&validDate(data.generatedAt)&&Arr
 
 function withTranslation(record,known){
   if(!known||known.text!==record.text||known.status!==record.status||known.reset_type!==record.reset_type||known.source.type!==record.source.type||known.source.url!==record.source.url)return record;
-  return {...record,...(!record.summaryZh&&known.summaryZh?{summaryZh:known.summaryZh}:{}),...(!record.translationZh&&known.translationZh?{translationZh:known.translationZh}:{})};
+  return {...record,...(!record.summaryZh&&known.summaryZh?{summaryZh:known.summaryZh}:{}),...(!record.translationZh&&known.translationZh?{translationZh:known.translationZh,...(known.translationMeta!==undefined?{translationMeta:known.translationMeta}:{})}:{})};
 }
 /** Incoming data owns status; a partial history may add to known records but never proves completeness. */
 export function mergeResetHistory(previous,incoming){

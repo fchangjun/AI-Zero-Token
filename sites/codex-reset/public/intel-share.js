@@ -1,6 +1,7 @@
 import { getIntelCardData, intelCardCaption, renderIntelCard } from './intel-card.js';
-import { isResetDataset, pickResetDataset } from './reset-cache.js';
+import { pickResetDataset } from './reset-cache.js';
 import { assertMarket, mergeFx, readCachedFx } from './market-data.js';
+import { enrichResetTranslations, mergePublishedResetData, loadPublishedResetSnapshots } from './reset-translations.js';
 
 let options = {};
 let controller;
@@ -21,10 +22,12 @@ function validMarket(value) {
   try { return assertMarket(value); } catch { return null; }
 }
 function selectReset() {
-  return pickResetDataset(embedded('reset-snapshot'), [
+  const snapshot = embedded('reset-snapshot');
+  const candidates = [
     stored('azt-reset-radar-v1'), stored('codex-intel-home-resets-v1'),
     fetched.get('reset'), callback('getResetData'),
-  ]).data;
+  ];
+  return enrichResetTranslations(pickResetDataset(snapshot, candidates).data, [snapshot, ...candidates]);
 }
 function selectMarket() {
   const data = validMarket(callback('getMarketData')) || validMarket(embedded('market-snapshot')) || validMarket(fetched.get('market'));
@@ -39,12 +42,18 @@ function selectMarket() {
 async function loadMissing(kind) {
   if (pending.has(kind)) return pending.get(kind);
   const request = (async () => {
-    const response = await fetch(assets(kind === 'reset' ? './snapshot.json' : './data/prices.json'), {
+    if (kind === 'reset') {
+      const snapshots = await loadPublishedResetSnapshots();
+      const data = mergePublishedResetData(fetched.get('reset'), snapshots);
+      if (data) fetched.set('reset', data);
+      return;
+    }
+    const response = await fetch(assets('./data/prices.json'), {
       cache: 'no-cache', signal: AbortSignal.timeout(6000),
     });
     if (!response.ok) throw new Error('站内情报暂不可用');
     const data = await response.json();
-    if (kind === 'reset' ? !isResetDataset(data) : !validMarket(data)) throw new Error('站内情报校验未通过');
+    if (!validMarket(data)) throw new Error('站内情报校验未通过');
     fetched.set(kind, data);
   })().catch(() => { /* Existing information remains usable when a request fails. */ }).finally(() => pending.delete(kind));
   pending.set(kind, request);

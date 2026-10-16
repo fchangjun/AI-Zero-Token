@@ -6,6 +6,7 @@ import { getResetFocus } from './reset-focus.js';
 import { getHomeLayout } from './home-layout.js';
 import { isResetDataset as validResetData } from './reset-cache.js';
 import { fetchResetUpdate, createResetResumeSync } from './reset-sync.js';
+import { enrichResetTranslations, mergePublishedResetData, loadPublishedResetSnapshots } from './reset-translations.js';
 
 const $ = id => document.getElementById(id);
 const RESET_CACHE = 'codex-intel-home-resets-v1';
@@ -21,13 +22,7 @@ function toast(message) {
 }
 
 function mergeTranslations(data) {
-  const known = [state.resetSnapshot, state.reset].filter(Boolean).flatMap(item => [...item.records, item.status.latest_reset, item.status.scheduled_reset, item.status.active_watch]).filter(Boolean);
-  const attach = record => {
-    if (!record) return record;
-    const previous = known.find(item => item.id === record.id && item.text === record.text && item.status === record.status && item.reset_type === record.reset_type && item.source?.url === record.source?.url && item.source?.type === record.source?.type);
-    return previous ? { ...record, ...(previous.summaryZh ? { summaryZh: previous.summaryZh } : {}), ...(previous.translationZh ? { translationZh: previous.translationZh } : {}) } : record;
-  };
-  return { ...data, records: data.records.map(attach), status: { ...data.status, latest_reset: attach(data.status.latest_reset), scheduled_reset: attach(data.status.scheduled_reset), active_watch: attach(data.status.active_watch) } };
+  return enrichResetTranslations(data, [state.resetSnapshot, state.reset]);
 }
 
 function renderMarket() {
@@ -128,14 +123,7 @@ async function refreshMarket() {
 }
 
 async function refreshResets() {
-  const snapshot = requestJson(new URL('./snapshot.json', import.meta.url)).then(data => {
-    if (!validResetData(data)) throw new Error('站内通告无效');
-    if (!state.resetSnapshot || Date.parse(data.generatedAt) >= Date.parse(state.resetSnapshot.generatedAt)) state.resetSnapshot = data;
-    if (!setReset(data, 'snapshot') && state.reset) {
-      state.reset = mergeTranslations(state.reset);
-      renderResets();
-    }
-  }).catch(() => { /* A valid embedded snapshot or cache remains available. */ });
+  const snapshot = refreshPublishedSnapshot();
   const live = fetchResetUpdate(requestJson, { previous: state.reset, historyLimit: 12 }).then(({ data, historyError }) => {
     if (!setReset(data, 'live')) throw new Error('来源返回较旧通告，已保留较新记录');
     state.resetError = false;
@@ -146,9 +134,22 @@ async function refreshResets() {
   renderResets();
 }
 
+async function refreshPublishedSnapshot() {
+  const snapshots = await loadPublishedResetSnapshots();
+  if (!snapshots.length) return;
+  state.resetSnapshot = mergePublishedResetData(state.resetSnapshot, snapshots);
+  const previous = state.reset;
+  const data = mergePublishedResetData(previous, [state.resetSnapshot]);
+  state.reset = data;
+  if (!previous || Date.parse(data.generatedAt) > Date.parse(previous.generatedAt)) state.resetMode = 'snapshot';
+  try { storage()?.setItem(RESET_CACHE, JSON.stringify(data)); } catch { /* Persistence is optional. */ }
+  renderResets();
+}
+
 async function refresh(manual = false) {
   if (state.busy) return;
   if (Date.now() < state.retryAt) {
+    await refreshPublishedSnapshot();
     if (manual) toast(`已保留现有情报，${Math.ceil((state.retryAt - Date.now()) / 1000)} 秒后可再检查`);
     return;
   }

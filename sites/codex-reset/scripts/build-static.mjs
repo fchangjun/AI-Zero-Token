@@ -107,6 +107,7 @@ function notFoundPage(config) {
 export async function buildStatic(root = projectRoot, options = {}) {
   const config = await readSiteConfig(root, options);
   const { assertMarket } = await import(pathToFileURL(path.join(root, 'public/market-data.js')).href);
+  const { isResetDataset } = await import(pathToFileURL(path.join(root, 'public/reset-cache.js')).href);
   const [marketText, resetText, pricePage, resetPage, homePage] = await Promise.all([
     readFile(path.join(root, 'public/data/prices.json'), 'utf8'),
     readFile(path.join(root, 'public/snapshot.json'), 'utf8'),
@@ -117,7 +118,7 @@ export async function buildStatic(root = projectRoot, options = {}) {
   const market = JSON.parse(marketText);
   assertMarket(market);
   const reset = JSON.parse(resetText);
-  if (!reset || !Array.isArray(reset.records) || !reset.status || !Number.isFinite(Date.parse(reset.capturedAt))) {
+  if (!isResetDataset(reset) || !Number.isFinite(Date.parse(reset.capturedAt))) {
     throw new Error('通告快照不完整：需要 records、status 和有效的 capturedAt');
   }
 

@@ -2,14 +2,15 @@ import { CHANNELS, convertQuote, rankedRegions, matchesRegion } from './market-u
 import { assertMarket, mergeFx, fetchFx, readCachedFx, cacheFx } from './market-data.js';
 import { setupIntelShare } from './intel-share.js';
 import { isResetDataset, pickResetDataset } from './reset-cache.js';
+import { fetchResetUpdate } from './reset-sync.js';
+import { enrichResetTranslations, mergePublishedResetData, loadPublishedResetSnapshots } from './reset-translations.js';
 const $ = id => document.getElementById(id);
 const params = new URLSearchParams(location.search);
-const RESET_API = 'https://codex-resets.com/api/v1';
 const RESET_CACHE = 'codex-intel-home-resets-v1';
 const initialPlan = ['go','plus','pro100','pro200','pro500'].includes(params.get('plan')) ? params.get('plan') : 'plus';
 const initialChannel = ['all','web_direct','app_store'].includes(params.get('channel')) ? params.get('channel') : 'all';
 const initialCountry = /^[A-Z]{2}$/.test(params.get('country') || '') ? params.get('country') : '';
-const state = { data: null, channel: initialChannel, plan: initialPlan, query: initialCountry, country: initialCountry, sort: 'asc', limit: 15, busy: false, retryAt: 0, priceError: false, fxError: false, reset: null, resetSnapshot: null, resetError: false, resetRetryAt: 0 };
+const state = { data: null, channel: initialChannel, plan: initialPlan, query: initialCountry, country: initialCountry, sort: 'asc', limit: 15, busy: false, retryAt: 0, priceError: false, fxError: false, reset: null, resetSnapshot: null, resetError: false, resetHistoryError: '', resetRetryAt: 0 };
 const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const amount = value => Number.isFinite(value) ? value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
 const time = value => Number.isFinite(Date.parse(value)) ? new Intl.DateTimeFormat('zh-CN', { timeZone:'Asia/Shanghai', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }).format(new Date(value)) : '未提供';
@@ -36,6 +37,7 @@ function renderMeta() {
   if (quoteStale) alerts.push('部分地区报价已超过 30 天未核对，请以官方结账页为准。');
   if (state.fxError) alerts.push('汇率更新暂不可用，已保留上次可用汇率；比价和地区查询仍可使用。');
   if (state.resetError) alerts.push('重置信号暂时无法更新，分享将保留已有通告。');
+  else if (state.resetHistoryError) alerts.push(state.resetHistoryError);
   if (stale) alerts.push(`当前为 ${time(fx.updatedAt)} 的历史汇率，人民币金额仅供参考。`);
   $('market-alert').hidden=!alerts.length; $('market-alert').textContent=alerts.join(' ');
   $('usd-verified').textContent=usdVerifiedAt;
@@ -81,17 +83,9 @@ function setDataset(data) {
 }
 function setResetDataset(data) {
   if (!isResetDataset(data)) throw new Error('重置信号校验未通过');
-  if (state.reset && Date.parse(data.generatedAt) < Date.parse(state.reset.generatedAt)) return false;
-  const previous = [state.resetSnapshot, state.reset].filter(Boolean);
-  const known = previous.flatMap(item => [item.status.latest_reset, item.status.scheduled_reset, ...item.records]).filter(Boolean);
-  const translated = record => {
-    if (!record) return record;
-    const old = known.find(item => item.id === record.id && item.text === record.text && item.status === record.status && item.reset_type === record.reset_type && item.source?.type === record.source?.type && item.source?.url === record.source?.url);
-    return old ? { ...record, ...(!record.summaryZh && old.summaryZh ? { summaryZh: old.summaryZh } : {}), ...(!record.translationZh && old.translationZh ? { translationZh: old.translationZh } : {}) } : record;
-  };
-  const incoming = { ...data, records: data.records.map(translated), status: { ...data.status, latest_reset: translated(data.status.latest_reset), scheduled_reset: translated(data.status.scheduled_reset) } };
-  state.reset = pickResetDataset(state.resetSnapshot, [state.reset, incoming]).data;
-  return true;
+  const older = state.reset && Date.parse(data.generatedAt) < Date.parse(state.reset.generatedAt);
+  state.reset = mergePublishedResetData(state.reset, [state.resetSnapshot, data]);
+  return !older;
 }
 function readInitialResets() {
   try { const snapshot = JSON.parse($('reset-snapshot')?.textContent || 'null'); if (isResetDataset(snapshot)) state.resetSnapshot = snapshot; } catch { /* Use cached data if the embedded snapshot is unavailable. */ }
@@ -100,23 +94,21 @@ function readInitialResets() {
     try { caches.push(JSON.parse(localStorage.getItem(key) || 'null')); } catch { /* Persistence is optional. */ }
   }
   const initial = pickResetDataset(state.resetSnapshot, caches).data;
-  if (initial) setResetDataset(initial);
+  if (initial) setResetDataset(enrichResetTranslations(initial, [state.resetSnapshot, ...caches]));
+}
+async function refreshPublishedResetSignal() {
+  const snapshots = await loadPublishedResetSnapshots();
+  if (!snapshots.length) return;
+  state.resetSnapshot = mergePublishedResetData(state.resetSnapshot, snapshots);
+  state.reset = mergePublishedResetData(state.reset, [state.resetSnapshot]);
+  try { localStorage.setItem(RESET_CACHE, JSON.stringify(state.reset)); } catch { /* Persistence is optional. */ }
 }
 async function refreshResetSignal() {
-  if (Date.now() < state.resetRetryAt) return;
   // This page owns synchronization; opening a share only freezes the available data.
-  const snapshot = !state.resetSnapshot ? (async () => {
-    try {
-      const response = await fetch(new URL('./snapshot.json', import.meta.url), { cache: 'no-cache', signal: AbortSignal.timeout(6000) });
-      if (!response.ok) return;
-      const data = await response.json();
-      if (!isResetDataset(data)) return;
-      state.resetSnapshot = data;
-      setResetDataset(data);
-    } catch { /* Keep a valid cached reset signal when offline. */ }
-  })() : Promise.resolve();
-  const requestReset = async path => {
-    const response = await fetch(`${RESET_API}/${path}`, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+  const snapshot = refreshPublishedResetSignal();
+  if (Date.now() < state.resetRetryAt) { await snapshot; return; }
+  const requestReset = async (url, { signal = AbortSignal.timeout(6000) } = {}) => {
+    const response = await fetch(url, { cache: 'no-store', signal });
     if (!response.ok) {
       if (response.status === 429) {
         const header = response.headers.get('Retry-After');
@@ -129,11 +121,10 @@ async function refreshResetSignal() {
   };
   const live = (async () => {
     try {
-      const [status, history] = await Promise.all([requestReset('status'), requestReset('resets?limit=12&order=desc')]);
-      if (!Array.isArray(history.data)) throw new Error('重置历史格式不完整');
-      const data = { version: 1, generatedAt: status.meta?.generated_at, status: status.data, records: [...new Map(history.data.map(record => [record.id, record])).values()].sort((a, b) => Date.parse(b.announced_at) - Date.parse(a.announced_at)), historyComplete: false };
+      const { data, historyError } = await fetchResetUpdate(requestReset, { previous: state.reset, historyLimit: 12 });
       if (!setResetDataset(data)) throw new Error('保留较新的重置记录');
       state.resetError = false;
+      state.resetHistoryError = historyError;
       try { localStorage.setItem(RESET_CACHE, JSON.stringify(state.reset)); } catch { /* Sharing works without persistence. */ }
     } catch { state.resetError = true; }
   })();
@@ -141,7 +132,7 @@ async function refreshResetSignal() {
 }
 async function refresh(manual=false) {
   if(state.busy) return;
-  if(Date.now()<state.retryAt) {if(manual)toast(`已保留当前数据，请在 ${Math.ceil((state.retryAt-Date.now())/1000)} 秒后重试`);return;}
+  if(Date.now()<state.retryAt) {await refreshPublishedResetSignal();if(manual)toast(`已保留当前数据，请在 ${Math.ceil((state.retryAt-Date.now())/1000)} 秒后重试`);return;}
   state.busy=true;$('refresh-market').disabled=true;$('refresh-market').textContent='检查更新…';
   const priceUpdate = (async()=>{
     try {
@@ -185,5 +176,6 @@ $('region-search').addEventListener('input',ev=>{state.country='';state.query=ev
 $('price-sort').addEventListener('change',ev=>{state.sort=ev.target.value;state.limit=15;if(state.data)renderDetails();});
 $('load-prices').addEventListener('click',()=>{state.limit+=30;if(state.data)renderDetails();});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)refresh();});
+window.addEventListener('online',()=>refresh());
 setInterval(()=>{if(!document.hidden)refresh();},300000);
 init();

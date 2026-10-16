@@ -3,8 +3,9 @@ import { renderHomeResets } from './home-render.js';
 import { getResetFocus, getResetHeading } from './reset-focus.js';
 import { getResetCopy } from './reset-copy.js';
 import { assertMarket, mergeFx, readCachedFx, cacheFx, fetchFx } from './market-data.js';
-import { isResetDataset as isDataset, pickResetDataset, mergeResetHistory } from './reset-cache.js';
+import { isResetDataset as isDataset, pickResetDataset } from './reset-cache.js';
 import { fetchResetUpdate, createResetResumeSync } from './reset-sync.js';
+import { enrichResetTranslations, mergePublishedResetData, loadPublishedResetSnapshots } from './reset-translations.js';
 
 const $ = (id) => document.getElementById(id);
 const CACHE_KEY = 'azt-reset-radar-v1';
@@ -21,17 +22,20 @@ const safeUrl = (url) => { try { const u = new URL(url); return u.protocol === '
 let toastTimer;
 function toast(message) { $('toast').textContent = message; $('toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 3800); }
 function attachSummaries(d) {
-  const known = [state.data, state.snapshot].filter(Boolean).flatMap(d => [...d.records, d.status.scheduled_reset, d.status.latest_reset, d.status.active_watch]).filter(Boolean);
-  const add = r => {
-    if (!r) return r;
-    let result = r;
-    for (const match of known) {
-      if (match.id !== r.id || match.text !== r.text || match.status !== r.status || match.reset_type !== r.reset_type || match.source.type !== r.source.type || match.source.url !== r.source.url) continue;
-      result = {...result, ...(match.summaryZh ? {summaryZh:match.summaryZh} : {}), ...(match.translationZh ? {translationZh:match.translationZh} : {})};
-    }
-    return result;
-  };
-  return {...d, records: d.records.map(add), status: {...d.status, latest_reset:add(d.status.latest_reset), scheduled_reset:add(d.status.scheduled_reset), active_watch:add(d.status.active_watch)}};
+  return enrichResetTranslations(d, [state.data, state.snapshot]);
+}
+function persistResets() {
+  try { localStorage.setItem(CACHE_KEY,JSON.stringify(state.data)); } catch { /* Persistence is optional. */ }
+}
+async function refreshPublishedSnapshot() {
+  const snapshots = await loadPublishedResetSnapshots();
+  if (!snapshots.length) return;
+  state.snapshot = mergePublishedResetData(state.snapshot, snapshots);
+  const previous = state.data;
+  state.data = mergePublishedResetData(previous, [state.snapshot]);
+  if (!previous || Date.parse(state.data.generatedAt) > Date.parse(previous.generatedAt)) state.mode = 'snapshot';
+  persistResets();
+  render(); maybeOpenInitialShare();
 }
 function renderSync(error = '') {
   const el = $('sync-state');
@@ -51,19 +55,20 @@ async function request(url, { signal = AbortSignal.timeout(6000) } = {}) {
 }
 async function sync(manual = false) {
   if (state.busy) return;
-  if (Date.now() < state.retryAt) { if(manual) toast(`请在 ${Math.ceil((state.retryAt-Date.now())/1000)} 秒后刷新`); return; }
+  if (Date.now() < state.retryAt) { await refreshPublishedSnapshot(); if(manual) toast(`请在 ${Math.ceil((state.retryAt-Date.now())/1000)} 秒后刷新公开接口`); return; }
   state.busy = true; state.lastAttemptAt = Date.now(); $('refresh-button').disabled = true; $('refresh-button').textContent = '↻ 正在同步';
+  const published = refreshPublishedSnapshot();
   try {
     const { data, historyError } = await fetchResetUpdate(request, { previous: state.data, fullHistory: true, historyLimit: 100 });
     if(state.data && Date.parse(data.generatedAt) < Date.parse(state.data.generatedAt)) throw new Error('数据源返回较旧记录，已保留较新数据');
     state.data = attachSummaries(data); state.mode = 'live'; state.syncError = ''; state.historyError = historyError;
-    try { localStorage.setItem(CACHE_KEY,JSON.stringify(state.data)); } catch { /* The page works without persistence. */ }
+    persistResets();
     render(); maybeOpenInitialShare(); if(manual) toast(historyError || '公开公告已同步');
   } catch (error) {
     if(state.mode === 'live') state.mode = 'cache';
     state.syncError = error.message || '网络连接失败'; if(state.data) render(true); else renderSync(state.syncError);
     if(manual) toast('暂时无法同步，已保留现有记录');
-  } finally { state.busy = false; state.retryAt = Math.max(state.retryAt, Date.now()+30000); $('refresh-button').disabled = false; $('refresh-button').textContent = '↻ 刷新数据'; resumeSync.settled(); }
+  } finally { await published; state.busy = false; state.retryAt = Math.max(state.retryAt, Date.now()+30000); $('refresh-button').disabled = false; $('refresh-button').textContent = '↻ 刷新数据'; resumeSync.settled(); }
 }
 let signalKey;
 function render(timeOnly = false) {
@@ -107,8 +112,8 @@ function renderAnnouncements() {
   $('clear-date').hidden=!state.selectedDay;
   $('calendar-detail').textContent=state.selectedDay?`${state.selectedDay} · ${rows.length} 条符合筛选的公告`:'点击有颜色的日期，查看当天公告';
   $('announcement-list').innerHTML=rows.slice(0,state.visible).map(r=>{
-    const copy=getResetCopy(r); const text=copy.english; const zh=r.summaryZh||copy.chinese; const url=safeUrl(r.source.url);
-    return `<article class="announcement"><div class="announcement-meta"><span class="type-label ${r.reset_type==='banked'?'banked-label':''}">${r.reset_type==='banked'?'储备重置':'常规重置'}</span><time datetime="${escapeHTML(r.announced_at)}">${escapeHTML(dateLabel(r.announced_at))}</time><span>UTC+8</span></div><h3>${escapeHTML(zh)}</h3>${!text?'<p>本地快照仅保留此条日期与来源，可前往原帖阅读。</p>':''}${text?`<details><summary>阅读英文原文</summary><p>${escapeHTML(text)}</p></details>`:''}<div class="announcement-actions"><span>${r.source.type==='x_post'?'Tibo · @thsottiaux':'数据源观测记录'}</span><div>${url?`<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">来源原文 ↗</a>`:''}</div></div></article>`;
+    const copy=getResetCopy(r); const text=copy.english; const zh=copy.chinese; const url=safeUrl(r.source.url);
+    return `<article class="announcement"><div class="announcement-meta"><span class="type-label ${r.reset_type==='banked'?'banked-label':''}">${r.reset_type==='banked'?'储备重置':'常规重置'}</span><time datetime="${escapeHTML(r.announced_at)}">${escapeHTML(dateLabel(r.announced_at))}</time><span>UTC+8</span>${copy.label === '自动中文译文' ? '<span>自动译文</span>' : ''}</div><h3>${escapeHTML(zh)}</h3>${!text?'<p>本地快照仅保留此条日期与来源，可前往原帖阅读。</p>':''}${text?`<details><summary>阅读英文原文</summary><p>${escapeHTML(text)}</p></details>`:''}<div class="announcement-actions"><span>${r.source.type==='x_post'?'Tibo · @thsottiaux':'数据源观测记录'}</span><div>${url?`<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">来源原文 ↗</a>`:''}</div></div></article>`;
   }).join('')||'<div class="empty-state">这个筛选下还没有重置记录。</div>';
   $('load-more').hidden=rows.length<=state.visible;
   $('load-more').textContent=`查看更多公告（还有 ${Math.max(0,rows.length-state.visible)} 条） ↓`;
@@ -153,20 +158,7 @@ async function init(){
   const initial=pickResetDataset(state.snapshot,cachedDatasets);
   if(initial.data){state.data=attachSummaries(initial.data);state.mode=initial.mode;}
   if(state.data){render();maybeOpenInitialShare();}
-  const loadSnapshot = async () => {
-    if(state.snapshot) return;
-    try {
-      const response=await fetch(assetUrl('./snapshot.json'),{signal:AbortSignal.timeout(6000)});
-      if(!response.ok) throw new Error('站内快照暂不可用');
-      const d=await response.json();
-      if(!isDataset(d)) throw new Error('站内快照校验未通过');
-      state.snapshot=d;
-      if(!state.data || Date.parse(d.generatedAt)>Date.parse(state.data.generatedAt)){state.data=attachSummaries(d);state.mode='snapshot';}
-      else state.data=attachSummaries(mergeResetHistory(d,state.data));
-      render();maybeOpenInitialShare();
-    } catch { /* Keep any valid embedded or browser-cached records. */ }
-  };
-  await Promise.all([loadSnapshot(),sync()]);
+  await sync();
   if(initialSharePending){initialSharePending=false;void intelShare.open();}
   if(!state.data){$('reset-detail-grid').textContent='暂时无法读取重置信号，请检查网络后刷新。';$('sync-state').textContent='数据未加载 · 可点击刷新重试';}
   setInterval(()=>{if(!document.hidden)sync();},5*60000);

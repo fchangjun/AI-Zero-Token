@@ -10,8 +10,9 @@ const uniqueRecords = records => {
     if (!known) unique.set(record.id, record);
     else if (known.text === record.text && known.reset_type === record.reset_type && known.source.type === record.source.type && known.source.url === record.source.url) {
       unique.set(record.id, { ...known,
-        ...(!known.summaryZh && typeof record.summaryZh === 'string' ? { summaryZh: record.summaryZh } : {}),
-        ...(!known.translationZh && typeof record.translationZh === 'string' ? { translationZh: record.translationZh } : {}),
+        ...(!known.summaryZh && known.status === record.status && typeof record.summaryZh === 'string' ? { summaryZh: record.summaryZh } : {}),
+        ...(!known.translationZh && typeof record.translationZh === 'string' ? { translationZh: record.translationZh,
+          ...(record.translationMeta !== undefined ? { translationMeta: record.translationMeta } : {}) } : {}),
       });
     }
   }
