@@ -118,9 +118,45 @@ function forecast(scheduled, current) {
   };
 }
 
+function tiboPostId(source) {
+  if (source?.type !== 'x_post' || source.author !== 'thsottiaux') return null;
+  try {
+    const url = new URL(source.url);
+    if (url.protocol !== 'https:' || url.username || url.password || !['x.com', 'twitter.com'].includes(url.hostname)) return null;
+    return /^\/thsottiaux\/status\/(\d+)\/?$/.exec(url.pathname)?.[1] || null;
+  } catch { return null; }
+}
+
+function activeWatch(watch, current, completedAt) {
+  const observed = timestamp(watch?.observed_at);
+  const expires = timestamp(watch?.expires_at);
+  const id = tiboPostId(watch?.source);
+  if (!id || observed === null || expires === null || observed > current + CLOCK_SKEW_MS
+      || observed <= completedAt || expires <= observed || expires <= current) return null;
+  const record = {
+    id, status: 'watch', reset_type: 'regular', announced_at: watch.observed_at,
+    text: typeof watch.text === 'string' ? watch.text : '', source: { ...watch.source },
+    ...(typeof watch.summaryZh === 'string' ? { summaryZh: watch.summaryZh } : {}),
+    ...(typeof watch.translationZh === 'string' ? { translationZh: watch.translationZh } : {}),
+  };
+  return {
+    priority: true, kind: 'watch', mode: 'watch', record,
+    observedAt: new Date(observed).toISOString(), expiresAt: new Date(expires).toISOString(),
+    watchChance: Number.isFinite(watch.reset_chance_percent) && watch.reset_chance_percent >= 0 && watch.reset_chance_percent <= 100 ? watch.reset_chance_percent : null,
+    forecastWindow: typeof watch.forecast_window === 'string' && watch.forecast_window.trim() ? watch.forecast_window.trim() : null,
+    watchUntil: labels(expires).full,
+    targetAt: null, confirmedAt: null, remainingMs: null,
+    badge: '观察信号 · 非正式预告', title: '下一次重置，有新迹象',
+    timeCaption: '下一次重置观察', timeLabel: '有新迹象', dateLabel: `观察记录：${labels(observed).full}`,
+    countdownLabel: '', countdownValue: '',
+    note: '这是 Codex Resets 根据公开原帖作出的第三方判断，不是 Tibo 的正式重置预告。观察有效期结束不代表已重置，以正式公告和账户状态为准。',
+  };
+}
+
 export function getResetHeading(focus) {
   if (focus.kind === 'scheduled') return { title: '下一次重置，', emphasis: '有新预告。', description: '下一次预告与最近确认记录，中英文原帖一起看。' };
   if (focus.kind === 'overdue') return { title: '重置预告，', emphasis: '等待确认。', description: '下一次预告仍待确认，同时保留最近一次确认记录。' };
+  if (focus.kind === 'watch') return { title: '下一次重置，', emphasis: '有新迹象。', description: '第三方观察信号与最近确认记录；观察不代表正式预告或重置已完成。' };
   if (focus.mode === 'confirmed') return { title: '最近一次重置，', emphasis: '已确认。', description: '上次确认记录与下一次重置预告。' };
   return { title: '重置动态，', emphasis: '持续记录。', description: '上次重置记录与下一次预告分别展示。' };
 }
@@ -173,7 +209,11 @@ export function getResetState(data, now = Date.now()) {
     next = emptyNext(!(completed || observed));
   }
 
-  const primary = next.mode === 'forecast' ? next : latest.mode !== 'empty' ? latest : quiet(true);
+  if (next.mode !== 'forecast') {
+    const watch = activeWatch(data.status?.active_watch, current, completed ? timestamp(completed.announced_at) : -Infinity);
+    if (watch) next = watch;
+  }
+  const primary = ['forecast', 'watch'].includes(next.mode) ? next : latest.mode !== 'empty' ? latest : quiet(true);
   const focus = { ...primary, latest, next };
   return { latest, next, focus };
 }

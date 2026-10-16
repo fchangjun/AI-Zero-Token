@@ -1,6 +1,7 @@
 import { setupIntelShare } from './intel-share.js';
 import { renderHomeResets } from './home-render.js';
 import { getResetFocus, getResetHeading } from './reset-focus.js';
+import { getResetCopy } from './reset-copy.js';
 import { assertMarket, mergeFx, readCachedFx, cacheFx, fetchFx } from './market-data.js';
 import { isResetDataset as isDataset, pickResetDataset, mergeResetHistory } from './reset-cache.js';
 
@@ -17,13 +18,10 @@ const escapeHTML = (value = '') => String(value).replace(/[&<>"']/g, (c) => ({'&
 const dateLabel = (date) => Number.isFinite(Date.parse(date)) ? dateFormat.format(new Date(date)) : '时间未提供';
 const dayKey = (date) => new Date(Date.parse(date) + 8 * 3600000).toISOString().slice(0,10);
 const safeUrl = (url) => { try { const u = new URL(url); return u.protocol === 'https:' && ['x.com','twitter.com','codex-resets.com'].includes(u.hostname) ? u.href : ''; } catch { return ''; } };
-const getText = (r) => String(r?.text || '').replace(/https:\/\/t\.co\/\S+/g, '').trim();
-function summary(r) { return r?.summaryZh || ''; }
-function titleFor(r) { return r?.status === 'scheduled' ? 'Codex 重置已有新预告' : r?.source?.type === 'observed' ? '发现一条额度重置观测记录' : r?.reset_type === 'banked' ? 'Codex 储备重置有新记录' : 'Codex 额度重置有新记录'; }
 let toastTimer;
 function toast(message) { $('toast').textContent = message; $('toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 3800); }
 function attachSummaries(d) {
-  const known = [state.data, state.snapshot].filter(Boolean).flatMap(d => [...d.records, d.status.scheduled_reset, d.status.latest_reset]).filter(Boolean);
+  const known = [state.data, state.snapshot].filter(Boolean).flatMap(d => [...d.records, d.status.scheduled_reset, d.status.latest_reset, d.status.active_watch]).filter(Boolean);
   const add = r => {
     if (!r) return r;
     let result = r;
@@ -33,7 +31,7 @@ function attachSummaries(d) {
     }
     return result;
   };
-  return {...d, records: d.records.map(add), status: {...d.status, latest_reset:add(d.status.latest_reset), scheduled_reset:add(d.status.scheduled_reset)}};
+  return {...d, records: d.records.map(add), status: {...d.status, latest_reset:add(d.status.latest_reset), scheduled_reset:add(d.status.scheduled_reset), active_watch:add(d.status.active_watch)}};
 }
 function renderSync(error = '') {
   const el = $('sync-state');
@@ -84,13 +82,17 @@ function render(timeOnly = false) {
   const {status,records} = state.data;
   const now = Date.now();
   const focus = getResetFocus(state.data, now);
+  document.body.classList.toggle('reset-forecast', ['forecast', 'watch'].includes(focus.mode));
   $('reset-time-note').textContent = focus.note;
   const heading = getResetHeading(focus);
   $('reset-detail-title').innerHTML = `${escapeHTML(heading.title)}<span>${escapeHTML(heading.emphasis)}</span>`;
   $('reset-detail-description').textContent = heading.description;
   const key = `${focus.kind}:${focus.priority}:${focus.record?.id || ''}:${focus.targetAt || ''}:${focus.latest?.record?.id || ''}:${focus.next?.kind || ''}:${focus.next?.record?.id || ''}`;
   if (!timeOnly || key !== signalKey) {
+    const active = document.activeElement;
+    const activeLink = $('reset-detail-grid').contains(active) ? active.getAttribute('href') : null;
     $('reset-detail-grid').innerHTML = renderHomeResets(state.data, now).replaceAll('href="./resets/index.html"', 'href="#history"').replaceAll('src="./tibo-avatar.jpg"', 'src="../tibo-avatar.jpg"');
+    if (activeLink) [...$('reset-detail-grid').querySelectorAll('a')].find(link => link.getAttribute('href') === activeLink)?.focus({ preventScroll: true });
     signalKey = key;
   } else if ($('home-reset-countdown')) $('home-reset-countdown').textContent = focus.countdownValue;
   $('stat-total').textContent = Number.isFinite(status.stats.total)?status.stats.total:records.length;
@@ -117,8 +119,8 @@ function renderAnnouncements() {
   $('clear-date').hidden=!state.selectedDay;
   $('calendar-detail').textContent=state.selectedDay?`${state.selectedDay} · ${rows.length} 条符合筛选的公告`:'点击有颜色的日期，查看当天公告';
   $('announcement-list').innerHTML=rows.slice(0,state.visible).map(r=>{
-    const text=getText(r); const zh=summary(r); const url=safeUrl(r.source.url);
-    return `<article class="announcement"><div class="announcement-meta"><span class="type-label ${r.reset_type==='banked'?'banked-label':''}">${r.reset_type==='banked'?'储备重置':'常规重置'}</span><time datetime="${escapeHTML(r.announced_at)}">${escapeHTML(dateLabel(r.announced_at))}</time><span>UTC+8</span></div><h3>${escapeHTML(zh||titleFor(r))}</h3>${!zh?`<p>${text?'原文已保留，适用范围请以来源公告为准。':'本地快照仅保留此条日期与来源，可前往原帖阅读。'}</p>`:''}${text?`<details><summary>阅读英文原文</summary><p>${escapeHTML(text)}</p></details>`:''}<div class="announcement-actions"><span>${r.source.type==='x_post'?'Tibo · @thsottiaux':'数据源观测记录'}</span><div>${url?`<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">来源原文 ↗</a>`:''}</div></div></article>`;
+    const copy=getResetCopy(r); const text=copy.english; const zh=r.summaryZh||copy.chinese; const url=safeUrl(r.source.url);
+    return `<article class="announcement"><div class="announcement-meta"><span class="type-label ${r.reset_type==='banked'?'banked-label':''}">${r.reset_type==='banked'?'储备重置':'常规重置'}</span><time datetime="${escapeHTML(r.announced_at)}">${escapeHTML(dateLabel(r.announced_at))}</time><span>UTC+8</span></div><h3>${escapeHTML(zh)}</h3>${!text?'<p>本地快照仅保留此条日期与来源，可前往原帖阅读。</p>':''}${text?`<details><summary>阅读英文原文</summary><p>${escapeHTML(text)}</p></details>`:''}<div class="announcement-actions"><span>${r.source.type==='x_post'?'Tibo · @thsottiaux':'数据源观测记录'}</span><div>${url?`<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">来源原文 ↗</a>`:''}</div></div></article>`;
   }).join('')||'<div class="empty-state">这个筛选下还没有重置记录。</div>';
   $('load-more').hidden=rows.length<=state.visible;
   $('load-more').textContent=`查看更多公告（还有 ${Math.max(0,rows.length-state.visible)} 条） ↓`;

@@ -18,9 +18,9 @@ test('scheduled reset is first in static HTML with a qualified clock and matchin
   const html = renderHome(template, market, snapshot, now);
   assert.deepEqual(order(html), ['home-resets-section', 'home-prices-section']);
   assert.deepEqual(order(html), getHomeLayout(getResetFocus(snapshot, now)).sectionIds);
-  assert.match(html, /<body class="home-page reset-priority">/);
-  assert.match(html, /id="home-reset-target">15:00<\/strong>/);
-  assert.match(html, /id="home-reset-countdown">02时18分<\/strong>/);
+  assert.match(html, /<body class="home-page reset-priority reset-forecast">/);
+  assert.match(html, /id="home-reset-target"[^>]*>15:00<\/strong>/);
+  assert.match(html, /id="home-reset-countdown">02时18分<\/(?:strong|b)>/);
   assert.match(html, /预计重置时间/);
   assert.match(html, /仅供参考/);
   assert.match(html, /原帖仅给出 EOD PST/);
@@ -34,16 +34,16 @@ test('scheduled reset is first in static HTML with a qualified clock and matchin
 test('reference deadline stays pending while older news returns prices to the top', () => {
   const due = renderHome(template, market, snapshot, Date.parse('2026-10-13T07:00:00Z'));
   assert.match(due, /data-reset-focus="overdue"/);
-  assert.match(due, /id="home-reset-countdown">待确认<\/strong>/);
+  assert.match(due, /id="home-reset-countdown">待确认<\/(?:strong|b)>/);
   assert.deepEqual(order(due), ['home-resets-section', 'home-prices-section']);
   const later = Date.parse('2026-10-14T07:00:00Z');
   const quiet = renderHome(template, market, snapshot, later);
   assert.deepEqual(order(quiet), ['home-prices-section', 'home-resets-section']);
   assert.deepEqual(order(quiet), getHomeLayout(getResetFocus(snapshot, later)).sectionIds);
-  assert.match(quiet, /<body class="home-page">/);
+  assert.match(quiet, /<body class="home-page reset-forecast">/);
   assert.match(quiet, /data-reset-focus="overdue"/);
-  assert.match(quiet, /id="home-reset-target">15:00<\/strong>/);
-  assert.match(quiet, /id="home-reset-countdown">待确认<\/strong>/);
+  assert.match(quiet, /id="home-reset-target"[^>]*>15:00<\/strong>/);
+  assert.match(quiet, /id="home-reset-countdown">待确认<\/(?:strong|b)>/);
   assert.match(quiet, /data-reset-panel="latest"/);
   assert.match(quiet, /data-reset-panel="next"/);
   assert.match(quiet, /id="home-prices-eyebrow">01 \/ SUBSCRIPTION SHORTLIST/);
@@ -71,7 +71,8 @@ test('reset detail shares forecast and confirmed headings with its server-render
   const detail = await readFile(new URL('../pages/resets.html', import.meta.url), 'utf8');
   const future = renderResets(detail, snapshot, Date.parse('2026-10-13T04:42:00Z'));
   assert.match(future, /id="reset-detail-title">下一次重置，<span>有新预告/);
-  assert.match(future, /id="home-reset-target">15:00/);
+  assert.match(future, /id="home-reset-target"[^>]*>15:00/);
+  assert.match(future, /<body class="reset-page reset-forecast">/);
   const quiet = renderResets(detail, { ...snapshot, status: { ...snapshot.status, scheduled_reset: null } }, Date.parse('2026-10-16T04:42:00Z'));
   assert.match(quiet, /id="reset-detail-title">最近一次重置，<span>已确认/);
   assert.match(quiet, /id="home-reset-target">12:00/);
@@ -79,4 +80,30 @@ test('reset detail shares forecast and confirmed headings with its server-render
   assert.match(quiet, /data-reset-panel="latest"/);
   assert.match(quiet, /data-reset-panel="next"/);
   assert.match(quiet, /暂无新预告/);
+});
+
+test('an active watch leads both static pages without pretending its expiry is an arrival time', async () => {
+  const watch = { level: 'elevated', reset_chance_percent: 40, forecast_window: 'within 24h',
+    observed_at: '2026-10-13T04:00:00Z', expires_at: '2026-10-14T05:00:00Z',
+    text: '@maria_rcks Can’t argue with that, Let’s break the cycle.',
+    source: { ...source, url: 'https://x.com/thsottiaux/status/987654321' } };
+  const data = { ...snapshot, generatedAt: '2026-10-13T04:01:00Z', status: { ...snapshot.status, scheduled_reset: null, active_watch: watch } };
+  const now = Date.parse('2026-10-13T04:42:00Z');
+  const home = renderHome(template, market, data, now);
+  assert.deepEqual(order(home), ['home-resets-section', 'home-prices-section']);
+  assert.match(home, /<body class="home-page reset-priority reset-forecast">/);
+  assert.match(home, /data-reset-mode="watch"/);
+  assert.match(home, /无法反驳，那就让我们打破这个循环吧/);
+  assert.match(home, /非正式预告/);
+  assert.doesNotMatch(home, /home-reset-countdown|预计重置时间/);
+  const { renderResets } = await import('../scripts/prerender.mjs');
+  const detail = renderResets(await readFile(new URL('../pages/resets.html', import.meta.url), 'utf8'), data, now);
+  assert.match(detail, /<body class="reset-page reset-forecast">/);
+  assert.match(detail, /id="reset-detail-title">下一次重置，<span>有新迹象/);
+  assert.match(detail, /data-reset-mode="watch"/);
+  const expired = renderHome(template, market, data, Date.parse(watch.expires_at));
+  assert.deepEqual(order(expired), ['home-prices-section', 'home-resets-section']);
+  assert.match(expired, /<body class="home-page">/);
+  assert.doesNotMatch(expired, /data-reset-mode="watch"|home-reset-countdown/);
+  assert.match(expired, /最近一次已确认/);
 });

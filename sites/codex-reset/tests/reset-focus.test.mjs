@@ -311,3 +311,139 @@ test('a different reset type cannot close a pending forecast, while a matching h
     assert.equal(getResetState(makeData(pending, other, [matching]), now).next.kind, 'scheduled');
   }
 });
+
+// Real fields from the 2026-10-16 status response, frozen independently of the maintained snapshot.
+const watchNow = Date.parse('2026-10-16T06:00:00.000Z');
+const watchData = () => {
+  const latest = record('2026-10-15T06:28:13.000Z', {
+    id: '2110618732666257557', text: 'Done and dusted https://t.co/0fehr43VS4',
+    source: { type: 'x_post', author: 'thsottiaux', url: 'https://x.com/thsottiaux/status/2110618732666257557' },
+  });
+  return { generatedAt: '2026-10-16T05:54:42.880Z', records: [latest], status: {
+    latest_reset: latest, scheduled_reset: null,
+    active_watch: {
+      level: 'elevated', reset_chance_percent: 40, forecast_window: 'within 24h',
+      observed_at: '2026-10-16T04:30:52.000Z', expires_at: '2026-10-17T05:00:00.000Z',
+      text: '@maria_rcks Can’t argue with that, Let’s break the cycle.',
+      source: { type: 'x_post', author: 'thsottiaux', url: 'https://x.com/thsottiaux/status/2110951585983631505' },
+    },
+  } };
+};
+
+test('the real active watch is independent of confirmed history and never invents an arrival time', () => {
+  const data = watchData(), original = structuredClone(data);
+  const { latest, next, focus } = getResetState(data, watchNow);
+  assert.equal(latest.mode, 'confirmed');
+  assert.equal(latest.record.id, '2110618732666257557');
+  assert.equal(next.kind, 'watch');
+  assert.equal(next.mode, 'watch');
+  assert.equal(next.priority, true);
+  assert.equal(focus.record, next.record);
+  assert.equal(focus.record.id, '2110951585983631505');
+  assert.equal(focus.record.status, 'watch');
+  assert.equal(focus.record.announced_at, data.status.active_watch.observed_at);
+  assert.deepEqual(focus.record.source, data.status.active_watch.source);
+  assert.equal(focus.record.text, data.status.active_watch.text);
+  assert.equal(next.observedAt, '2026-10-16T04:30:52.000Z');
+  assert.equal(next.expiresAt, '2026-10-17T05:00:00.000Z');
+  assert.equal(next.watchChance, 40);
+  assert.equal(next.forecastWindow, 'within 24h');
+  assert.match(next.watchUntil, /2026年10月17日 13:00.*北京时间/);
+  assert.equal(next.targetAt, null);
+  assert.equal(next.confirmedAt, null);
+  assert.equal(next.remainingMs, null);
+  assert.equal(next.countdownLabel, '');
+  assert.equal(next.countdownValue, '');
+  assert.equal(next.timeLabel, '有新迹象');
+  assert.match(next.badge, /非正式预告/);
+  assert.match(next.note, /第三方判断.*不是 Tibo 的正式重置预告/);
+  assert.match(getResetHeading(focus).description, /观察不代表正式预告或重置已完成/);
+  assert.deepEqual(data, original);
+});
+
+test('watch expiration removes the observation instead of confirming a reset', () => {
+  const data = watchData(), expires = Date.parse(data.status.active_watch.expires_at);
+  assert.equal(getResetState(data, expires - 1).next.mode, 'watch');
+  for (const current of [expires, expires + 86400000]) {
+    const { latest, next, focus } = getResetState(data, current);
+    assert.equal(next.kind, 'unannounced');
+    assert.equal(next.record, null);
+    assert.equal(next.targetAt, null);
+    assert.equal(latest.record.id, data.status.latest_reset.id);
+    assert.equal(latest.confirmedAt, data.status.latest_reset.announced_at);
+    assert.equal(focus.record.id, data.status.latest_reset.id);
+  }
+});
+
+test('only trusted, chronologically valid observations can become active watches', () => {
+  const edits = [
+    { observed_at: 'invalid' }, { observed_at: '2026-02-30T04:30:00Z' },
+    { observed_at: '2026-10-16T04:30:52' }, { observed_at: '2026-10-16T06:05:01Z' },
+    { expires_at: 'invalid' }, { expires_at: '2026-10-16T04:30:52.000Z' },
+    { expires_at: '2026-10-16T04:00:00.000Z' },
+    { source: { type: 'observed', url: 'https://x.com/thsottiaux/status/2110951585983631505' } },
+    { source: { type: 'x_post', author: 'another-user', url: 'https://x.com/thsottiaux/status/2110951585983631505' } },
+    { source: { type: 'x_post', author: 'thsottiaux', url: 'https://evil.example/thsottiaux/status/2110951585983631505' } },
+    { source: { type: 'x_post', author: 'thsottiaux', url: 'https://x.com/another-user/status/2110951585983631505' } },
+    { source: { type: 'x_post', author: 'thsottiaux', url: 'https://x.com/thsottiaux' } },
+    { source: { type: 'x_post', author: 'thsottiaux', url: 'https://name:secret@x.com/thsottiaux/status/2110951585983631505' } },
+  ];
+  for (const edit of edits) {
+    const data = watchData();
+    Object.assign(data.status.active_watch, edit);
+    const state = getResetState(data, watchNow);
+    assert.notEqual(state.next.mode, 'watch', JSON.stringify(edit));
+    assert.equal(state.latest.record.id, data.status.latest_reset.id);
+  }
+  const grace = watchData();
+  grace.status.active_watch.observed_at = '2026-10-16T06:05:00Z';
+  assert.equal(getResetState(grace, watchNow).next.mode, 'watch');
+});
+
+test('a public completion closes an older watch but an observation never substitutes completion', () => {
+  for (const announced of ['2026-10-16T04:30:52Z', '2026-10-16T05:30:00Z']) {
+    const data = watchData();
+    const completed = record(announced, { id: 'new-public-completion', status: 'confirmed' });
+    data.records.unshift(completed);
+    const state = getResetState(data, watchNow);
+    assert.equal(state.next.kind, 'unannounced');
+    assert.equal(state.latest.record.id, completed.id);
+  }
+  const old = watchData();
+  old.status.active_watch.observed_at = '2026-10-15T06:00:00Z';
+  assert.equal(getResetState(old, watchNow).next.kind, 'unannounced');
+  const observed = watchData();
+  observed.records.unshift(record('2026-10-16T05:30:00Z', { id: 'observed-new', source: { type: 'observed' } }));
+  assert.equal(getResetState(observed, watchNow).next.mode, 'watch');
+});
+
+test('formal forecasts take precedence over watches including overdue and time-undetermined forecasts', () => {
+  for (const target of ['2026-10-16T07:00:00Z', '2026-10-16T05:00:00Z', null]) {
+    const data = watchData();
+    data.status.scheduled_reset = schedule({ id: 'formal-forecast', announced_at: '2026-10-16T03:00:00Z', scheduled_for: target });
+    const state = getResetState(data, watchNow);
+    assert.equal(state.next.mode, 'forecast');
+    assert.equal(state.focus.record.id, 'formal-forecast');
+  }
+});
+
+test('watch probability stays optional and normalized watch records cannot become completions', () => {
+  for (const value of [0, 40, 100, -1, 101, '40', null, undefined, NaN]) {
+    const data = watchData();
+    data.status.active_watch.reset_chance_percent = value;
+    const next = getResetState(data, watchNow).next;
+    assert.equal(next.watchChance, Number.isFinite(value) && value >= 0 && value <= 100 ? value : null);
+    assert.equal(next.mode, 'watch');
+  }
+  const data = watchData();
+  data.status.active_watch.translationZh = '这话没法反驳，那就打破循环吧。';
+  data.status.active_watch.summaryZh = '来源站收录了一条观察信号。';
+  const normalized = getResetState(data, watchNow).next.record;
+  assert.equal(normalized.translationZh, data.status.active_watch.translationZh);
+  assert.equal(normalized.summaryZh, data.status.active_watch.summaryZh);
+  data.records.unshift(normalized);
+  data.status.active_watch = null;
+  const noWatch = getResetState(data, watchNow);
+  assert.equal(noWatch.latest.record.id, '2110618732666257557');
+  assert.equal(noWatch.next.kind, 'unannounced');
+});

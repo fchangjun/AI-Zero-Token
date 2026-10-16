@@ -105,5 +105,94 @@ test('long source text is explicitly excerpted and stays inside fixed artwork ev
   try { Date.now = () => { throw new Error('render must not read current time'); }; await renderIntelCard(canvas, info); } finally { Date.now = savedClock; }
   assertBounds(canvas);
   assert.ok(canvas.texts.some(t => t.value.startsWith('EN EXCERPT')));
-  assert.ok(canvas.texts.some(t => t.value.startsWith('摘录')));
+  assert.ok(canvas.texts.some(t => t.value.startsWith('中文译文（摘录）')));
+});
+
+
+test('a live landing forecast without Chinese fields uses the same precise local explanation in the card', async () => {
+  const reset = structuredClone(snapshot);
+  reset.status.scheduled_reset.text = 'Landing within the next 2 hours https://t.co/test123';
+  delete reset.status.scheduled_reset.translationZh;
+  delete reset.status.scheduled_reset.summaryZh;
+  const info = getIntelCardData(reset, market, { now });
+  assert.equal(info.reset.chinese, '预计在接下来的 2 小时内到账。');
+  assert.equal(info.reset.chineseLabel, '中文释义');
+  assert.equal(info.reset.chineseType, 'translation');
+  assert.equal(info.reset.english, 'Landing within the next 2 hours');
+  assert.match(intelCardCaption(info), /中文释义：预计在接下来的 2 小时内到账/);
+  const canvas = recordingCanvas();
+  await renderIntelCard(canvas, info); assertBounds(canvas);
+  assert.ok(canvas.texts.some(t => t.value.includes('中文释义：预计在接下来的 2 小时内到账')));
+  assert.ok(canvas.texts.some(t => t.value.includes('Landing within the next 2 hours')));
+});
+
+test('unknown forecast summaries stay labelled as summaries rather than translations', async () => {
+  const reset = structuredClone(snapshot);
+  reset.status.scheduled_reset.text = 'Landing within the next 2 hours, unless delayed.';
+  delete reset.status.scheduled_reset.translationZh;
+  delete reset.status.scheduled_reset.summaryZh;
+  const info = getIntelCardData(reset, market, { now });
+  assert.equal(info.reset.chineseLabel, '中文速读');
+  assert.equal(info.reset.chineseType, 'summary');
+  assert.match(info.reset.chinese, /具体安排请查看英文原文/);
+  assert.doesNotMatch(info.reset.chinese, /2 小时|已完成/);
+  assert.match(intelCardCaption(info), /中文速读/);
+  const canvas = recordingCanvas(); await renderIntelCard(canvas, info); assertBounds(canvas);
+  assert.ok(canvas.texts.some(t => t.value.startsWith('中文速读：')));
+});
+
+const watchNow = Date.parse('2026-10-16T05:00:00Z');
+function watchDataset() {
+  const data = structuredClone(snapshot);
+  data.generatedAt = '2026-10-16T04:55:00Z';
+  data.status.scheduled_reset = null;
+  data.status.latest_reset = {
+    id: '2110618732666257557', reset_type: 'regular', announced_at: '2026-10-15T06:28:13.000Z',
+    text: 'Done and dusted', source: { type: 'x_post', author: 'thsottiaux', url: 'https://x.com/thsottiaux/status/2110618732666257557' },
+  };
+  data.status.active_watch = {
+    level: 'elevated', reset_chance_percent: 40, forecast_window: 'within 24h',
+    observed_at: '2026-10-16T04:30:52.000Z', expires_at: '2026-10-17T05:00:00.000Z',
+    text: '@maria_rcks Can’t argue with that, Let’s break the cycle.',
+    source: { type: 'x_post', author: 'thsottiaux', url: 'https://x.com/thsottiaux/status/2110951585983631505' },
+  };
+  return data;
+}
+
+test('active watch sharing selects the current signal without turning the observation expiry into a reset deadline', async () => {
+  const data = watchDataset(), info = getIntelCardData(data, market, { now: watchNow });
+  assert.equal(info.focus.mode, 'watch'); assert.equal(info.focus.kind, 'watch');
+  assert.equal(info.focus.priority, true); assert.equal(info.reset.id, '2110951585983631505');
+  assert.notEqual(info.reset.id, data.status.latest_reset.id);
+  assert.equal(info.focus.targetAt, null); assert.equal(info.focus.confirmedAt, null);
+  assert.equal(info.focus.countdownValue, ''); assert.equal(info.focus.countdownLabel, '');
+  assert.equal(info.focus.observedAt, data.status.active_watch.observed_at);
+  assert.equal(info.focus.expiresAt, data.status.active_watch.expires_at);
+  assert.equal(info.focus.watchChance, 40);
+  assert.equal(info.reset.chinese, '@maria_rcks 无法反驳，那就让我们打破这个循环吧。');
+  const caption = intelCardCaption(info);
+  assert.match(caption, /观察信号.*尚无正式预告/);
+  assert.match(caption, /发现时间：2026\/10\/16 12:30/);
+  assert.match(caption, /2110951585983631505/);
+  assert.doesNotMatch(caption, /预计重置|最近重置确认|2026\/10\/17|Done and dusted/);
+  const canvas = recordingCanvas(); await renderIntelCard(canvas, info); assertBounds(canvas);
+  const visible = canvas.texts.map(t => t.value).join('\n');
+  assert.match(visible, /有新迹象/); assert.match(visible, /观察信号 · 尚无正式预告/);
+  assert.match(visible, /无法反驳/);
+  assert.doesNotMatch(visible, /预计重置|距离参考时点|2026\/10\/17|✓/);
+  data.status.active_watch.text = 'Changed later'; data.status.active_watch.reset_chance_percent = 90;
+  assert.equal(intelCardCaption(info), caption); assert.equal(info.focus.watchChance, 40);
+});
+
+test('unknown watch copy remains a signal and an expired watch returns to the true latest completion', async () => {
+  const data = watchDataset(); data.status.active_watch.text = 'Something may happen.';
+  const watch = getIntelCardData(data, market, { now: watchNow });
+  assert.equal(watch.reset.chineseType, 'summary');
+  assert.equal(watch.reset.chinese, '出现新的重置相关信号，尚无正式预告，请查看原文。');
+  assert.equal(watch.focus.timeLabel, '有新迹象');
+  const expired = getIntelCardData(data, market, { now: Date.parse('2026-10-17T05:00:01Z') });
+  assert.equal(expired.focus.mode, 'confirmed');
+  assert.equal(expired.reset.id, data.status.latest_reset.id);
+  assert.equal(expired.reset.chinese, '已经全部完成。');
+  assert.doesNotMatch(intelCardCaption(expired), /有新迹象|Something may happen|2110951585983631505/);
 });

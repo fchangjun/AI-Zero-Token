@@ -1,3 +1,5 @@
+import { getResetFocus } from './reset-focus.js';
+
 const validDate=value=>typeof value==='string'&&Number.isFinite(Date.parse(value));
 const safeUrl=value=>{try{const url=new URL(value);return url.protocol==='https:'&&['x.com','twitter.com','codex-resets.com'].includes(url.hostname)?url.href:'';}catch{return '';}};
 const validSource=source=>source&&((source.type==='observed'&&Boolean(safeUrl(source.url)))||(source.type==='x_post'&&source.author==='thsottiaux'&&/^https:\/\/(?:x|twitter)\.com\/thsottiaux\/status\/\d+(?:[/?#]|$)/.test(safeUrl(source.url))));
@@ -25,16 +27,19 @@ export function pickResetDataset(snapshot,caches=[]){
   return {data,mode};
 }
 /** Resolve the latest public post for the generic sharing entry point. */
-export function latestPublicRecordId(data){
+export function latestPublicRecordId(data,now=Date.now()){
   if(!data)return null;
-  const latest=data.status.latest_reset;
-  const scheduled=data.status.scheduled_reset&&(!latest||Date.parse(data.status.scheduled_reset.announced_at)>Date.parse(latest.announced_at))?data.status.scheduled_reset:null;
-  return [scheduled,latest,...data.records].filter(record=>record?.source?.type==='x_post').sort((a,b)=>Date.parse(b.announced_at)-Date.parse(a.announced_at))[0]?.id||null;
+  const focus=getResetFocus(data,now);
+  return focus.record?.source?.type==='x_post'?focus.record.id:null;
 }
 
 /** Explicit homepage links must share that exact post, even after newer data arrives. */
-export function requestedShareRecordId(data, request){
+export function requestedShareRecordId(data, request, now=Date.now()){
   if(!data || !request)return null;
-  const id=request==='latest'?latestPublicRecordId(data):request;
-  return [data.status?.scheduled_reset,data.status?.latest_reset,...(data.records||[])].some(record=>record?.id===id)?id:null;
+  const focus=getResetFocus(data,now);
+  const active=focus.record?.source?.type==='x_post'?focus.record:null;
+  const id=request==='latest'?active?.id:request;
+  if(!id)return null;
+  if(active?.id===id)return id;
+  return [data.status?.scheduled_reset,data.status?.latest_reset,...(data.records||[])].some(record=>record?.id===id&&record.status!=='watch')?id:null;
 }

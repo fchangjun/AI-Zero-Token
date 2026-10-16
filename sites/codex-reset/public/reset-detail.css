@@ -26,3 +26,19 @@
 .reset-page .reset-detail-signal .reset-panels-footer{margin-top:-6px}
 
 .reset-page .reset-detail-signal .has-latest>.reset-next-quiet{background:linear-gradient(150deg,#f2eafc,#eae8f7)}
+
+.reset-page.reset-forecast .intro{padding:24px 0 21px;gap:20px}
+.reset-page.reset-forecast .intro h1{font-size:23px;line-height:1.4;margin:9px 0 0;letter-spacing:-.5px}
+.reset-page.reset-forecast .intro p{display:none}
+.reset-page.reset-forecast .intro .eyebrow{font-size:8px}
+.reset-page.reset-forecast .intro-aside{align-self:center}
+.reset-page.reset-forecast .reset-detail-signal{padding-bottom:10px}
+@media(max-width:760px){.reset-page.reset-forecast .intro{padding:20px 0 18px}.reset-page.reset-forecast .intro h1{font-size:23px}.reset-page.reset-forecast .intro-aside{display:flex}}
+
+@media(max-width:760px){
+  .reset-page .intro{flex-wrap:wrap;align-items:center;gap:13px}
+  .reset-page .intro>div:first-child{flex:1;min-width:0}
+  .reset-page .intro-aside,.reset-page.reset-forecast .intro-aside{display:flex;align-items:flex-end;justify-content:center;flex-shrink:0;padding:0}
+  .reset-page .intro-aside .date-today,.reset-page .intro-aside .issue{display:none}
+  .reset-page .intro-aside .text-button{font-size:10px;padding:9px 0;white-space:nowrap;margin-top:0}
+}

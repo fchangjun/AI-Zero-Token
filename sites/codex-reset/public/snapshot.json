@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "capturedAt": "2026-10-13T05:27:38.958Z",
-  "generatedAt": "2026-10-13T05:26:38.550Z",
-  "historyGeneratedAt": "2026-10-13T05:25:35.887Z",
+  "capturedAt": "2026-10-16T05:59:21.744Z",
+  "generatedAt": "2026-10-16T05:58:53.285Z",
+  "historyGeneratedAt": "2026-10-16T05:54:32.175Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -12,28 +12,55 @@
   },
   "status": {
     "latest_reset": {
-      "id": "2109873287853707513",
+      "id": "2110618732666257557",
       "reset_type": "regular",
-      "announced_at": "2026-10-13T05:06:06.000Z",
-      "text": "What would you like with your side of reset? It's done. https://t.co/gpNaB6otgy",
+      "announced_at": "2026-10-15T06:28:13.000Z",
+      "text": "Done and dusted https://t.co/0fehr43VS4",
       "source": {
         "type": "x_post",
         "author": "thsottiaux",
-        "url": "https://x.com/thsottiaux/status/2109873287853707513"
+        "url": "https://x.com/thsottiaux/status/2110618732666257557"
       },
-      "summaryZh": "本次额度重置已完成。",
-      "translationZh": "这份重置还想配点什么？已经搞定了。"
+      "translationZh": "已经全部完成。",
+      "summaryZh": "本次额度重置已完成。"
     },
     "scheduled_reset": null,
-    "active_watch": null,
+    "active_watch": {
+      "level": "elevated",
+      "reset_chance_percent": 40,
+      "forecast_window": "within 24h",
+      "observed_at": "2026-10-16T04:30:52.000Z",
+      "expires_at": "2026-10-17T05:00:00.000Z",
+      "text": "@maria_rcks Can’t argue with that, Let’s break the cycle.",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2110951585983631505"
+      },
+      "translationZh": "@maria_rcks 无法反驳，那就让我们打破这个循环吧。",
+      "summaryZh": "Tibo 的新回复出现重置相关迹象，尚无正式重置预告。"
+    },
     "stats": {
-      "total": 61,
-      "last_reset_at": "2026-10-13T05:06:06.000Z",
-      "days_since_last": 0,
-      "avg_interval_days": 6.5
+      "total": 62,
+      "last_reset_at": "2026-10-15T06:28:13.000Z",
+      "days_since_last": 1,
+      "avg_interval_days": 6.4
     }
   },
   "records": [
+    {
+      "id": "2110618732666257557",
+      "reset_type": "regular",
+      "announced_at": "2026-10-15T06:28:13.000Z",
+      "text": "Done and dusted https://t.co/0fehr43VS4",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2110618732666257557"
+      },
+      "translationZh": "已经全部完成。",
+      "summaryZh": "本次额度重置已完成。"
+    },
     {
       "id": "2109873287853707513",
       "reset_type": "regular",
@@ -44,8 +71,8 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2109873287853707513"
       },
-      "summaryZh": "本次额度重置已完成。",
-      "translationZh": "这份重置还想配点什么？已经搞定了。"
+      "translationZh": "这份重置还想配点什么？已经搞定了。",
+      "summaryZh": "本次额度重置已完成。"
     },
     {
       "id": "2109132167112782291",
@@ -57,8 +84,8 @@
         "author": "thsottiaux",
         "url": "https://x.com/thsottiaux/status/2109132167112782291"
       },
-      "summaryZh": "本次普通额度重置已完成。",
-      "translationZh": "这次重置已完成，现已全部生效。"
+      "translationZh": "这次重置已完成，现已全部生效。",
+      "summaryZh": "本次普通额度重置已完成。"
     },
     {
       "id": "2108040921044639779",

@@ -4,16 +4,12 @@ import { renderHomeDeals, renderHomeResets, homeMarketMeta, homeTime } from './h
 import { setupIntelShare } from './intel-share.js';
 import { getResetFocus } from './reset-focus.js';
 import { getHomeLayout } from './home-layout.js';
+import { isResetDataset as validResetData } from './reset-cache.js';
 
 const $ = id => document.getElementById(id);
 const RESET_API = 'https://codex-resets.com/api/v1';
 const RESET_CACHE = 'codex-intel-home-resets-v1';
 const state = { market: null, reset: null, resetSnapshot: null, resetMode: 'snapshot', proPlanId: 'pro200', busy: false, retryAt: 0, marketError: false, fxError: false, resetError: false };
-const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
-const sourceUrl = value => { try { const url = new URL(value); return url.protocol === 'https:' && ['x.com', 'twitter.com', 'codex-resets.com'].includes(url.hostname) ? url.href : ''; } catch { return ''; } };
-const validSource = source => source && ((source.type === 'observed' && Boolean(sourceUrl(source.url))) || (source.type === 'x_post' && source.author === 'thsottiaux' && /^https:\/\/(?:x|twitter)\.com\/thsottiaux\/status\/\d+(?:[/?#]|$)/.test(sourceUrl(source.url))));
-const validRecord = record => record && typeof record.id === 'string' && record.id.length > 0 && validDate(record.announced_at) && ['regular', 'banked'].includes(record.reset_type) && validSource(record.source);
-const validResetData = data => data && validDate(data.generatedAt) && Array.isArray(data.records) && data.records.length < 5001 && data.records.every(validRecord) && data.status && (data.status.latest_reset === null || (validRecord(data.status.latest_reset) && data.status.latest_reset.status !== 'scheduled')) && (data.status.scheduled_reset === null || (validRecord(data.status.scheduled_reset) && data.status.scheduled_reset.status === 'scheduled' && (data.status.scheduled_reset.scheduled_for === null || validDate(data.status.scheduled_reset.scheduled_for))));
 const storage = () => { try { return localStorage; } catch { return null; } };
 const readJson = id => { try { return JSON.parse($(id)?.textContent || 'null'); } catch { return null; } };
 let toastTimer;
@@ -25,13 +21,13 @@ function toast(message) {
 }
 
 function mergeTranslations(data) {
-  const known = [state.resetSnapshot, state.reset].filter(Boolean).flatMap(item => [...item.records, item.status.latest_reset, item.status.scheduled_reset]).filter(Boolean);
+  const known = [state.resetSnapshot, state.reset].filter(Boolean).flatMap(item => [...item.records, item.status.latest_reset, item.status.scheduled_reset, item.status.active_watch]).filter(Boolean);
   const attach = record => {
     if (!record) return record;
     const previous = known.find(item => item.id === record.id && item.text === record.text && item.status === record.status && item.reset_type === record.reset_type && item.source?.url === record.source?.url && item.source?.type === record.source?.type);
     return previous ? { ...record, ...(previous.summaryZh ? { summaryZh: previous.summaryZh } : {}), ...(previous.translationZh ? { translationZh: previous.translationZh } : {}) } : record;
   };
-  return { ...data, records: data.records.map(attach), status: { ...data.status, latest_reset: attach(data.status.latest_reset), scheduled_reset: attach(data.status.scheduled_reset) } };
+  return { ...data, records: data.records.map(attach), status: { ...data.status, latest_reset: attach(data.status.latest_reset), scheduled_reset: attach(data.status.scheduled_reset), active_watch: attach(data.status.active_watch) } };
 }
 
 function renderMarket() {
@@ -62,6 +58,7 @@ function renderResets(clockOnly = false) {
       if (feed.children[index]?.id !== id) feed.insertBefore($(id), feed.children[index] || null);
     }
     document.body.classList.toggle('reset-priority', layout.priority);
+    document.body.classList.toggle('reset-forecast', layout.forecast);
     $('home-title').innerHTML = layout.titleHtml;
     for (const [id, text] of Object.entries(layout.texts)) $(id).textContent = text;
     $('home-reset-grid').innerHTML = renderHomeResets(state.reset, now);

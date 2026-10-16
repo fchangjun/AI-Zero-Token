@@ -1,6 +1,7 @@
 import { CHANNELS, convertQuote, rankedRegions } from '../public/market-utils.js';
 import { renderHomeResets } from '../public/home-render.js';
 import { getResetFocus, getResetHeading } from '../public/reset-focus.js';
+import { getResetCopy } from '../public/reset-copy.js';
 
 export const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 const amount = value => Number.isFinite(value) ? value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
@@ -62,6 +63,7 @@ export function renderMarket(html, data) {
 export function renderResets(html, data, now = Date.now()) {
   const { status, records } = data;
   const focus = getResetFocus(data, now);
+  html = html.replace('<body class="reset-page">', `<body class="reset-page${['forecast', 'watch'].includes(focus.mode) ? ' reset-forecast' : ''}">`);
   const heading = getResetHeading(focus);
   html = replaceElement(html, 'reset-detail-title', `${escapeHTML(heading.title)}<span>${escapeHTML(heading.emphasis)}</span>`);
   const values = {
@@ -77,9 +79,10 @@ export function renderResets(html, data, now = Date.now()) {
   html = setTexts(html, values);
   html = replaceElement(html, 'reset-detail-grid', renderHomeResets(data, now).replaceAll('href="./resets/index.html"', 'href="#history"').replaceAll('src="./tibo-avatar.jpg"', 'src="../tibo-avatar.jpg"'));
   html = replaceElement(html, 'announcement-list', records.slice(0, 6).map(record => {
-    const text = String(record.text || '').replace(/https:\/\/t\.co\/\S+/g, '').trim();
+    const copy = getResetCopy(record);
+    const text = copy.english;
     const source = safeSource(record.source?.url);
-    const title = record.summaryZh || (record.source?.type === 'observed' ? '发现一条额度重置观测记录' : record.reset_type === 'banked' ? 'Codex 储备重置有新记录' : 'Codex 额度重置有新记录');
+    const title = record.summaryZh || copy.chinese;
     return `<article class="announcement"><div class="announcement-meta"><span class="type-label ${record.reset_type === 'banked' ? 'banked-label' : ''}">${record.reset_type === 'banked' ? '储备重置' : '常规重置'}</span><time datetime="${escapeHTML(record.announced_at)}">${time(record.announced_at)}</time><span>UTC+8</span></div><h3>${escapeHTML(title)}</h3>${text ? `<details><summary>阅读英文原文</summary><p>${escapeHTML(text)}</p></details>` : '<p>本地快照仅保留此条日期与来源，可前往原帖阅读。</p>'}<div class="announcement-actions"><span>${record.source?.type === 'x_post' ? 'Tibo · @thsottiaux' : '数据源观测记录'}</span><div>${source ? `<a href="${escapeHTML(source)}" target="_blank" rel="noopener noreferrer">来源原文 ↗</a>` : ''}</div></div></article>`;
   }).join('') || '<p>暂未收录公开通告。</p>');
   return html;

@@ -15,7 +15,7 @@ export function renderHome(html, market, reset, now = Date.now()) {
   html = replaceElement(html, 'home-reset-time', escapeHome(`本地通告快照 · ${homeTime(reset.generatedAt || reset.capturedAt)}`));
   html = replaceElement(html, 'home-title', layout.titleHtml);
   for (const [id, text] of Object.entries(layout.texts)) html = replaceElement(html, id, escapeHome(text));
-  html = html.replace('<body class="home-page">', `<body class="home-page${layout.priority ? ' reset-priority' : ''}">`);
+  html = html.replace('<body class="home-page">', `<body class="home-page${layout.priority ? ' reset-priority' : ''}${layout.forecast ? ' reset-forecast' : ''}">`);
   const sections = layout.sectionIds.map(id => {
     const name = id.replace('-section', '');
     const section = new RegExp(`<!-- ${name}:start -->[\\s\\S]*?<!-- ${name}:end -->`).exec(html);

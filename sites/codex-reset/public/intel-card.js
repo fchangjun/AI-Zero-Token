@@ -1,4 +1,5 @@
 import { getResetFocus } from './reset-focus.js';
+import { getResetCopy } from './reset-copy.js';
 import { getFeaturedDeals, PRO_PLANS } from './deals.js';
 import { CHANNELS } from './market-utils.js';
 
@@ -41,8 +42,9 @@ export function getIntelCardData(resetData, marketData, { proPlanId = 'pro200', 
   if (!Number.isFinite(current)) throw new Error('无法确定分享时间，请检查设备时间。');
   const focus = getResetFocus(resetData, current);
   const record = focus.record;
-  const english = excerpt(String(record?.text || '').replace(/https:\/\/t\.co\/\S+/g, ''), 240);
-  const chinese = excerpt(record?.translationZh || record?.summaryZh || (record ? '已收录公开重置通告，详情请查看英文原帖。' : '暂未收录新的公开重置消息。'), 100);
+  const copy = getResetCopy(record, { mode: focus.mode });
+  const english = excerpt(copy.english, 240);
+  const chinese = excerpt(copy.chinese, 100);
   const proId = PRO_PLANS.includes(proPlanId) ? proPlanId : 'pro200';
   // Filter malformed entries defensively without changing full-precision ranking for valid data.
   const validMarket = marketData && { ...marketData, plans: (marketData.plans || []).filter(plan => plan && typeof plan.id === 'string').map(plan => ({ ...plan, quotes: (Array.isArray(plan.quotes) ? plan.quotes : []).filter(quote => quote && positive(quote.amount) && typeof quote.country === 'string') })) };
@@ -65,8 +67,14 @@ export function getIntelCardData(resetData, marketData, { proPlanId = 'pro200', 
   });
   const snapshot = {
     capturedAt: new Date(current).toISOString(),
-    focus: { kind: focus.kind, mode: focus.mode, priority: focus.priority, badge: focus.badge, title: focus.title, targetAt: focus.targetAt, confirmedAt: focus.confirmedAt, timeLabel: focus.timeLabel, dateLabel: focus.dateLabel, timeCaption: `${focus.targetAt ? '预计重置' : focus.timeCaption} · 北京时间`, countdownLabel: focus.countdownLabel, countdownValue: focus.countdownValue, note: timeNote(focus) },
-    reset: { id: clean(record?.id), isTibo: /^(?:@)?thsottiaux$/i.test(clean(record?.source?.author)), authorName: /^(?:@)?thsottiaux$/i.test(clean(record?.source?.author)) ? 'Tibo' : clean(record?.source?.author) || '公开重置信息', authorHandle: clean(record?.source?.author).replace(/^@/, ''), sourceUrl: safeX(record?.source?.url), announcedAt: record?.announced_at || null, datasetAt: resetData?.generatedAt || null, chinese: chinese.text, chineseExcerpt: chinese.shortened, english: english.text, englishExcerpt: english.shortened },
+    focus: { kind: focus.kind, mode: focus.mode, priority: focus.priority, badge: focus.badge, title: focus.title,
+      targetAt: focus.targetAt, confirmedAt: focus.confirmedAt,
+      observedAt: focus.observedAt || null, expiresAt: focus.expiresAt || null,
+      watchChance: Number.isFinite(focus.watchChance) ? focus.watchChance : null,
+      timeLabel: focus.timeLabel, dateLabel: focus.dateLabel,
+      timeCaption: focus.mode === 'watch' ? '观察信号 · 尚无正式预告' : `${focus.targetAt ? '预计重置' : focus.timeCaption} · 北京时间`,
+      countdownLabel: focus.countdownLabel, countdownValue: focus.countdownValue, note: timeNote(focus) },
+    reset: { id: clean(record?.id), isTibo: /^(?:@)?thsottiaux$/i.test(clean(record?.source?.author)), authorName: /^(?:@)?thsottiaux$/i.test(clean(record?.source?.author)) ? 'Tibo' : clean(record?.source?.author) || '公开重置信息', authorHandle: clean(record?.source?.author).replace(/^@/, ''), sourceUrl: safeX(record?.source?.url), announcedAt: record?.announced_at || null, datasetAt: resetData?.generatedAt || null, chinese: chinese.text, chineseLabel: copy.label, chineseType: copy.type, chineseExcerpt: chinese.shortened, english: english.text, englishExcerpt: english.shortened },
     deals, usdSource: safeUrl(marketData?.usdSource), usdVerifiedAt: marketData?.usdVerifiedAt || null,
     fxSource: safeUrl(marketData?.fx?.sourceUrl), fxUpdatedAt: marketData?.fx?.updatedAt || null,
   };
@@ -76,8 +84,8 @@ export function getIntelCardData(resetData, marketData, { proPlanId = 'pro200', 
 export function intelCardCaption(info, { pageUrl = '', aztUrl = '' } = {}) {
   if (!info) return '';
   const f = info.focus, r = info.reset;
-  const timing = f.targetAt ? `预计重置：${date(f.targetAt)}（北京时间）` : f.confirmedAt ? `最近重置确认：${date(f.confirmedAt)}（北京时间）` : f.kind === 'scheduled' ? '已有新预告 · 时间待定' : f.mode === 'observed' ? `最近观测：${date(r.announcedAt)}（北京时间）` : '暂无公开重置记录';
-  const reset = `重置信号：${f.badge}\n${timing}\n${r.authorName}：${r.chinese}${r.chineseExcerpt ? '（摘录）' : ''}${r.english ? `\n${r.englishExcerpt ? 'English excerpt' : 'Original'}: ${r.english}` : ''}${r.sourceUrl ? `\n原帖：${r.sourceUrl}` : ''}`;
+  const timing = f.mode === 'watch' ? `观察信号 · 尚无正式预告\n发现时间：${date(f.observedAt || r.announcedAt)}（北京时间）` : f.targetAt ? `预计重置：${date(f.targetAt)}（北京时间）` : f.confirmedAt ? `最近重置确认：${date(f.confirmedAt)}（北京时间）` : f.kind === 'scheduled' ? '已有新预告 · 时间待定' : f.mode === 'observed' ? `最近观测：${date(r.announcedAt)}（北京时间）` : '暂无公开重置记录';
+  const reset = `重置信号：${f.badge}\n${timing}\n${r.authorName} · ${r.chineseLabel || '中文速读'}${r.chineseExcerpt ? '（摘录）' : ''}：${r.chinese}${r.english ? `\n${r.englishExcerpt ? 'English excerpt' : 'Original'}: ${r.english}` : ''}${r.sourceUrl ? `\n原帖：${r.sourceUrl}` : ''}`;
   const rows = info.deals.map(deal => `${deal.name}：${deal.quote ? `约 ¥${amount(deal.quote.rmb)}/月 · ${deal.quote.region} · ${deal.quote.channelLabel}\n美区 $${deal.usd ?? '—'}/月 · ${saving(deal)}` : '人民币价格待更新'}`).join('\n\n');
   return `Codex 情报站 · ${date(info.capturedAt, true)}\n\n${reset}\n\n订阅好价\n${rows}${safeUrl(pageUrl) ? `\n\n最新情报：${safeUrl(pageUrl)}` : ''}${safeUrl(aztUrl) ? `\nAI Zero Token：${safeUrl(aztUrl)}` : ''}`;
 }
@@ -156,14 +164,15 @@ export async function renderIntelCard(canvas, info, { avatarUrl = './tibo-avatar
     panel(ctx, 868, 316, 108, 108, INK, 54);
     bounded(ctx, '✓', 890, 337, 72, 64, { color: LIME, weight: 700 });
   }
-  bounded(ctx, f.targetAt || f.confirmedAt ? date(f.targetAt || f.confirmedAt).slice(0, 10) : f.dateLabel, 84, 432, 886, 21, { color: '#416438' });
+  bounded(ctx, f.mode === 'watch' ? `发现于 ${date(f.observedAt || r.announcedAt)} · 北京时间` : f.targetAt || f.confirmedAt ? date(f.targetAt || f.confirmedAt).slice(0, 10) : f.dateLabel, 84, 432, 886, 21, { color: '#416438' });
   panel(ctx, 80, 476, 920, 222, '#FCFFF7', 20);
   if (r.isTibo) avatar(ctx, image, 102, 493);
   bounded(ctx, r.authorName, r.isTibo ? 162 : 104, 493, 380, 22, { weight: 650 });
   bounded(ctx, r.authorHandle ? `@${r.authorHandle}` : '公开消息', r.isTibo ? 162 : 104, 523, 500, 17, { color: MUTED });
-  bounded(ctx, r.announcedAt ? `${date(r.announcedAt, true)} · X` : '', 756, 499, 220, 17, { color: MUTED });
-  font(ctx, 25, 550); const zhTruncated = lines(ctx, r.chinese, 870).length > 2;
-  bounded(ctx, `${r.chineseExcerpt || zhTruncated ? '摘录：' : ''}${r.chinese}`, 104, 556, 870, 25, { weight: 550, maxLines: 2, leading: 1.3 });
+  bounded(ctx, r.announcedAt ? `${f.mode === 'watch' ? '发现 ' : ''}${date(r.announcedAt, true)}${f.mode === 'watch' ? '' : ' · X'}` : '', 756, 499, 220, 17, { color: MUTED });
+  const chineseLabel = r.chineseLabel || '中文速读';
+  font(ctx, 25, 550); const zhTruncated = lines(ctx, `${chineseLabel}：${r.chinese}`, 870).length > 2;
+  bounded(ctx, `${chineseLabel}${r.chineseExcerpt || zhTruncated ? '（摘录）' : ''}：${r.chinese}`, 104, 556, 870, 25, { weight: 550, maxLines: 2, leading: 1.3 });
   font(ctx, 20); const enTruncated = lines(ctx, r.english, 870).length > 2;
   const englishLabel = r.englishExcerpt || enTruncated ? 'EN EXCERPT · ' : '';
   bounded(ctx, r.english ? englishLabel + r.english : '英文原文暂未提供', 104, 632, 870, 20, { color: MUTED, maxLines: 2, leading: 1.3 });

@@ -4,10 +4,13 @@ export function getHomeLayout(focus) {
   const heading = getResetHeading(focus);
   return {
     priority: focus.priority,
+    forecast: ['forecast', 'watch'].includes(focus.mode),
     sectionIds: focus.priority
       ? ['home-resets-section', 'home-prices-section']
       : ['home-prices-section', 'home-resets-section'],
-    titleHtml: focus.kind === 'scheduled'
+    titleHtml: focus.kind === 'watch'
+      ? '发现新信号。<span>关注重置进展。</span>'
+      : focus.kind === 'scheduled'
       ? '重置有新信号。<span>别错过。</span>'
       : focus.kind === 'overdue'
         ? '预告时间已到。<span>等待确认。</span>'
