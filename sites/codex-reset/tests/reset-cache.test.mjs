@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isResetDataset, pickResetDataset, mergeResetHistory, latestPublicRecordId, requestedShareRecordId } from '../public/reset-cache.js';
+import { getResetState } from '../public/reset-focus.js';
 
 // Fixed complete history: production snapshot dates and forecasts change independently of cache semantics.
 const historicalRecords = Array.from({ length: 15 }, (_, index) => {
@@ -111,4 +112,101 @@ test('a formal forecast takes precedence in latest sharing and an old watch ID d
   assert.equal(latestPublicRecordId(data,watchNow),data.status.scheduled_reset.id);
   assert.equal(requestedShareRecordId(data,'latest',watchNow),data.status.scheduled_reset.id);
   assert.equal(requestedShareRecordId(data,'2110951585983631505',watchNow),null);
+});
+
+function pendingCache(){
+  const data=homeCache();
+  data.generatedAt='2026-10-14T03:10:00Z';
+  data.status.scheduled_reset={id:'2110000000000000001',status:'scheduled',reset_type:'regular',announced_at:'2026-10-14T03:00:00Z',scheduled_for:'2026-10-14T08:00:00Z',text:'Next reset later today.',source:{type:'x_post',author:'thsottiaux',url:'https://x.com/thsottiaux/status/2110000000000000001'}};
+  return data;
+}
+const terminalNow=Date.parse('2026-10-14T04:00:00Z');
+
+test('cancellation responses pass live validation and replace a previously pending cache without adding a completion',()=>{
+  const previous=pendingCache();
+  assert.ok(isResetDataset(previous));
+  assert.equal(getResetState(previous,terminalNow).next.mode,'forecast');
+  for(const status of ['cancelled','canceled']){
+    const incoming=structuredClone(previous);
+    incoming.generatedAt='2026-10-14T03:30:00Z';
+    incoming.status.scheduled_reset={...incoming.status.scheduled_reset,status};
+    delete incoming.status.scheduled_reset.scheduled_for;
+    assert.ok(isResetDataset(incoming),`${status} should be a valid API response`);
+    const before=structuredClone(incoming);
+    const cached=pickResetDataset(previous,[incoming]).data;
+    assert.equal(cached.generatedAt,incoming.generatedAt);
+    assert.equal(cached.status.scheduled_reset.status,status);
+    assert.deepEqual(cached.records,previous.records);
+    assert.deepEqual(incoming,before,'validation and cache merge must not rewrite the source');
+    const state=getResetState(cached,terminalNow);
+    assert.equal(state.next.kind,'unannounced');
+    assert.match(state.next.note,/明确取消/);
+    assert.equal(state.latest.record.id,previous.status.latest_reset.id);
+    assert.equal(latestPublicRecordId(cached,terminalNow),previous.status.latest_reset.id);
+  }
+});
+
+test('explicit terminal completion responses close the forecast without manufacturing historical records or target-time completions',()=>{
+  const previous=pendingCache();
+  for(const status of ['completed','complete','confirmed','propagated']){
+    for(const keepTarget of [false,true]){
+      const incoming=structuredClone(previous);
+      incoming.generatedAt='2026-10-14T03:40:00Z';
+      incoming.status.scheduled_reset={...incoming.status.scheduled_reset,status,announced_at:'2026-10-14T03:30:00Z',text:'Reset complete.'};
+      if(!keepTarget)delete incoming.status.scheduled_reset.scheduled_for;
+      assert.ok(isResetDataset(incoming));
+      const cached=pickResetDataset(previous,[incoming]).data;
+      assert.equal(cached.generatedAt,incoming.generatedAt);
+      assert.deepEqual(cached.records,previous.records,'a forecast-slot status is not a history insertion');
+      const state=getResetState(cached,terminalNow);
+      assert.equal(state.next.kind,'unannounced');
+      assert.equal(state.latest.mode,'confirmed');
+      assert.equal(state.latest.record.id,incoming.status.scheduled_reset.id);
+      assert.equal(state.latest.confirmedAt,'2026-10-14T03:30:00.000Z');
+      assert.equal(state.latest.targetAt,null);
+      assert.equal(state.focus.countdownValue,'');
+      assert.notEqual(state.latest.confirmedAt,previous.status.scheduled_reset.scheduled_for);
+    }
+  }
+  const future=structuredClone(previous);
+  future.generatedAt='2026-10-14T03:40:00Z';
+  future.status.scheduled_reset={...future.status.scheduled_reset,status:'confirmed',announced_at:'2026-10-15T03:30:00Z'};
+  assert.ok(isResetDataset(future));
+  const selected=pickResetDataset(previous,[future]).data;
+  assert.deepEqual(selected.records,previous.records);
+  assert.equal(getResetState(selected,terminalNow).latest.record.id,previous.status.latest_reset.id,'a future-dated terminal post cannot confirm a reset now');
+});
+
+test('live validation rejects unknown forecast/latest states and invalid required dates',()=>{
+  for(const status of [undefined,null,'',false,'watch','forecast','unknown']){
+    const data=pendingCache();
+    data.status.scheduled_reset.status=status;
+    assert.equal(isResetDataset(data),false,`invalid forecast state ${String(status)}`);
+  }
+  for(const status of ['scheduled','cancelled','canceled','watch','forecast','unknown','',false,null]){
+    const data=homeCache();
+    data.status.latest_reset={...data.status.latest_reset,status};
+    assert.equal(isResetDataset(data),false,`invalid latest state ${String(status)}`);
+  }
+  for(const status of [undefined,'completed','complete','confirmed','propagated']){
+    const data=homeCache();
+    data.status.latest_reset={...data.status.latest_reset,status};
+    assert.ok(isResetDataset(data));
+    assert.equal(getResetState(data,terminalNow).latest.mode,'confirmed');
+  }
+  for(const target of [undefined,'','not-a-date']){
+    const data=pendingCache();
+    data.status.scheduled_reset.scheduled_for=target;
+    assert.equal(isResetDataset(data),false,`scheduled target ${String(target)}`);
+  }
+  const undetermined=pendingCache();undetermined.status.scheduled_reset.scheduled_for=null;
+  assert.ok(isResetDataset(undetermined));
+  for(const status of ['scheduled','cancelled','canceled','completed','complete','confirmed','propagated']){
+    const data=pendingCache();
+    data.status.scheduled_reset.status=status;
+    data.status.scheduled_reset.announced_at='invalid';
+    assert.equal(isResetDataset(data),false,`invalid announcement date for ${status}`);
+  }
+  const invalidLatest=homeCache();invalidLatest.status.latest_reset.announced_at='invalid';
+  assert.equal(isResetDataset(invalidLatest),false);
 });

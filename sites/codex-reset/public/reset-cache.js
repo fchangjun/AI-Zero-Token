@@ -5,7 +5,16 @@ const safeUrl=value=>{try{const url=new URL(value);return url.protocol==='https:
 const validSource=source=>source&&((source.type==='observed'&&Boolean(safeUrl(source.url)))||(source.type==='x_post'&&source.author==='thsottiaux'&&/^https:\/\/(?:x|twitter)\.com\/thsottiaux\/status\/\d+(?:[/?#]|$)/.test(safeUrl(source.url))));
 const validRecord=record=>record&&typeof record.id==='string'&&record.id.length>0&&validDate(record.announced_at)&&['regular','banked'].includes(record.reset_type)&&validSource(record.source);
 const validStat=value=>value===null||(Number.isFinite(value)&&value>=0);
-const validStatus=status=>status&&status.stats&&Number.isInteger(status.stats.total)&&status.stats.total>=0&&validStat(status.stats.avg_interval_days)&&validStat(status.stats.days_since_last)&&(status.latest_reset===null||(validRecord(status.latest_reset)&&status.latest_reset.status!=='scheduled'))&&(status.scheduled_reset===null||(validRecord(status.scheduled_reset)&&status.scheduled_reset.status==='scheduled'&&(status.scheduled_reset.scheduled_for===null||validDate(status.scheduled_reset.scheduled_for))))&&(status.active_watch===null||(status.active_watch&&validDate(status.active_watch.observed_at)&&validDate(status.active_watch.expires_at)&&validSource(status.active_watch.source)));
+const COMPLETED_STATUSES=['completed','complete','confirmed','propagated'];
+const TERMINAL_FORECAST_STATUSES=['cancelled','canceled',...COMPLETED_STATUSES];
+const validLatest=record=>validRecord(record)&&(record.status===undefined||COMPLETED_STATUSES.includes(record.status));
+function validForecast(record){
+  if(!validRecord(record))return false;
+  if(record.status==='scheduled')return record.scheduled_for===null||validDate(record.scheduled_for);
+  // Terminal evidence stays in this slot; its old target is neither required nor a new completion time.
+  return TERMINAL_FORECAST_STATUSES.includes(record.status);
+}
+const validStatus=status=>status&&status.stats&&Number.isInteger(status.stats.total)&&status.stats.total>=0&&validStat(status.stats.avg_interval_days)&&validStat(status.stats.days_since_last)&&(status.latest_reset===null||validLatest(status.latest_reset))&&(status.scheduled_reset===null||validForecast(status.scheduled_reset))&&(status.active_watch===null||(status.active_watch&&validDate(status.active_watch.observed_at)&&validDate(status.active_watch.expires_at)&&validSource(status.active_watch.source)));
 export const isResetDataset=data=>Boolean(data&&validDate(data.generatedAt)&&Array.isArray(data.records)&&data.records.length<5001&&data.records.every(validRecord)&&validStatus(data.status));
 
 function withTranslation(record,known){

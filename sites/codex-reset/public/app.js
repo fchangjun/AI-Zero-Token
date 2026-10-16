@@ -4,15 +4,15 @@ import { getResetFocus, getResetHeading } from './reset-focus.js';
 import { getResetCopy } from './reset-copy.js';
 import { assertMarket, mergeFx, readCachedFx, cacheFx, fetchFx } from './market-data.js';
 import { isResetDataset as isDataset, pickResetDataset, mergeResetHistory } from './reset-cache.js';
+import { fetchResetUpdate, createResetResumeSync } from './reset-sync.js';
 
 const $ = (id) => document.getElementById(id);
-const API = 'https://codex-resets.com/api/v1';
 const CACHE_KEY = 'azt-reset-radar-v1';
 const assetUrl = (path) => new URL(path, import.meta.url).href;
 const DAY = 86400000;
 const shareRequest = new URLSearchParams(location.search).get('share');
 let initialSharePending = Boolean(shareRequest && /^[a-zA-Z0-9_-]{1,128}$/.test(shareRequest));
-const state = { data: null, snapshot: null, mode: 'snapshot', busy: false, retryAt: 0, filter: 'all', selectedDay: null, visible: 6, syncError: '', priceMarket: null };
+const state = { data: null, snapshot: null, mode: 'snapshot', busy: false, retryAt: 0, lastAttemptAt: null, filter: 'all', selectedDay: null, visible: 6, syncError: '', historyError: '', priceMarket: null };
 const dateFormat = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 const escapeHTML = (value = '') => String(value).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dateLabel = (date) => Number.isFinite(Date.parse(date)) ? dateFormat.format(new Date(date)) : '时间未提供';
@@ -37,14 +37,14 @@ function renderSync(error = '') {
   const el = $('sync-state');
   el.classList.toggle('stale', state.mode !== 'live');
   if (!state.data) { el.textContent = error || '正在读取公开数据'; return; }
-  const prefix = state.mode === 'live' ? '已同步' : state.mode === 'cache' ? '缓存数据' : '离线快照';
+  const prefix = state.mode === 'live' ? state.historyError || '已同步' : state.mode === 'cache' ? '缓存数据' : '离线快照';
   el.textContent = `${prefix} · ${dateLabel(state.data.generatedAt)}${error ? ' · 同步暂不可用' : ''}${state.data.historyComplete===false?' · 历史记录待完整核对':''}`;
   el.title = error || '页面每 5 分钟尝试同步，时间均为北京时间';
 }
-async function request(url) {
-  const response = await fetch(url, {cache:'no-store', signal:AbortSignal.timeout(6000)});
+async function request(url, { signal = AbortSignal.timeout(6000) } = {}) {
+  const response = await fetch(url, {cache:'no-store', signal});
   if (!response.ok) {
-    if (response.status === 429) { const header = response.headers.get('Retry-After'); const delay = /^\d+$/.test(header || '') ? Number(header)*1000 : Date.parse(header || '') - Date.now(); state.retryAt = Date.now() + Math.max(60000, Number.isFinite(delay) ? delay : 60000); }
+    if (response.status === 429) { const header = response.headers.get('Retry-After'); const delay = /^\d+$/.test(header || '') ? Number(header)*1000 : Date.parse(header || '') - Date.now(); state.retryAt = Math.max(state.retryAt, Date.now() + Math.max(60000, Number.isFinite(delay) ? delay : 60000)); }
     throw new Error(response.status === 429 ? '数据源请求较多，请稍后刷新' : `数据源暂不可用（${response.status}）`);
   }
   return response.json();
@@ -52,30 +52,18 @@ async function request(url) {
 async function sync(manual = false) {
   if (state.busy) return;
   if (Date.now() < state.retryAt) { if(manual) toast(`请在 ${Math.ceil((state.retryAt-Date.now())/1000)} 秒后刷新`); return; }
-  state.busy = true; $('refresh-button').disabled = true; $('refresh-button').textContent = '↻ 正在同步';
+  state.busy = true; state.lastAttemptAt = Date.now(); $('refresh-button').disabled = true; $('refresh-button').textContent = '↻ 正在同步';
   try {
-    const [statusResponse, firstPage] = await Promise.all([request(`${API}/status`),request(`${API}/resets?limit=100&order=desc`)]);
-    if (!Array.isArray(firstPage.data) || !statusResponse.data || !firstPage.pagination) throw new Error('数据格式无法识别');
-    let records = firstPage.data; let page = firstPage; const cursors = new Set();
-    while(page.pagination.has_more) {
-      const cursor = page.pagination.next_cursor;
-      if (!cursor || cursors.has(cursor) || records.length >= 5000) throw new Error('历史记录尚未完整获取');
-      cursors.add(cursor);
-      page = await request(`${API}/resets?limit=100&order=desc&cursor=${encodeURIComponent(cursor)}`);
-      if (!Array.isArray(page.data) || !page.pagination) throw new Error('历史记录格式无法识别');
-      records = records.concat(page.data);
-    }
-    const data = {version:1,status:statusResponse.data,records:[...new Map(records.map(r=>[r.id,r])).values()].sort((a,b)=>Date.parse(b.announced_at)-Date.parse(a.announced_at)),generatedAt:statusResponse.meta?.generated_at,historyComplete:true};
-    if(!isDataset(data)) throw new Error('公开数据校验未通过');
+    const { data, historyError } = await fetchResetUpdate(request, { previous: state.data, fullHistory: true, historyLimit: 100 });
     if(state.data && Date.parse(data.generatedAt) < Date.parse(state.data.generatedAt)) throw new Error('数据源返回较旧记录，已保留较新数据');
-    state.data = attachSummaries(data); state.mode = 'live'; state.syncError = ''; state.retryAt = Date.now()+30000;
+    state.data = attachSummaries(data); state.mode = 'live'; state.syncError = ''; state.historyError = historyError;
     try { localStorage.setItem(CACHE_KEY,JSON.stringify(state.data)); } catch { /* The page works without persistence. */ }
-    render(); maybeOpenInitialShare(); if(manual) toast('公开公告已同步');
+    render(); maybeOpenInitialShare(); if(manual) toast(historyError || '公开公告已同步');
   } catch (error) {
     if(state.mode === 'live') state.mode = 'cache';
     state.syncError = error.message || '网络连接失败'; if(state.data) render(true); else renderSync(state.syncError);
     if(manual) toast('暂时无法同步，已保留现有记录');
-  } finally { state.busy = false; $('refresh-button').disabled = false; $('refresh-button').textContent = '↻ 刷新数据'; }
+  } finally { state.busy = false; state.retryAt = Math.max(state.retryAt, Date.now()+30000); $('refresh-button').disabled = false; $('refresh-button').textContent = '↻ 刷新数据'; resumeSync.settled(); }
 }
 let signalKey;
 function render(timeOnly = false) {
@@ -140,12 +128,16 @@ async function prepareSharePrices() {
   try{const fx=await fetchFx();if(state.priceMarket){state.priceMarket.fx=mergeFx(state.priceMarket.fx,fx);try{cacheFx(localStorage,state.priceMarket.fx);}catch{}}}catch{}
 }
 const intelShare = setupIntelShare({getResetData:()=>state.data,getMarketData:()=>state.priceMarket});
+const resumeSync = createResetResumeSync({ refresh: () => sync(), isVisible: () => !document.hidden,
+  getState: () => ({ ...state, failed: Boolean(state.syncError || state.historyError) }) });
 function maybeOpenInitialShare() {
   if (!initialSharePending || !state.data) return;
   initialSharePending = false;
   void intelShare.open();
 }
 $('refresh-button').addEventListener('click',()=>sync(true));
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.data)render(true);resumeSync.resume();});
+window.addEventListener('online',()=>resumeSync.resume());
 $('calendar-range').addEventListener('change',()=>state.data&&renderCalendar());
 $('heatmap').addEventListener('click',event=>{const button=event.target.closest('[data-day]');if(!button)return;state.selectedDay=button.dataset.day;state.visible=6;renderCalendar();renderAnnouncements();$('announcements').scrollIntoView({behavior:'smooth',block:'start'});});
 $('clear-date').addEventListener('click',()=>{state.selectedDay=null;renderCalendar();renderAnnouncements();});

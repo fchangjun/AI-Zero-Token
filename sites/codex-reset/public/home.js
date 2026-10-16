@@ -5,11 +5,11 @@ import { setupIntelShare } from './intel-share.js';
 import { getResetFocus } from './reset-focus.js';
 import { getHomeLayout } from './home-layout.js';
 import { isResetDataset as validResetData } from './reset-cache.js';
+import { fetchResetUpdate, createResetResumeSync } from './reset-sync.js';
 
 const $ = id => document.getElementById(id);
-const RESET_API = 'https://codex-resets.com/api/v1';
 const RESET_CACHE = 'codex-intel-home-resets-v1';
-const state = { market: null, reset: null, resetSnapshot: null, resetMode: 'snapshot', proPlanId: 'pro200', busy: false, retryAt: 0, marketError: false, fxError: false, resetError: false };
+const state = { market: null, reset: null, resetSnapshot: null, resetMode: 'snapshot', proPlanId: 'pro200', busy: false, retryAt: 0, lastAttemptAt: null, marketError: false, fxError: false, resetError: false, resetHistoryError: '' };
 const storage = () => { try { return localStorage; } catch { return null; } };
 const readJson = id => { try { return JSON.parse($(id)?.textContent || 'null'); } catch { return null; } };
 let toastTimer;
@@ -69,7 +69,7 @@ function renderResets(clockOnly = false) {
   } else if ($('home-reset-countdown') && $('home-reset-countdown').textContent !== focus.countdownValue) {
     $('home-reset-countdown').textContent = focus.countdownValue;
   }
-  $('home-reset-time').textContent = `${state.resetMode === 'live' ? '公开通告已同步' : state.resetMode === 'cache' ? '已保存通告' : '本地通告快照'} · ${homeTime(state.reset.generatedAt)}${state.resetError ? ' · 更新暂不可用，保留现有记录' : ''}`;
+  $('home-reset-time').textContent = `${state.resetMode === 'live' ? state.resetHistoryError || '公开通告已同步' : state.resetMode === 'cache' ? '已保存通告' : '本地通告快照'} · ${homeTime(state.reset.generatedAt)}${state.resetError ? ' · 更新暂不可用，保留现有记录' : ''}`;
 }
 
 function renderErrors() {
@@ -101,8 +101,8 @@ function setReset(data, mode) {
   return true;
 }
 
-async function requestJson(url) {
-  const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+async function requestJson(url, { signal = AbortSignal.timeout(6000) } = {}) {
+  const response = await fetch(url, { cache: 'no-store', signal });
   if (!response.ok) {
     if (response.status === 429) {
       const header = response.headers.get('Retry-After');
@@ -136,11 +136,10 @@ async function refreshResets() {
       renderResets();
     }
   }).catch(() => { /* A valid embedded snapshot or cache remains available. */ });
-  const live = Promise.all([requestJson(`${RESET_API}/status`), requestJson(`${RESET_API}/resets?limit=12&order=desc`)]).then(([status, history]) => {
-    if (!Array.isArray(history.data)) throw new Error('通告格式不完整');
-    const data = { version: 1, generatedAt: status.meta?.generated_at, status: status.data, records: [...new Map(history.data.map(record => [record.id, record])).values()].sort((a, b) => Date.parse(b.announced_at) - Date.parse(a.announced_at)), historyComplete: false };
+  const live = fetchResetUpdate(requestJson, { previous: state.reset, historyLimit: 12 }).then(({ data, historyError }) => {
     if (!setReset(data, 'live')) throw new Error('来源返回较旧通告，已保留较新记录');
     state.resetError = false;
+    state.resetHistoryError = historyError;
     try { storage()?.setItem(RESET_CACHE, JSON.stringify(state.reset)); } catch { /* Persistence is optional. */ }
   }).catch(() => { state.resetError = true; if (state.resetMode === 'live') state.resetMode = 'cache'; });
   await Promise.all([snapshot, live]);
@@ -154,6 +153,7 @@ async function refresh(manual = false) {
     return;
   }
   state.busy = true;
+  state.lastAttemptAt = Date.now();
   for (const id of ['home-refresh', 'home-reset-refresh']) {
     $(id).disabled = true;
     $(id).textContent = '检查更新…';
@@ -162,7 +162,7 @@ async function refresh(manual = false) {
     await Promise.all([refreshMarket(), refreshResets()]);
     if (!state.market) $('featured-deals').innerHTML = '<p class="home-empty">暂时无法读取价格，请稍后点击「检查更新」。</p>';
     if (!state.reset) $('home-reset-grid').innerHTML = '<p class="home-empty">暂时无法读取通告，请稍后点击「检查更新」。</p>';
-    if (manual) toast(state.marketError || state.fxError || state.resetError ? '部分来源暂不可用，已保留可用价格与通告' : '已检查价格、参考汇率与公开通告');
+    if (manual) toast(state.marketError || state.fxError || state.resetError ? '部分来源暂不可用，已保留可用价格与通告' : state.resetHistoryError || '已检查价格、参考汇率与公开通告');
   } finally {
     state.busy = false;
     state.retryAt = Math.max(state.retryAt, Date.now() + 60000);
@@ -170,6 +170,7 @@ async function refresh(manual = false) {
     $('home-refresh').textContent = '更新价格 ↻';
     $('home-reset-refresh').disabled = false;
     $('home-reset-refresh').textContent = '更新通告 ↻';
+    resumeSync.settled();
   }
 }
 
@@ -182,6 +183,8 @@ $('featured-deals').addEventListener('click', event => {
 $('home-refresh').addEventListener('click', () => refresh(true));
 $('home-reset-refresh').addEventListener('click', () => refresh(true));
 const intelShare = setupIntelShare({ getMarketData: () => state.market, getResetData: () => state.reset, getProPlanId: () => state.proPlanId });
+const resumeSync = createResetResumeSync({ refresh: () => refresh(), isVisible: () => !document.hidden,
+  getState: () => ({ ...state, failed: state.resetError || Boolean(state.resetHistoryError) || state.marketError || state.fxError }) });
 
 try { const data = readJson('market-snapshot'); if (data) setMarket(data); } catch { /* Retain prerendered content while checking the published JSON. */ }
 const reset = readJson('reset-snapshot');
@@ -194,4 +197,5 @@ refresh();
 setInterval(() => { if (!document.hidden) refresh(); }, 5 * 60000);
 // Tick locally without refetching or rebuilding focused links every minute.
 setInterval(() => { if (!document.hidden) renderResets(true); }, 30000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) renderResets(true); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) renderResets(true); resumeSync.resume(); });
+window.addEventListener('online', () => resumeSync.resume());
