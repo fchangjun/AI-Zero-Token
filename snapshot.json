@@ -1,49 +1,53 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-17T21:03:08.001Z",
+  "generatedAt": "2026-10-17T23:04:06.869Z",
   "status": {
     "latest_reset": {
-      "id": "2110618732666257557",
+      "id": "2111566005684289735",
       "reset_type": "regular",
-      "announced_at": "2026-10-15T06:28:13.000Z",
-      "text": "Done and dusted https://t.co/0fehr43VS4",
+      "announced_at": "2026-10-17T21:12:21.000Z",
+      "text": "Done",
       "source": {
         "type": "x_post",
         "author": "thsottiaux",
-        "url": "https://x.com/thsottiaux/status/2110618732666257557"
+        "url": "https://x.com/thsottiaux/status/2111566005684289735"
       },
-      "summaryZh": "本次额度重置已完成。",
-      "translationZh": "已经全部完成。"
-    },
-    "scheduled_reset": {
-      "id": "2111492738025959922",
-      "status": "scheduled",
-      "reset_type": "regular",
-      "announced_at": "2026-10-17T16:21:13.000Z",
-      "scheduled_for": "2026-10-18T07:00:00.000Z",
-      "text": "Landing sometime today by EOD PST",
-      "source": {
-        "type": "x_post",
-        "author": "thsottiaux",
-        "url": "https://x.com/thsottiaux/status/2111492738025959922"
-      },
-      "translationZh": "今天某天 由爆炸物处理站降落",
+      "translationZh": "完成完成完成完成完成",
       "translationMeta": {
         "provider": "opus-mt-en-zh",
         "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
-        "translatedAt": "2026-10-17T16:31:32.453Z",
-        "sourceText": "Landing sometime today by EOD PST"
+        "translatedAt": "2026-10-17T23:05:08.593Z",
+        "sourceText": "Done"
       }
     },
+    "scheduled_reset": null,
     "active_watch": null,
     "stats": {
-      "total": 62,
-      "last_reset_at": "2026-10-15T06:28:13.000Z",
-      "days_since_last": 2.6,
+      "total": 63,
+      "last_reset_at": "2026-10-17T21:12:21.000Z",
+      "days_since_last": 0.1,
       "avg_interval_days": 6.4
     }
   },
   "records": [
+    {
+      "id": "2111566005684289735",
+      "reset_type": "regular",
+      "announced_at": "2026-10-17T21:12:21.000Z",
+      "text": "Done",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2111566005684289735"
+      },
+      "translationZh": "完成完成完成完成完成",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-17T23:05:08.593Z",
+        "sourceText": "Done"
+      }
+    },
     {
       "id": "2110618732666257557",
       "reset_type": "regular",
@@ -1149,7 +1153,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-10-17T21:04:03.783Z",
+  "capturedAt": "2026-10-17T23:05:07.217Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1157,6 +1161,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-10-17T21:02:57.339Z",
+  "historyGeneratedAt": "2026-10-17T23:04:14.584Z",
   "historyCursor": null
 }
