@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-17T13:09:38.317Z",
+  "generatedAt": "2026-10-17T16:31:18.527Z",
   "status": {
     "latest_reset": {
       "id": "2110618732666257557",
@@ -15,12 +15,31 @@
       "summaryZh": "本次额度重置已完成。",
       "translationZh": "已经全部完成。"
     },
-    "scheduled_reset": null,
+    "scheduled_reset": {
+      "id": "2111492738025959922",
+      "status": "scheduled",
+      "reset_type": "regular",
+      "announced_at": "2026-10-17T16:21:13.000Z",
+      "scheduled_for": "2026-10-18T07:00:00.000Z",
+      "text": "Landing sometime today by EOD PST",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2111492738025959922"
+      },
+      "translationZh": "今天某天 由爆炸物处理站降落",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-17T16:31:32.453Z",
+        "sourceText": "Landing sometime today by EOD PST"
+      }
+    },
     "active_watch": null,
     "stats": {
       "total": 62,
       "last_reset_at": "2026-10-15T06:28:13.000Z",
-      "days_since_last": 2.3,
+      "days_since_last": 2.4,
       "avg_interval_days": 6.4
     }
   },
@@ -1130,7 +1149,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-10-17T13:09:56.425Z",
+  "capturedAt": "2026-10-17T16:31:31.096Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1138,6 +1157,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-10-17T13:05:43.495Z",
+  "historyGeneratedAt": "2026-10-17T16:29:41.277Z",
   "historyCursor": null
 }
