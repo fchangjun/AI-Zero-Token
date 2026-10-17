@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-16T22:46:32.346Z",
+  "generatedAt": "2026-10-17T00:49:10.088Z",
   "status": {
     "latest_reset": {
       "id": "2110618732666257557",
@@ -16,25 +16,11 @@
       "translationZh": "已经全部完成。"
     },
     "scheduled_reset": null,
-    "active_watch": {
-      "level": "elevated",
-      "reset_chance_percent": 40,
-      "forecast_window": "within 24h",
-      "observed_at": "2026-10-16T04:30:52.000Z",
-      "expires_at": "2026-10-17T05:00:00.000Z",
-      "text": "@maria_rcks Can’t argue with that, Let’s break the cycle.",
-      "source": {
-        "type": "x_post",
-        "author": "thsottiaux",
-        "url": "https://x.com/thsottiaux/status/2110951585983631505"
-      },
-      "summaryZh": "Tibo 的新回复出现重置相关迹象，尚无正式重置预告。",
-      "translationZh": "@maria_rcks 无法反驳，那就让我们打破这个循环吧。"
-    },
+    "active_watch": null,
     "stats": {
       "total": 62,
       "last_reset_at": "2026-10-15T06:28:13.000Z",
-      "days_since_last": 1.7,
+      "days_since_last": 1.8,
       "avg_interval_days": 6.4
     }
   },
@@ -1144,7 +1130,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-10-16T22:47:14.676Z",
+  "capturedAt": "2026-10-17T00:49:51.461Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1152,6 +1138,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-10-16T22:45:51.151Z",
+  "historyGeneratedAt": "2026-10-17T00:45:18.540Z",
   "historyCursor": null
 }
