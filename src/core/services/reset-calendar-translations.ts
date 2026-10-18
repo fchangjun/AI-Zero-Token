@@ -1,12 +1,22 @@
 import type { ResetAnnouncement, ResetSource, ResetTranslation, ResetWatch } from "../reset-calendar-types.js";
 
-export const resetTranslationSourceUrl = "https://ai-resets.com/";
+export const resetTranslationSourceUrl = "https://fchangjun.github.io/AI-Zero-Token/snapshot.json";
+const legacyTranslationSourceUrl = "https://ai-resets.com/";
 export const resetTranslationMaxHtmlLength = 2 * 1024 * 1024;
 
 export type PublicResetTranslation = {
   sourceId: string;
   originalText: string;
   zhCN: string;
+  /** Absent in old caches, which contain ai-resets reference translations. */
+  source?: ResetTranslation["source"];
+  sourceUrl?: string;
+  originalSourceUrl?: string;
+  exactOriginal?: boolean;
+  machine?: boolean;
+  provider?: string;
+  modelRevision?: string;
+  translatedAt?: string;
 };
 
 function decodeHtmlEntities(text: string): string {
@@ -32,7 +42,8 @@ function postId(url: string | undefined): string | null {
   if (!url) return null;
   try {
     const parsed = new URL(url);
-    if (parsed.protocol !== "https:" || !["x.com", "www.x.com", "twitter.com", "www.twitter.com"].includes(parsed.hostname)) return null;
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password
+      || !["x.com", "www.x.com", "twitter.com", "www.twitter.com"].includes(parsed.hostname)) return null;
     return /^\/thsottiaux\/status\/([0-9]+)\/?$/.exec(parsed.pathname)?.[1] ?? null;
   } catch {
     return null;
@@ -67,10 +78,54 @@ export function parsePublicResetTranslations(html: string): PublicResetTranslati
   return [...entries.values()];
 }
 
+/** Read our versioned static snapshot; translation identity binds exact text and source. */
+export function parseCentralResetTranslations(value: unknown): PublicResetTranslation[] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+  const snapshot = value as Record<string, unknown>;
+  if (snapshot.version !== 1 || !Array.isArray(snapshot.records)) return [];
+  const status = snapshot.status && typeof snapshot.status === "object" ? snapshot.status as Record<string, unknown> : {};
+  const entries = new Map<string, PublicResetTranslation>();
+  for (const candidate of [...snapshot.records, status.latest_reset, status.scheduled_reset, status.active_watch]) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const record = candidate as Record<string, unknown>;
+    const source = record.source && typeof record.source === "object" ? record.source as Record<string, unknown> : null;
+    const originalSourceUrl = source?.url;
+    if (typeof originalSourceUrl !== "string") continue;
+    const id = postId(originalSourceUrl);
+    const sourceId = id ?? (typeof record.id === "string" && source?.type === "observed" ? `record:${record.id}` : null);
+    if (!sourceId || typeof record.text !== "string" || typeof record.translationZh !== "string"
+      || !record.translationZh.trim() || !/[\u3400-\u9fff]/.test(record.translationZh)) continue;
+    try { if (new URL(originalSourceUrl).protocol !== "https:") continue; } catch { continue; }
+    const meta = record.translationMeta;
+    let machine: Pick<PublicResetTranslation, "machine" | "provider" | "modelRevision" | "translatedAt"> = {};
+    if (meta !== undefined) {
+      if (!meta || typeof meta !== "object") continue;
+      const details = meta as Record<string, unknown>;
+      if (details.sourceText !== record.text || typeof details.provider !== "string" || !details.provider.trim()
+        || typeof details.modelRevision !== "string" || !details.modelRevision.trim()
+        || typeof details.translatedAt !== "string" || !Number.isFinite(Date.parse(details.translatedAt))) continue;
+      machine = { machine: true, provider: details.provider, modelRevision: details.modelRevision, translatedAt: details.translatedAt };
+    }
+    entries.set(sourceId, { sourceId, originalText: record.text, zhCN: record.translationZh.trim(),
+      source: "codex-intel", sourceUrl: resetTranslationSourceUrl, originalSourceUrl, exactOriginal: true, ...machine });
+  }
+  return [...entries.values()];
+}
+
 export function matchPublicResetTranslation(
   record: { text: string; source: ResetSource; id?: string },
   translations: ReadonlyMap<string, PublicResetTranslation>,
 ): ResetTranslation | undefined {
+  const sourceId = postId(record.source.url) ?? (record.id && translations.has(`record:${record.id}`)
+    ? `record:${record.id}` : record.id && /^[0-9]+$/.test(record.id) ? record.id : null);
+  const translation = sourceId ? translations.get(sourceId) : undefined;
+  if (translation?.source === "codex-intel") {
+    if (translation.originalText === record.text && translation.originalSourceUrl === record.source.url) return {
+      zhCN: translation.zhCN, source: "codex-intel", sourceUrl: resetTranslationSourceUrl, originalText: record.text,
+      ...(translation.machine ? { machine: true, provider: translation.provider,
+        modelRevision: translation.modelRevision, translatedAt: translation.translatedAt } : {}),
+    };
+  }
   // This one public observation is paired with unrelated forecast text on the
   // Chinese site. Its reviewed local translation applies only to this exact ID
   // and original sentence; it is not a generic or generated translation fallback.
@@ -86,10 +141,9 @@ export function matchPublicResetTranslation(
       // Invalid source links cannot establish provenance for a local correction.
     }
   }
-  const sourceId = postId(record.source.url) ?? (record.id && /^[0-9]+$/.test(record.id) ? record.id : null);
-  const translation = sourceId ? translations.get(sourceId) : undefined;
-  if (!translation || normalizeResetOriginalText(translation.originalText) !== normalizeResetOriginalText(record.text)) return undefined;
-  return { zhCN: translation.zhCN, source: "ai-resets.com", sourceUrl: resetTranslationSourceUrl, originalText: record.text };
+  if (!translation || translation.source === "codex-intel"
+    || normalizeResetOriginalText(translation.originalText) !== normalizeResetOriginalText(record.text)) return undefined;
+  return { zhCN: translation.zhCN, source: "ai-resets.com", sourceUrl: legacyTranslationSourceUrl, originalText: record.text };
 }
 
 export function attachPublicResetTranslation<T extends ResetAnnouncement | ResetWatch>(

@@ -44,7 +44,7 @@ test("notification focuses a ready window and navigates without reloading its do
   const f = fixture();
   f.navigator.request();
   expect(f.focused).toBe(1);
-  expect(f.scripts).toEqual(["window.location.hash = 'reset-calendar';"]);
+  expect(f.scripts).toEqual(["window.location.hash = 'reset-calendar'; window.dispatchEvent(new Event('azt:open-reset-calendar'));"]);
   f.navigator.consume();
   expect(f.scripts).toHaveLength(1);
 });

@@ -520,6 +520,9 @@ function classifyHttpFailure(
     return "auth_error";
   }
   const hint = `${code ?? ""} ${message ?? ""}`.toLowerCase();
+  if ([408, 409, 425, 429].includes(statusCode) || /rate.?limit|overload|busy|capacity|temporar|timeout|try again/.test(hint)) {
+    return "busy";
+  }
   if (/not implemented|not supported|unsupported|does not support/.test(hint)) {
     return "incompatible";
   }
@@ -535,7 +538,7 @@ function classifyHttpFailure(
   if (statusCode === 404 && !/(?:endpoint|route|path|page).*not found|cannot post/.test(hint)) {
     return "unavailable";
   }
-  return "incompatible";
+  return statusCode === 405 || /(?:endpoint|route|path|page).*not found|cannot post/.test(hint) ? "incompatible" : "unavailable";
 }
 
 async function discoverModels(
@@ -689,15 +692,24 @@ async function inspectSuccessfulProbeStream(
   mode: ProbeMode,
 ): Promise<ProbeStreamResult> {
   if (!response.body) {
-    return { status: "incompatible", responsesStreaming: false, error: "Responses 流没有响应体" };
+    return { status: "transport_error", responsesStreaming: false, error: "Responses 流没有响应体" };
   }
   const contentType = response.headers.get("content-type")?.toLowerCase() ?? "";
   if (!contentType.includes("text/event-stream")) {
     const text = await readTextLimited(response, MODEL_PROBE_MAX_BYTES);
+    const details = extractErrorDetails(text);
+    let status: ExternalProviderModelStatus = "transport_error";
+    try {
+      const payload: unknown = JSON.parse(text);
+      if (isRecord(payload)) {
+        if (payload.error) status = classifyHttpFailure(400, details.code, details.message);
+        else if (Array.isArray(payload.choices) || payload.object === "response") status = "incompatible";
+      }
+    } catch { /* A proxy/login/HTML response does not establish model capabilities. */ }
     return {
-      status: "incompatible",
+      status,
       responsesStreaming: false,
-      error: redactErrorMessage(`未返回 SSE 流：${extractErrorDetails(text).message ?? (contentType || "未知内容类型")}`, bearerToken),
+      error: redactErrorMessage(`未返回 SSE 流：${details.message ?? (contentType || "未知内容类型")}`, bearerToken),
     };
   }
 
@@ -706,12 +718,14 @@ async function inspectSuccessfulProbeStream(
   let bytes = 0;
   let buffer = "";
   let sawResponsesProtocol = false;
+  let sawOtherProtocol = false;
   let sawOutputText = false;
   let functionCall: ProbeFunctionCall | undefined;
   let functionCallDone = false;
   const inspectEvent = (event: unknown): ProbeStreamResult | undefined => {
     const type = eventType(event);
     sawResponsesProtocol ||= Boolean(type?.startsWith("response."));
+    sawOtherProtocol ||= isRecord(event) && (Array.isArray(event.choices) || type === "message_start");
     sawOutputText ||= type === "response.output_text.delta";
     const nextFunctionCall = functionCallFromEvent(event);
     if (nextFunctionCall) {
@@ -746,7 +760,7 @@ async function inspectSuccessfulProbeStream(
     }
     if (type === "response.incomplete" || (isRecord(event) && event.object === "response" && event.status === "incomplete")) {
       return {
-        status: "incompatible",
+        status: "unavailable",
         responsesStreaming: true,
         error: "Responses 探针未完整完成（response.incomplete）",
       };
@@ -813,7 +827,7 @@ async function inspectSuccessfulProbeStream(
     }
   }
   return {
-    status: "incompatible",
+    status: sawOtherProtocol ? "incompatible" : "transport_error",
     responsesStreaming: sawResponsesProtocol,
     error: sawResponsesProtocol ? "Responses 流未产生可用输出" : "响应不是有效的 Responses SSE 协议",
   };

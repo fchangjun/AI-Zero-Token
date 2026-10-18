@@ -8,8 +8,10 @@ import {
 import { backupThreadDatabase, codexSqlite, readThreadSnapshot, updateThreadSettings, type ThreadSettings, type ThreadSnapshot } from "../store/codex-thread-state.js";
 import { getStateDir } from "../store/state-paths.js";
 import { explainCodexDatabaseError, stoppedCodexRuntime, type CodexSwitchRuntime } from "./codex-switch-runtime.js";
+import { codexConfigPathIdentity, normalizeCodexConfigPath } from "./codex-config-path.js";
 
 export type ThirdPartySwitchTarget = {
+  modelCatalogUrl?: string;
   baseUrl: string; bearerToken: string; model: string; catalogModels: CodexCatalogModelInput[]; displayName: string;
 };
 type NativeSnapshot = { model: string | null; effort: string | null; catalog: string | null };
@@ -95,17 +97,23 @@ async function assertNoProjectOverrides(dbPath: string): Promise<void> {
   const columns = await codexSqlite(dbPath, "PRAGMA table_info(threads)", true);
   if (!columns.some((column) => column.name === "cwd")) return;
   const rows = await codexSqlite(dbPath, "SELECT DISTINCT cwd FROM threads", true);
-  const checked = new Set<string>([path.resolve(getCodexHomeDir())]);
+  const checked = new Set<string>([await codexConfigPathIdentity(getCodexConfigPath())]);
+  const checkedPaths = new Set<string>();
   for (const row of rows) {
     if (typeof row.cwd !== "string" || !path.isAbsolute(row.cwd)) continue;
     let directory = row.cwd;
     while (directory !== path.dirname(directory)) {
-      const configDirectory = path.join(directory, ".codex");
-      if (!checked.has(configDirectory)) {
-        checked.add(configDirectory);
-        const text = (await readOptional(path.join(configDirectory, "config.toml")))?.toString();
-        if (text && /^\s*(model_provider|model|model_reasoning_effort|openai_base_url|model_catalog_json|profile)\s*=/m.test(text)) {
-          throw new Error(`项目 ${directory} 的 Codex 配置覆盖了连接或模型。请先移除该覆盖，再统一切换会话。`);
+      const configFile = path.join(directory, ".codex", "config.toml");
+      const candidate = normalizeCodexConfigPath(configFile);
+      if (!checkedPaths.has(candidate)) {
+        checkedPaths.add(candidate);
+        const identity = await codexConfigPathIdentity(configFile);
+        if (!checked.has(identity)) {
+          checked.add(identity);
+          const text = (await readOptional(configFile))?.toString();
+          if (text && /^\s*(model_provider|model|model_reasoning_effort|openai_base_url|model_catalog_json|profile)\s*=/m.test(text)) {
+            throw new Error(`项目 ${directory} 的 Codex 配置覆盖了连接或模型。请先移除该覆盖，再统一切换会话。`);
+          }
         }
       }
       directory = path.dirname(directory);

@@ -11,6 +11,12 @@ import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";
 import { createGatewayContext } from "../core/context.js";
+import { MixedGateway } from "./mixed-gateway.js";
+import { getModelStatusCatalog, MODEL_CATALOG_PATH, ModelStatusService } from "../core/services/model-status-service.js";
+import { MODEL_HEALTH_INTERVALS, type ModelHealthInterval } from "../core/models/model-availability.js";
+import { MIXED_PROTOCOL_CHOICES } from "../core/models/mixed-provider.js";
+import { inspectModelCompatibility } from "../core/services/mixed-protocol-service.js";
+import { readMixedProviderConfig } from "../core/store/external-provider-store.js";
 import { assertCodexStopped, stoppedCodexRuntime } from "../core/services/codex-switch-runtime.js";
 import { registerToolRoutes } from "./tool-routes.js";
 import { registerResetCalendarRoutes } from "./reset-calendar-routes.js";
@@ -105,40 +111,42 @@ function getContentType(filePath: string): string {
   return assetContentTypes[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
 
-async function decodeJsonRequestBody(body: Buffer, contentEncoding: string | string[] | undefined): Promise<Buffer> {
+async function decodeJsonRequestBody(body: Buffer, contentEncoding: string | string[] | undefined, maxOutputLength?: number): Promise<Buffer> {
   const encodings = (Array.isArray(contentEncoding) ? contentEncoding.join(",") : contentEncoding ?? "")
     .split(",")
     .map((item) => item.trim().toLowerCase())
     .filter((item) => item && item !== "identity");
 
   let decoded = body;
+  const options = maxOutputLength ? { maxOutputLength } : {};
   for (const encoding of encodings.reverse()) {
     if (encoding === "gzip" || encoding === "x-gzip") {
-      decoded = await gunzipAsync(decoded);
+      decoded = await gunzipAsync(decoded, options);
     } else if (encoding === "deflate") {
-      decoded = await inflateAsync(decoded);
+      decoded = await inflateAsync(decoded, options);
     } else if (encoding === "br") {
-      decoded = await brotliDecompressAsync(decoded);
+      decoded = await brotliDecompressAsync(decoded, options);
     } else if (encoding === "zstd") {
       if (!zstdDecompressAsync) {
         throw new Error("当前 Node.js 运行时不支持 zstd 请求体解压，请升级运行时后重试。");
       }
-      decoded = await zstdDecompressAsync(decoded);
+      decoded = await zstdDecompressAsync(decoded, options);
     } else {
       throw new Error(`不支持的请求体压缩格式: ${encoding}`);
     }
   }
 
+  if (maxOutputLength && decoded.length > maxOutputLength) throw Object.assign(new Error("解压后的请求体过大。"), { statusCode: 413 });
   return decoded;
 }
 
-async function parseJsonRequestBody(request: FastifyRequest, body: string | Buffer): Promise<unknown> {
+async function parseJsonRequestBody(request: FastifyRequest, body: string | Buffer, maxOutputLength?: number): Promise<unknown> {
   const rawBody = typeof body === "string" ? Buffer.from(body) : body;
   if (rawBody.length === 0) {
     return {};
   }
 
-  const decoded = await decodeJsonRequestBody(rawBody, request.headers["content-encoding"]);
+  const decoded = await decodeJsonRequestBody(rawBody, request.headers["content-encoding"], maxOutputLength);
   return JSON.parse(decoded.toString("utf8")) as unknown;
 }
 
@@ -2249,6 +2257,27 @@ export function createApp(params?: {
     },
   );
   const ctx = createGatewayContext({ codexSwitchRuntime: { assertStopped: assertCodexStopped, prepare: params?.onPrepareCodexSwitch ?? stoppedCodexRuntime.prepare } });
+  const mixedGateway = new MixedGateway(async (request, body) => {
+    try { return await parseJsonRequestBody(request, body, defaultBodyLimit); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ERR_BUFFER_TOO_LARGE") throw Object.assign(new Error("解压后的请求体过大。"), { statusCode: 413 });
+      if (!(error as { statusCode?: number }).statusCode) throw Object.assign(new Error("请求体不是有效的 JSON 或压缩格式。"), { statusCode: 400 });
+      throw error;
+    }
+  }, (result) => pushGatewayRequestLog({
+    method: "POST", endpoint: result.endpoint, account: result.account, model: result.model,
+    statusCode: result.statusCode, durationMs: result.durationMs, source: "mixed",
+    details: { mixedTiming: result.metrics },
+    usage: { tokenUsage: result.metrics.usageReported ? {
+      inputTokens: result.metrics.inputTokens, outputTokens: result.metrics.outputTokens,
+      cacheReadTokens: result.metrics.cachedTokens,
+    } : null },
+  }));
+  app.addHook("onReady", () => mixedGateway.restore());
+  app.addHook("onClose", () => mixedGateway.close());
+  const modelStatus = new ModelStatusService();
+  app.addHook("onListen", async () => modelStatus.start());
+  app.addHook("onClose", () => modelStatus.close());
   async function completeCodexSwitch(): Promise<string | undefined> {
     try { await params?.onCompleteCodexSwitch?.(); return undefined; }
     catch { return "服务设置已切换，但 Codex 未能自动打开，请手动打开客户端。"; }
@@ -2935,7 +2964,46 @@ export function createApp(params?: {
 
   app.get("/_gateway/admin/codex/inspection-history", async () => ({ data: await ctx.authService.listCodexProviderInspectionHistory() }));
 
-  app.get("/_gateway/admin/providers", async () => ctx.externalProviderService.list());
+  app.get("/_gateway/admin/providers", async () => {
+    const snapshot = await ctx.externalProviderService.list();
+    if (snapshot.mixed) Object.assign(snapshot.mixed, { gatewayReady: mixedGateway.ready, gatewayError: mixedGateway.error });
+    return { ...snapshot, modelStatus: await modelStatus.settings() };
+  });
+
+  app.get(`${MODEL_CATALOG_PATH}:source`, async (request, reply) => {
+    const { source } = request.params as { source: string };
+    const catalog = await getModelStatusCatalog(source, request.headers.authorization);
+    return reply.header("Cache-Control", "no-store").type("application/json").send(catalog);
+  });
+  app.put("/_gateway/admin/model-status", async (request, reply) => {
+    const body = z.object({ intervalMinutes: z.number().refine((value) => MODEL_HEALTH_INTERVALS.includes(value as ModelHealthInterval)) }).safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: { message: "检测周期请选择关闭、15、30 或 60 分钟。" } });
+    return modelStatus.setInterval(body.data.intervalMinutes as ModelHealthInterval);
+  });
+  app.post("/_gateway/admin/model-status/check", async (_request, reply) => {
+    const settings = await modelStatus.startManual();
+    return reply.code(202).send(settings);
+  });
+
+  app.post("/_gateway/admin/mixed/activate", async (request, reply) => {
+    const parsed = z.object({ routes: z.array(z.object({ providerId: z.string().min(1), modelId: z.string().min(1).max(256), protocol: z.enum(MIXED_PROTOCOL_CHOICES).default("auto"), autoDetected: z.boolean().optional() })).min(1).max(1000),
+      defaultModel: z.object({ providerId: z.string().min(1), modelId: z.string().min(1).max(256) }) }).safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: { message: "请选择混合模型和默认模型。" } });
+    const saved = await readMixedProviderConfig();
+    const port = await mixedGateway.ensure(saved?.port);
+    const catalogPort = request.raw.socket.localPort || (await ctx.configService.getServerConfig()).port;
+    const controller = new AbortController();
+    const cancel = () => controller.abort(new Error("接口识别已取消。"));
+    reply.raw.once("close", cancel);
+    try {
+      const mixed = await ctx.externalProviderService.activateMixed(parsed.data, port, catalogPort, controller.signal);
+      return { mixed: { ...mixed, gatewayReady: true }, codexSwitchWarning: await completeCodexSwitch() };
+    } finally { reply.raw.off("close", cancel); }
+  });
+
+  app.post("/_gateway/admin/mixed/deactivate", async () => ({
+    mixed: await ctx.externalProviderService.deactivateMixed(), codexSwitchWarning: await completeCodexSwitch(),
+  }));
 
   app.post("/_gateway/admin/providers", async (request, reply) => {
     if (!isLocalProviderInspectionRequest(request)) {
@@ -3026,6 +3094,18 @@ export function createApp(params?: {
     return { provider: await ctx.externalProviderService.setContextWindow(params.data.id, body.data.modelId, body.data.contextWindow) };
   });
 
+  app.post("/_gateway/admin/providers/:id/compatibility", async (request, reply) => {
+    if (!isLocalProviderInspectionRequest(request)) return reply.code(403).send({ error: { message: "兼容性检测只能从本机管理页执行。" } });
+    const params = externalProviderParamsSchema.safeParse(request.params);
+    const body = z.object({ modelId: z.string().trim().min(1).max(256) }).safeParse(request.body);
+    if (!params.success || !body.success) return reply.code(400).send({ error: { message: "请提供有效的服务和模型 ID。" } });
+    const controller = new AbortController();
+    const cancel = () => controller.abort(new Error("兼容性检测已取消。"));
+    reply.raw.once("close", cancel);
+    try { return { provider: await inspectModelCompatibility(params.data.id, body.data.modelId, controller.signal) }; }
+    finally { reply.raw.off("close", cancel); }
+  });
+
   app.post("/_gateway/admin/providers/:id/inspect", async (request, reply) => {
     if (!isLocalProviderInspectionRequest(request)) {
       reply.code(403);
@@ -3052,7 +3132,8 @@ export function createApp(params?: {
       reply.code(400);
       return { error: { type: "validation_error", message: bodyParsed.success ? "API 服务 ID 格式错误" : bodyParsed.error.issues[0]?.message ?? "请求体格式错误" } };
     }
-    const provider = await ctx.externalProviderService.activate(paramsParsed.data.id, bodyParsed.data.modelIds, bodyParsed.data.defaultModelId);
+    const catalogPort = request.raw.socket.localPort || (await ctx.configService.getServerConfig()).port;
+    const provider = await ctx.externalProviderService.activate(paramsParsed.data.id, bodyParsed.data.modelIds, bodyParsed.data.defaultModelId, catalogPort);
     return { provider: { ...provider, codexSwitchWarning: await completeCodexSwitch() } };
   });
 

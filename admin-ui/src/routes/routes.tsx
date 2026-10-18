@@ -1,4 +1,4 @@
-import { BarChart3, BookOpenText, Boxes, CalendarDays, Home, ImageUp, LayoutDashboard, ListChecks, Settings, ShieldCheck, Wifi, Wrench, type LucideIcon } from "lucide-react";
+import { BarChart3, BookOpenText, Boxes, Newspaper, Home, ImageUp, LayoutDashboard, ListChecks, Settings, ShieldCheck, Wifi, Wrench, type LucideIcon } from "lucide-react";
 import { useT } from "@/i18n";
 
 export type AppRoute = "launch" | "overview" | "accounts" | "providers" | "usage" | "reset-calendar" | "tester" | "image-bed" | "tools" | "docs" | "network" | "logs" | "settings";
@@ -15,7 +15,7 @@ export function buildRoutes(t: (key: string) => string): NavRoute[] {
     { id: "overview", label: t("routes.overview"), icon: LayoutDashboard },
     { id: "providers", label: t("routes.providers"), icon: Boxes },
     { id: "usage", label: t("routes.usage"), icon: BarChart3 },
-    { id: "reset-calendar", label: t("routes.reset-calendar"), icon: CalendarDays },
+    { id: "reset-calendar", label: t("routes.reset-calendar"), icon: Newspaper },
     { id: "tester", label: t("routes.tester"), icon: ShieldCheck },
     { id: "image-bed", label: t("routes.image-bed"), icon: ImageUp },
     { id: "tools", label: t("routes.tools"), icon: Wrench },

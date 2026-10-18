@@ -1,15 +1,17 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { compareSemver } from "../core/services/version-service.js";
-import { UpdateError } from "./update-types.js";
+import { UpdateError, type ReleaseHistoryEntry } from "./update-types.js";
+import { fetchReleaseHistory, fetchReleaseJson, RELEASE_API_URL, RELEASES_URL } from "./update-release-history.js";
 
-export const RELEASES_URL = "https://github.com/fchangjun/AI-Zero-Token/releases";
-export const RELEASE_API_URL = "https://api.github.com/repos/fchangjun/AI-Zero-Token/releases/latest";
+export { RELEASES_URL, RELEASE_API_URL };
 const MAX_DOWNLOAD_BYTES = 2 * 1024 ** 3;
 
 export type UpdateRelease = {
   version: string;
   notes: string;
+  history?: ReleaseHistoryEntry[];
+  historyComplete?: boolean;
   releaseUrl: string;
   publishedAt?: string;
   downloadUrl: string;
@@ -64,28 +66,11 @@ export function selectMacRelease(value: unknown, currentVersion: string, arch: s
 }
 
 export async function fetchMacRelease(fetcher: UpdateFetch, currentVersion: string, arch: string, signal: AbortSignal): Promise<UpdateRelease | null> {
-  const response = await fetcher(RELEASE_API_URL, {
-    headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "ai-zero-token-updater" },
-    redirect: "error",
-    credentials: "omit",
-    signal,
-  });
-  if (!response.ok || !response.body) throw new Error(`Release check returned HTTP ${response.status}`);
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      size += value.byteLength;
-      if (size > 2 * 1024 ** 2) throw new Error("Release metadata is too large");
-      chunks.push(value);
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-  }
-  return selectMacRelease(JSON.parse(Buffer.concat(chunks).toString("utf8")), currentVersion, arch);
+  const { value } = await fetchReleaseJson(fetcher, RELEASE_API_URL, signal);
+  const release = selectMacRelease(value, currentVersion, arch);
+  if (!release) return null;
+  const history = await fetchReleaseHistory(fetcher, currentVersion, release, signal);
+  return { ...release, history: history.entries, historyComplete: history.complete };
 }
 
 // Redirects may go only to GitHub's release CDN. No cookies or authorization are forwarded.

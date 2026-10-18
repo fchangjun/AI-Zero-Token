@@ -1,5 +1,5 @@
 import { ArrowRight, Boxes, Loader2, Plus, Search, ServerCog, Unplug } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import type { ApiProvider } from "../types";
 import { CodexStatusBadge, ConnectionStatusBadge } from "./StatusBadge";
 
@@ -35,6 +35,8 @@ export function ProvidersList(props: {
   activeProvider: ApiProvider | null;
   onAdd: () => void;
   onOpenRemote: () => void;
+  statusContent?: ReactNode;
+  mixedProviderIds?: string[];
   onOpen: (provider: ApiProvider) => void;
   onOpenCodex: (provider: ApiProvider) => void;
   onDeactivate: (provider: ApiProvider) => void;
@@ -59,12 +61,13 @@ export function ProvidersList(props: {
         <div className="provider-detail-actions"><button className="btn-secondary" type="button" onClick={props.onOpenRemote}>接入远程 AI Zero Token</button><button className="btn-primary" type="button" onClick={props.onAdd}><Plus size={16} />添加外部 API</button></div>
       </div>
 
+      {props.statusContent}
       {activeProvider && (
         <section className="provider-active-card">
           <div className="provider-active-icon"><Boxes size={21} /></div>
           <div className="provider-active-copy">
             <span>当前接入 Codex</span>
-            <div><strong>{activeProvider.name}</strong><span className="provider-status-badge is-success">已接入</span></div>
+            <div><strong>{activeProvider.name}</strong><span className="provider-status-badge is-success">{activeProvider.kind === "account_pool" ? "已接入" : "直接接管"}</span></div>
             <p>默认模型 {activeProvider.defaultModelId || "尚未设置"} · {activeProvider.kind === "account_pool" ? activeProvider.remoteGateway ? "通过远程网关调用" : `${activeProvider.accountCount} 个本机账号 · 使用 Codex 模型目录` : `${activeProvider.models.filter((model) => model.selectedForCodex).length} 个模型显示在 Codex 中`}</p>
           </div>
           <div className="provider-active-actions">
@@ -107,7 +110,7 @@ export function ProvidersList(props: {
                 <span>{provider.kind === "account_pool" ? <span className={`provider-status-badge ${provider.connectionStatus === "connected" ? "is-success" : "is-neutral"}`}>{provider.remoteGateway ? "远程网关" : provider.connectionStatus === "connected" ? "账号池就绪" : provider.accountCount ? "待选择账号" : "待添加账号"}</span> : provider.inspectionJob?.status === "running" ? <span className="provider-status-badge is-info">检测中 {provider.inspectionJob.completed}/{provider.inspectionJob.total}</span> : <ConnectionStatusBadge status={provider.connectionStatus} title={provider.connectionMessage} />}</span>
                 <span className="providers-model-count"><strong>{provider.modelCount} 个</strong><small>{provider.kind === "account_pool" ? "本机 Codex 模型目录" : provider.modelSource === "manual" ? "手动添加" : "API 返回的全部模型"}</small></span>
                 <span className="providers-date">{formatProviderDate(provider.lastSyncedAt)}</span>
-                <span><CodexStatusBadge active={provider.activeForCodex} />{provider.activeForCodex && provider.codexNeedsApply && <small className="providers-pending">有更改待应用</small>}</span>
+                <span>{props.mixedProviderIds?.includes(provider.id) ? <span className="provider-status-badge is-success">混合接管</span> : <CodexStatusBadge active={provider.activeForCodex} />}{provider.activeForCodex && provider.codexNeedsApply && <small className="providers-pending">有更改待应用</small>}</span>
                 <span className="providers-row-action">{provider.kind === "account_pool" ? "模型与接入" : "查看模型"} <ArrowRight size={14} /></span>
               </button>
             ))}

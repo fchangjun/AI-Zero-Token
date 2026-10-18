@@ -9,9 +9,13 @@ export type ResetSource = {
 
 export type ResetTranslation = {
   zhCN: string;
-  source: "ai-resets.com" | "ai-zero-token";
+  source: "ai-resets.com" | "ai-zero-token" | "codex-intel";
   sourceUrl: string;
   originalText: string;
+  machine?: boolean;
+  provider?: string;
+  modelRevision?: string;
+  translatedAt?: string;
 };
 
 export type ResetAnnouncement = {
@@ -66,7 +70,10 @@ export type ResetCalendarState = {
     generatedAt: string | null;
     error: string | null;
     nextSyncAt: string | null;
+    manualRetryAt?: string | null;
     historyComplete: boolean;
+    source?: "live" | "snapshot";
+    snapshotCapturedAt?: string | null;
   };
   notificationsSupported: boolean;
 };

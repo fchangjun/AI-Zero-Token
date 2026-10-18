@@ -151,9 +151,13 @@ describe("reset calendar management routes", () => {
       throw new Error(`Unexpected fixture URL: ${url.href}`);
     }) as typeof fetch;
     const delivered: ResetCalendarNotification[] = [];
-    const app = makeApp(makeService({ fetcher, notify: async (event) => { delivered.push(event); return true; } }));
+    const service = makeService({ fetcher, notify: async (event) => { delivered.push(event); return true; } });
+    const sync = spyOn(service, "sync");
+    restoreSpies.push(() => sync.mockRestore());
+    const app = makeApp(service);
     const response = await app.inject({ method: "POST", url: `${route}/sync` });
     expect(response.statusCode).toBe(200);
+    expect(sync).toHaveBeenCalledWith({ manual: true });
     expect(response.headers["cache-control"]).toBe("no-store");
     expect(response.json()).toMatchObject({
       records: [announcement, older], status: { latest_reset: announcement },
@@ -174,7 +178,7 @@ describe("reset calendar management routes", () => {
     expect(sent.headers["cache-control"]).toBe("no-store");
     expect(sent.json()).toEqual({ sent: true });
     expect(delivered).toHaveLength(1);
-    expect(delivered[0]).toMatchObject({ kind: "test", title: "AI Zero Token · 重置日历" });
+    expect(delivered[0]).toMatchObject({ kind: "test", stage: "scheduled", title: "Codex 预告来了，准备接粮 · 测试" });
 
     const unavailable = makeApp(makeService({ notify: async (event) => { delivered.push(event); return true; }, notificationsSupported: false }));
     expect((await unavailable.inject({ method: "POST", url: `${route}/test-notification` })).json()).toEqual({ sent: false });

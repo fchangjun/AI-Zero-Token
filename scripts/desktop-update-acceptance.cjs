@@ -23,9 +23,11 @@ let downloadStream;
 let quitRequested = false;
 let readyNotifications = 0;
 let releaseVersion = '2.0.17';
-let releaseNotes = '### 更顺手的更新体验\n- **升级内容，一目了然**：查看本次新增功能与体验改进。\n- 下载时可以继续使用，准备完成后会提醒你。\n- 由你决定何时重启，账号与设置自动保留。\n\n### 细节改进\n- 重新打开应用时检查新版本，及时收到更新提醒。\n- 优化下载失败后的重试与恢复提示。';
+let releaseNotes = '### 桌面更新\n- **升级内容**：查看本次新增功能与体验改进。\n- 下载时可以继续使用，准备完成后会提醒你。\n- 由你决定何时重启，账号与设置自动保留。\n\n### 更新检查与重试\n- 重新打开应用时检查新版本，及时收到更新提醒。\n- 优化下载失败后的重试与恢复提示。';
 let missingDigest = false;
 let failDownload = false;
+let historyReleases = [];
+let failHistory = false;
 const bytes = Buffer.alloc(2 * 1024 * 1024, 7);
 const digest = createHash('sha256').update(bytes).digest('hex');
 let prepareResolve;
@@ -77,19 +79,20 @@ async function main() {
       }
       createRoot(document.getElementById('root')).render(<React.StrictMode><LocaleProvider><Preview /></LocaleProvider></React.StrictMode>);
     `, resolveDir: repo, loader: 'tsx' },
-    bundle: true, platform: 'browser', jsx: 'automatic', outfile: path.join(root, 'fixture.js'),
-    alias: { '@': path.join(repo, 'admin-ui/src') }, loader: { '.svg': 'dataurl', '.png': 'dataurl', '.md': 'text' },
+    bundle: true, platform: 'browser', format: 'esm', jsx: 'automatic', outfile: path.join(root, 'fixture.js'),
+    alias: { '@': path.join(repo, 'admin-ui/src') }, loader: { '.svg': 'dataurl', '.png': 'dataurl', '.jpg': 'dataurl', '.md': 'text' },
     define: { 'process.env.NODE_ENV': '"production"' }, tsconfig: path.join(repo, 'admin-ui/tsconfig.json'),
   });
-  await fs.writeFile(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="fixture.css"></head><body><div id="root"></div><script src="fixture.js"></script></body></html>');
+  await fs.writeFile(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="fixture.css"></head><body><div id="root"></div><script type="module" src="fixture.js"></script></body></html>');
   const { DesktopUpdater } = await import(pathToFileURL(path.join(repo, 'dist/desktop/updater.js')));
   updater = new DesktopUpdater({
     currentVersion: '2.0.16', arch: 'arm64', supported: true,
     installer: { preflight: async () => {}, createJob: () => fs.mkdtemp(path.join(root, 'job-')), prepare: () => prepareWait, cleanup: async () => {}, handOff: async () => {} },
     fetcher: async (url, init) => {
+      if (url.includes('/releases?')) return failHistory ? new Response(null, { status: 503 }) : Response.json(historyReleases);
       if (url.includes('api.github.com')) {
         const name = `AI.Zero.Token-${releaseVersion}-mac-arm64.dmg`;
-        return Response.json({ tag_name: `v${releaseVersion}`, draft: false, prerelease: false, published_at: '2026-09-30T08:00:00Z', body: releaseNotes, assets: [{ name, state: 'uploaded', size: bytes.length, digest: missingDigest ? undefined : `sha256:${digest}`, browser_download_url: `https://github.com/fchangjun/AI-Zero-Token/releases/download/v${releaseVersion}/${name}` }] });
+        return Response.json({ tag_name: `v${releaseVersion}`, draft: false, prerelease: false, published_at: releaseVersion === '2.0.20' ? '2026-10-13T00:00:00Z' : '2026-09-30T08:00:00Z', body: releaseNotes, assets: [{ name, state: 'uploaded', size: bytes.length, digest: missingDigest ? undefined : `sha256:${digest}`, browser_download_url: `https://github.com/fchangjun/AI-Zero-Token/releases/download/v${releaseVersion}/${name}` }] });
       }
       if (failDownload) throw new Error('Synthetic offline download');
       return new Response(new ReadableStream({ start(controller) {
@@ -138,6 +141,36 @@ async function main() {
   assert.ok(await js('document.querySelector(".desktop-update-footer").getBoundingClientRect().bottom <= innerHeight'));
   releaseNotes = originalNotes;
   await updater.check();
+  releaseVersion = '2.0.20';
+  releaseNotes = '本次更新修复 Codex 第三方服务解除接入失败的问题，并完善对话设置恢复。\n\n### 修复 Codex 第三方服务解除接入失败\n功能说明。\n\n### 恢复对话原有模型与推理设置\n功能说明。\n\n### 升级方式\n- npm install old-command\n\n### 验证范围\n内部测试报告，不应出现在简介。';
+  historyReleases = [
+    ['2.0.20', releaseNotes],
+    ['2.0.19', '## 本次更新\n### 新增 Codex 重置日历与通知\n说明。\n### 支持设置模型上下文窗口\n说明。\n### 新增 Codex 服务切换前确认\n说明。\n### 支持 Reviewer 侧栏审阅与修改意见回填\n说明。\n## 升级方式与注意事项\n- old installer'],
+    ['2.0.18', '## 修复 macOS 应用内更新下载失败\n- 修复下载。\n## 修复 Codex 服务切换误报占用\n- 修复切换。\n## 验证范围与签名说明\n内部报告。'],
+    ['2.0.17', '## 本次升级\n- **支持桌面更新详情与后台下载**：后台下载。\n- **新增回复审阅工具 Response Reviewer**：审阅与批注。\n- **支持 Codex 对话随服务切换**：会话跟随服务。\n- **完善模型推理强度兼容**：兼容更多模型。\n## 下载与安装\n- old.dmg'],
+    ['2.0.16', '此版本已经安装，不应重复显示。'],
+  ].map(([version, body]) => ({ tag_name: `v${version}`, body, draft: false, prerelease: false,
+    published_at: version === '2.0.20' ? '2026-10-13T00:00:00Z' : version === '2.0.19' ? '2026-10-12T08:00:00Z' : '2026-09-30T08:00:00Z' }));
+  failHistory = true;
+  await updater.check();
+  await visible('document.querySelector(".desktop-release-history-warning")?.textContent.includes("部分历史记录暂未加载")');
+  assert.ok(await js('[...document.querySelectorAll("dialog button")].some(el => el.textContent.trim() === "立即更新" && !el.disabled)'), 'History failures do not block a validated download');
+  await capture('history-unavailable');
+  failHistory = false;
+  await click('检查更新', '.desktop-release-history-warning button');
+  await visible('document.querySelectorAll(".desktop-release-history > li").length === 4');
+  assert.deepEqual(await js('[...document.querySelectorAll(".desktop-release-version-heading h4")].map(el => el.textContent)'), ['v2.0.20', 'v2.0.19', 'v2.0.18', 'v2.0.17']);
+  assert.ok(await js('document.querySelector(".desktop-release-range").textContent.includes("4 个版本")'));
+  assert.equal(await js('/验证范围|内部报告|npm install|old.dmg|已经安装/.test(document.querySelector(".desktop-update-body").textContent)'), false);
+  assert.deepEqual(await js('[...document.querySelectorAll(".desktop-release-version-heading a")].map(el => el.getAttribute("href"))'), ['20', '19', '18', '17'].map(v => `https://github.com/fchangjun/AI-Zero-Token/releases/tag/v2.0.${v}`));
+  await capture('available-four-versions-zh');
+  await js('document.querySelector(".desktop-release-history > li:last-child").scrollIntoView({block:"end"})');
+  await capture('four-versions-older-zh');
+  await js('document.querySelector(".desktop-update-body").scrollTop = 0');
+  failHistory = true;
+  await updater.check();
+  assert.equal(await js('document.querySelectorAll(".desktop-release-history > li").length'), 4, 'A transient refresh preserves complete history');
+  failHistory = false;
   failDownload = true;
   await click('立即更新');
   await visible('[...document.querySelectorAll("dialog button")].some(el => el.textContent.trim() === "重新下载")');
@@ -171,6 +204,7 @@ async function main() {
   const layout = await js('(() => { const d = document.querySelector("dialog"); return { overflow: d.scrollWidth > d.clientWidth, right: d.getBoundingClientRect().right, width: innerWidth }; })()');
   assert.equal(layout.overflow, false); assert.ok(layout.right <= layout.width);
   await capture('ready-narrow-en');
+  assert.ok(await js('document.querySelector(".desktop-release-range").textContent.includes("4 releases")'));
   await click('Restart to finish updating');
   await until(() => quitRequested, 'explicit install request');
   assert.equal(await js('[...document.querySelectorAll("dialog button")].every(el => el.disabled)'), true);
@@ -186,7 +220,7 @@ async function main() {
   await visible('Boolean(document.querySelector(".strong-update-panel"))');
   assert.ok(await js('document.querySelector(".strong-update-panel").textContent.includes("npm/CLI")'), 'browser retains npm update channel');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ result: 'PASS', checks: ['quiet idle state', 'notice to release notes', 'defer without repeat', 'notification with recreated window', 'manual fallback', 'empty and long notes', 'download failure and retry', 'download and cancel', 'background preparation', 'ready notification', 'explicit restart', 'keyboard focus', 'English narrow layout'], screenshots: output }));
+  console.log(JSON.stringify({ result: 'PASS', checks: ['quiet idle state', 'notice to release notes', 'four-version upgrade history', 'feature summaries without installation or test reports', 'history failure and retry', 'cached history after refresh failure', 'defer without repeat', 'notification with recreated window', 'manual fallback', 'empty and long notes', 'download failure and retry', 'download and cancel', 'background preparation', 'ready notification', 'explicit restart', 'keyboard focus', 'English narrow layout'], screenshots: output }));
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; }).finally(async () => {
   if (win && !win.isDestroyed()) win.destroy();

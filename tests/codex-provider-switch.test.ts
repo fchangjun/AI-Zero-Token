@@ -57,6 +57,34 @@ async function databaseClient(sql = "SELECT * FROM threads;") {
 }
 
 describe("Codex provider switch", () => {
+  test("a project path alias to the global Codex config does not block activation or deactivation", async () => {
+    const project = path.join(home, "project-alias");
+    await fs.mkdir(project);
+    await fs.symlink(home, path.join(project, ".codex"), process.platform === "win32" ? "junction" : "dir");
+    await codexSqlite(db, `UPDATE threads SET cwd = '${project.replaceAll("'", "''")}'`);
+    const original = await data();
+    const b = await create();
+    await service.activate(b.id, ["b-model"], "b-model");
+    await service.deactivate(b.id);
+    expect((await service.list()).activeProviderId).toBeUndefined();
+    expect((await data()).find((row) => row.id === "t1")).toEqual(original.find((row) => row.id === "t1"));
+  });
+
+  test("a genuinely separate project override still blocks switching before any writes", async () => {
+    const project = path.join(home, "project-override");
+    await fs.mkdir(path.join(project, ".codex"), { recursive: true });
+    const projectConfig = path.join(project, ".codex", "config.toml");
+    await fs.writeFile(projectConfig, 'model = "project-model"\n');
+    await codexSqlite(db, `UPDATE threads SET cwd = '${project.replaceAll("'", "''")}'`);
+    const b = await create();
+    const before = await files();
+    const rows = await data();
+    await expect(service.activate(b.id, ["b-model"], "b-model")).rejects.toThrow("覆盖了连接或模型");
+    expect(await files()).toEqual(before);
+    expect(await data()).toEqual(rows);
+    expect(await fs.readFile(projectConfig, "utf8")).toBe('model = "project-model"\n');
+  });
+
   test("an exit timeout leaves the active takeover, config, credentials and thread settings unchanged", async () => {
     const provider = await create();
     await service.activate(provider.id, ["b-model"], "b-model");

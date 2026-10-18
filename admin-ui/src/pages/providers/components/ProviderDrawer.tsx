@@ -116,7 +116,7 @@ export function ProviderDrawer(props: {
               </label>
               <label className={modelSource === "manual" ? "is-selected" : ""}>
                 <input type="radio" name="model-source" checked={modelSource === "manual"} onChange={() => setModelSource("manual")} />
-                <span><strong>手动填写模型 ID</strong><small>适用于没有模型列表接口的服务</small></span>
+                <span><strong>手动填写模型 ID</strong><small>适用于没有兼容模型列表接口的服务，如 Claude 原生 API</small></span>
               </label>
             </fieldset>
 

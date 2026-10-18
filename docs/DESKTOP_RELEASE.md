@@ -20,6 +20,8 @@ Version 2.0.18 fixes Electron's manual-redirect download failure by exposing red
 
 Write user-facing release highlights and fixes in the GitHub Release body; these are the in-app upgrade notes. Prefer short headings and bullet points, and explain any required user action. Do not replace the notes with only a compare link or an asset list.
 
+Keep developer validation out of this body: no "验证范围" / "测试边界" sections, test totals, build or package inspection logs, signing checks, or details of the maintainer's test machine (such as SIP status). Report these in the separate technical handoff. Keep only limitations that change a user's upgrade or usage decision, expressed briefly in plain language. Review the exact final Release body as in-app copy before publishing or editing it; do not append the technical handoff to it.
+
 - Continue to use `npm run dist:mac`. Keep ad-hoc signing and `hardenedRuntime: false` in both existing signing locations.
 - The updater uses the existing `AI Zero Token-{version}-mac-{arm64|x64}.dmg` assets. GitHub's dotted filename normalization is supported. No mac ZIP, blockmap, or `latest-mac.yml` is required for this custom updater.
 - Publish a stable `vX.Y.Z` GitHub Release with both DMGs fully uploaded. The matching asset must expose `state: uploaded`, a positive size, and `digest: sha256:…` through the GitHub Releases API. The uploader does not need an additional manifest. If GitHub has not supplied a digest, the UI offers manual installation and refuses automatic installation.
@@ -307,6 +309,20 @@ For every version, provide:
 - A version-specific GitHub Release download link, supported desktop platforms, and the npm command if npm was published.
 
 Prefer about 150–300 Chinese characters excluding links and commands. Avoid technical commit hashes, exhaustive test counts, marketing superlatives, unverified compatibility claims, and presenting earlier features as new in this release. The technical handoff still reports the commit, tag, npm verification, artifact status, and testing limits separately.
+
+The GitHub Release body also appears directly in the app's update dialog. Apply the same user-facing writing rules to it: feature benefits, concise upgrade steps, and necessary user actions only. Validation scope, testing boundaries, build details, and machine-specific observations belong in the technical handoff, not the Release body or group announcement.
+
+### Product-update writing standard
+
+User preference confirmed on 2026-10-13: write a product update, not an engineering change list. This applies to GitHub Releases, in-app notes and group announcements.
+
+- Open with one sentence summarizing the update, then organize it into 3–5 user-facing themes (fewer for a small patch).
+- Give each theme a concrete feature/benefit heading and 1–2 sentences explaining what users can now do, what friction improved, and where to start when necessary.
+- Keep headings concise, neutral and understandable without the body: name the feature or operation and its concrete change. Use the UI terms “接入／解除接入”; avoid conversational or vague claims such as “更顺手” or “无需登录也能接管”. For example, use “修复 Codex 第三方服务解除接入失败” so a restoration fix cannot be mistaken for login-free Codex access. Version summaries reuse these headings.
+- Combine related work into one theme. For example, Reviewer's side-panel review and composer prefill belong together, not in separate repetitive bullets.
+- Use the technical CHANGELOG as factual source material, not copy to translate line by line. Database write locks, internal value categories, timeout seconds, tab reuse and button placement are not product headlines; describe their observable effect on the user's workflow instead.
+- Keep required upgrade actions and decision-relevant limitations, including experimental integrations. Avoid unsupported promises and vague marketing slogans. Put implementation details and verification evidence in the technical handoff.
+- Read the final copy as an end user before updating the Release: every theme should answer “why does this matter to me?” The group announcement is a compact adaptation of the same themes, not a test report.
 
 For a designated major feature or milestone update, a requested WeChat Official Account article should expand on the user problem, practical scenarios, key improvements, useful screenshots, how to upgrade, and known limits. Patch releases need only the group announcement unless the user asks for more. This publication classification is not determined solely by the semantic major version.
 

@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { prepareElectron } from "./prepare-electron.mjs";
 
 const mode = process.argv[2] || "web";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -60,6 +61,11 @@ function spawnCommand(label, command, args, options = {}) {
   });
   child.on("exit", (code, signal) => {
     children.delete(child);
+    if (label === "electron") {
+      console.log(`[dev] Electron exited${signal ? ` (${signal})` : ` with code ${code ?? 0}`}; stopping the development services.`);
+      shutdown(code ?? (signal ? 1 : 0));
+      return;
+    }
     if (signal) {
       return;
     }
@@ -119,6 +125,7 @@ const gatewayUrl = `http://127.0.0.1:${gatewayPort}`;
 const uiUrl = `http://127.0.0.1:${uiPort}`;
 
 if (mode === "desktop") {
+  await prepareElectron();
   console.log(`[dev] building server once before launching Electron...`);
   await runOnce("build:server", commandName("npm"), ["run", "build:server"]);
   console.log(`[dev] starting Vite UI at ${uiUrl}, proxying API to ${gatewayUrl}`);

@@ -4,6 +4,7 @@ import { ArrowRight, Check, CheckCircle2, Download, ExternalLink, LoaderCircle, 
 import { useLocale } from "@/i18n";
 import type { useDesktopUpdater } from "@/hooks/useDesktopUpdater";
 import { ReleaseNotes } from "./ReleaseNotes";
+import { ReleaseHistory } from "./ReleaseHistory";
 import appMark from "@/assets/app-mark.svg";
 import "../styles/desktop-update.css";
 
@@ -28,6 +29,7 @@ export function DesktopUpdatePanel({ updater }: { updater: ReturnType<typeof use
   const manualOnly = ["missing-digest", "install-location", "install-permission", "recovery-required"].includes(state?.errorCode ?? "");
   const canDownload = available && !busy && phase !== "ready" && !manualOnly;
   const releaseUrl = state?.releaseUrl || "https://github.com/fchangjun/AI-Zero-Token/releases";
+  const showHistory = Boolean(state?.releaseHistory?.length && (state.releaseHistory.length > 1 || state.releaseHistoryComplete === false));
   const status = t(`update.phases.${phase}`);
   const title = available ? t("update.versionAvailable", { version: state!.version! }) : t("update.nativeTitle");
   const publishedAt = state?.publishedAt && Number.isFinite(Date.parse(state.publishedAt))
@@ -78,8 +80,9 @@ export function DesktopUpdatePanel({ updater }: { updater: ReturnType<typeof use
             <div className="desktop-update-body">
               {available ? <>
                 <div className="desktop-update-notes-heading"><h3>{t("update.releaseNotes")}</h3><span>{[publishedAt, downloadSize].filter(Boolean).join(" · ")}</span></div>
-                {state?.releaseNotes?.trim() ? <ReleaseNotes notes={state.releaseNotes} /> : <p className="desktop-update-hint">{t("update.noReleaseNotes")}</p>}
-                <a className="desktop-update-release-link" href={releaseUrl} target="_blank" rel="noreferrer">{t("update.fullReleaseNotes")}<ExternalLink size={13} /></a>
+                {showHistory ? <ReleaseHistory entries={state!.releaseHistory!} complete={state?.releaseHistoryComplete === true} busy={busy} onRetry={() => void action("check")} />
+                  : state?.releaseNotes?.trim() ? <ReleaseNotes notes={state.releaseNotes} /> : <p className="desktop-update-hint">{t("update.noReleaseNotes")}</p>}
+                <a className="desktop-update-release-link" href={showHistory ? "https://github.com/fchangjun/AI-Zero-Token/releases" : releaseUrl} target="_blank" rel="noreferrer">{t("update.fullReleaseNotes")}<ExternalLink size={13} /></a>
               </> : <div className="desktop-update-empty" role="status"><Icon size={32} className={busy ? "desktop-update-spin" : undefined} /><strong>{status}</strong><p>{t(phase === "up-to-date" ? "update.upToDateHint" : phase === "checking" ? "update.checkHint" : "update.retryCheckHint")}</p></div>}
             </div>
 

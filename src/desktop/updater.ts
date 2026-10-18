@@ -101,10 +101,17 @@ export class DesktopUpdater {
         throw error;
       }
       const versionChanged = release?.version !== this.release?.version;
+      if (release && !versionChanged && !release.historyComplete && this.release?.historyComplete) {
+        // A failed history refresh must not discard a previously complete range.
+        const newest = release.history?.[0];
+        release.history = this.release.history?.map(entry => entry.version === newest?.version ? newest : entry);
+        release.historyComplete = true;
+      }
       this.release = release;
       this.setState({
         phase: release ? "available" : "up-to-date", version: release?.version,
         releaseNotes: release?.notes, releaseUrl: release?.releaseUrl, checkedAt: Date.now(), percent: undefined,
+        releaseHistory: release?.history, releaseHistoryComplete: release?.historyComplete,
         publishedAt: release?.publishedAt, downloadSize: release?.size,
         ...(versionChanged ? { noticeDismissed: false } : {}),
         errorCode: release && !release.sha256 ? "missing-digest" : undefined,

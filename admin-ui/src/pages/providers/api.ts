@@ -1,5 +1,7 @@
 import { isReasoningEffort } from "../../../../src/core/models/reasoning-effort";
 import { fetchJson } from "@/shared/api";
+import type { MixedActivationRequest, PublicMixedConfig } from "../../../../src/core/models/mixed-provider";
+import { MIXED_PROTOCOLS, type MixedProtocol } from "../../../../src/core/models/mixed-provider";
 import type {
   ApiProvider,
   ProviderDraft,
@@ -8,6 +10,7 @@ import type {
   ProviderModelCapabilities,
   ProviderModelSource,
   ProvidersSnapshot,
+  ModelStatusSettings,
 } from "./types";
 
 const PROVIDERS_ENDPOINT = "/_gateway/admin/providers";
@@ -71,21 +74,46 @@ export function normalizeProviderModel(value: unknown): ProviderModel {
   const rawStatus = normalizeStatus(rawInspection.status ?? source.status);
   const status = rawStatus === "transport_error" && /timeout|timed out|超时/i.test(textValue(rawInspection.message)) ? "timeout" : rawStatus;
   const checkedAt = dateValue(rawInspection.checkedAt ?? source.lastInspectedAt);
+  const compatibility = record(source.compatibility);
+  const validation = record(compatibility.validation);
+  const protocol = MIXED_PROTOCOLS.includes(compatibility.protocol as MixedProtocol) ? compatibility.protocol as MixedProtocol : undefined;
+  const assessment = (value: unknown): import("../../../../src/core/models/model-compatibility").CompatibilityAssessment | undefined => {
+    const entry = record(value);
+    return entry.status === "compatible" || entry.status === "incompatible" ? {
+      status: entry.status, checkedAt: numberValue(entry.checkedAt), message: textValue(entry.message),
+    } : undefined;
+  };
   return {
     id,
+    health: source.health as ProviderModel["health"],
+    ...((compatibility.status === "failed" || compatibility.status === "identified" && protocol) && numberValue(compatibility.checkedAt) ? { compatibility: {
+      status: compatibility.status as "identified" | "failed", protocol, checkedAt: compatibility.checkedAt as number, message: textValue(compatibility.message),
+      ...(compatibility.source === "responses" ? { source: "responses" as const } : {}),
+      ...(assessment(compatibility.assessment) ? { assessment: assessment(compatibility.assessment) } : {}),
+      ...(compatibility.inconclusive === true ? { inconclusive: true } : {}),
+      ...(numberValue(validation.checkedAt) ? { validation: { checkedAt: validation.checkedAt as number, conversation: validation.conversation === true,
+        toolCalling: validation.toolCalling === true, toolResult: validation.toolResult === true, message: textValue(validation.message),
+        ...(["compatible", "incompatible", "inconclusive"].includes(textValue(validation.outcome)) ? { outcome: validation.outcome as "compatible" | "incompatible" | "inconclusive" } : {}),
+        ...(["blocked", "unavailable", "unknown"].includes(textValue(validation.connectionStatus)) ? { connectionStatus: validation.connectionStatus as "blocked" | "unavailable" | "unknown" } : {}),
+      } } : {}),
+    } } : {}),
     ...(textValue(source.displayName, textValue(source.name)) ? { name: textValue(source.displayName, textValue(source.name)) } : {}),
     ...(textValue(source.description) ? { description: textValue(source.description) } : {}),
     contextWindow: numberValue(source.contextWindow),
     contextWindowOverride: numberValue(source.contextWindowOverride),
     effectiveContextWindow: numberValue(source.effectiveContextWindow),
+    activeDirectContextWindow: numberValue(source.activeDirectContextWindow),
     contextWindowSource: source.contextWindowSource === "manual" ? "manual" : source.contextWindowSource === "api" ? "api" : "default",
     selectedForCodex: booleanValue(source.selectedForCodex),
     catalogStatus: source.catalogStatus === "missing" ? "missing" : "available",
     inspection: {
       status,
+      compatibility: assessment(rawInspection.compatibility),
+      latestCapabilities: parseCapabilities(rawInspection.latestCapabilities),
+      lastSuccessfulAt: numberValue(rawInspection.lastSuccessfulAt),
       history: Array.isArray(rawInspection.history) ? rawInspection.history.map((value) => {
         const entry = record(value);
-        return { checkedAt: dateValue(entry.checkedAt) ?? 0, status: normalizeStatus(entry.status), message: textValue(entry.message), latencyMs: numberValue(entry.latencyMs) };
+        return { checkedAt: dateValue(entry.checkedAt) ?? 0, status: normalizeStatus(entry.status), message: textValue(entry.message), latencyMs: numberValue(entry.latencyMs), capabilities: parseCapabilities(entry.capabilities) };
       }) : [],
       capabilitiesSource: rawInspection.capabilitiesSource === "last_successful" ? "last_successful" : "latest",
       ...(textValue(rawInspection.message, textValue(source.message)) ? { message: textValue(rawInspection.message, textValue(source.message)) } : {}),
@@ -142,7 +170,8 @@ function normalizeSnapshot(value: unknown): ProvidersSnapshot {
     ? payload.providers
     : Array.isArray(value) ? value : [];
   const providers = rawProviders.map((provider) => normalizeProvider(provider, activeProviderId)).filter((provider) => provider.id);
-  return { providers, activeProviderId: activeProviderId ?? providers.find((provider) => provider.activeForCodex)?.id };
+  return { providers, modelStatus: payload.modelStatus as ModelStatusSettings | undefined, activeProviderId: activeProviderId ?? providers.find((provider) => provider.activeForCodex)?.id,
+    ...(payload.mixed && typeof payload.mixed === "object" ? { mixed: payload.mixed as PublicMixedConfig } : {}) };
 }
 
 function providerFromMutation(value: unknown): ApiProvider | null {
@@ -164,6 +193,14 @@ function jsonRequest(method: string, body?: unknown): RequestInit {
 
 export async function listProviders(): Promise<ProvidersSnapshot> {
   return normalizeSnapshot(await fetchJson<unknown>(PROVIDERS_ENDPOINT));
+}
+
+export async function updateModelStatusInterval(intervalMinutes: ModelStatusSettings["intervalMinutes"]): Promise<ModelStatusSettings> {
+  return fetchJson("/_gateway/admin/model-status", jsonRequest("PUT", { intervalMinutes }));
+}
+
+export async function checkModelStatus(): Promise<ModelStatusSettings> {
+  return fetchJson("/_gateway/admin/model-status/check", jsonRequest("POST"));
 }
 
 export async function createProvider(draft: ProviderDraft): Promise<ApiProvider | null> {
@@ -192,6 +229,14 @@ export async function activateProvider(providerId: string, modelIds: string[], d
 
 export async function deactivateProvider(providerId: string): Promise<ApiProvider | null> {
   return providerFromMutation(await fetchJson<unknown>(`${PROVIDERS_ENDPOINT}/${encodeURIComponent(providerId)}/deactivate`, jsonRequest("POST")));
+}
+
+export async function activateMixed(input: MixedActivationRequest): Promise<{ mixed: PublicMixedConfig; codexSwitchWarning?: string }> {
+  return fetchJson("/_gateway/admin/mixed/activate", jsonRequest("POST", input));
+}
+
+export async function deactivateMixed(): Promise<{ mixed: PublicMixedConfig; codexSwitchWarning?: string }> {
+  return fetchJson("/_gateway/admin/mixed/deactivate", jsonRequest("POST"));
 }
 
 export async function setProviderContextWindow(providerId: string, modelId: string, contextWindow: number | null): Promise<ApiProvider | null> {

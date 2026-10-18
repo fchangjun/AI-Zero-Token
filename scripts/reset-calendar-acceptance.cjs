@@ -65,7 +65,10 @@ async function until(check, label) {
   }
   throw new Error(`Timed out: ${label}`);
 }
-const js = (source) => win.webContents.executeJavaScript(source, true);
+const js = async (source) => {
+  try { return await win.webContents.executeJavaScript(source, true); }
+  catch (cause) { throw new Error(`Fixture renderer failed: ${source}`, { cause }); }
+};
 const visible = (source, label = source) => until(() => js(source), label);
 const t = (key) => js(`window.__acceptance.t(${JSON.stringify(key)})`);
 
@@ -165,7 +168,9 @@ async function prepareFixture() {
         networkError: false, saveError: false, testMode: 'success', unexpected: [],
         clipboardError: false, copied: [],
       };
-      window.desktopApp = { isDesktop: true };
+      window.desktopApp = {
+        isDesktop: true,
+      };
       Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
         async writeText(value) {
           if (mock.clipboardError) throw new Error('Synthetic clipboard failure');
@@ -233,12 +238,12 @@ async function prepareFixture() {
       }
       createRoot(document.getElementById('root')).render(<React.StrictMode><LocaleProvider><Preview /></LocaleProvider></React.StrictMode>);
     `, resolveDir: repo, loader: 'tsx' },
-    bundle: true, platform: 'browser', jsx: 'automatic', outfile: path.join(root, 'fixture.js'),
-    alias: { '@': path.join(repo, 'admin-ui/src') }, loader: { '.svg': 'dataurl', '.png': 'dataurl', '.md': 'text' },
+    bundle: true, platform: 'browser', format: 'esm', jsx: 'automatic', outfile: path.join(root, 'fixture.js'),
+    alias: { '@': path.join(repo, 'admin-ui/src') }, loader: { '.svg': 'dataurl', '.png': 'dataurl', '.jpg': 'dataurl', '.md': 'text' },
     define: { 'process.env.NODE_ENV': '"production"' }, tsconfig: path.join(repo, 'admin-ui/tsconfig.json'),
     logLevel: 'silent',
   });
-  await fs.writeFile(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="fixture.css"></head><body><div id="root"></div><script src="fixture.js"></script></body></html>');
+  await fs.writeFile(path.join(root, 'index.html'), '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="fixture.css"></head><body><div id="root"></div><script type="module" src="fixture.js"></script></body></html>');
   server = http.createServer(async (request, response) => {
     const pathname = new URL(request.url, 'http://127.0.0.1').pathname;
     if (pathname === '/favicon.ico') { response.writeHead(204).end(); return; }
@@ -288,8 +293,8 @@ async function main() {
   assert.equal(await js('document.querySelector(".rc-record-detail .rc-badge")?.textContent'), await t('resetCalendar.compactStage.confirmed'));
   assert.equal(await js('document.querySelector(".rc-account-note")?.textContent'), await t('resetCalendar.accountDisclaimer'));
   await assertSourceContent('.rc-record-detail .rc-source-content', records[3]);
-  assert.ok(await js('document.querySelector(".rc-source-meta-line").textContent.includes("12:01")'), 'Compact source line retains Beijing announcement time');
-  assert.equal(await js('document.querySelector(".rc-source-meta-line time").dateTime'), records[3].announced_at);
+  assert.ok(await js('document.querySelector(".rc-record-detail .rc-source-meta-line").textContent.includes("12:01")'), 'Compact source line retains Beijing announcement time');
+  assert.equal(await js('document.querySelector(".rc-record-detail .rc-source-meta-line time").dateTime'), records[3].announced_at);
   assert.equal(await js('Boolean(document.querySelector(".rc-source-url, .rc-source-meta, .rc-record-summary, .rc-source-content > h4"))'), false, 'Repeated source headings, summaries and metadata grid removed');
   assert.equal(await js('document.querySelector(".rc-record-detail").textContent.includes("https://")'), false, 'Raw source URL is hidden in normal reading');
   assert.equal(await js('document.querySelectorAll(".rc-record-detail .rc-source-footer button").length'), 1, 'Source footer contains only the copy control');
@@ -320,7 +325,7 @@ async function main() {
   await poll();
   await selectDay(1);
   assert.ok(await js('document.querySelector(".rc-record-detail")?.textContent.includes("BEIJING_OCTOBER_BOUNDARY")'), 'UTC September event buckets into Beijing October');
-  assert.ok(await js('document.querySelector(".rc-source-meta-line")?.textContent.includes("00:30")'), 'Cross-day event displays Beijing time');
+  assert.ok(await js('document.querySelector(".rc-record-detail .rc-source-meta-line")?.textContent.includes("00:30")'), 'Cross-day event displays Beijing time');
   await assertSourceContent('.rc-record-detail .rc-source-content', boundary, null);
   await clickKey('.rc-month-buttons button', 'resetCalendar.previousMonth');
   await selectDay(30);
@@ -336,7 +341,7 @@ async function main() {
   await js(`window.__acceptance.mock.state.records[1] = ${JSON.stringify(localRevision)}`);
   await poll();
   await assertSourceContent('.rc-record-detail .rc-source-content', localRevision);
-  assert.equal(await js('document.querySelector(".rc-translation-note")?.title'), await t('resetCalendar.sourceContent.localTranslationNote'), 'Local revision retains full provenance in its title');
+  assert.equal(await js('document.querySelector(".rc-record-detail .rc-translation-note")?.title'), await t('resetCalendar.sourceContent.localTranslationNote'), 'Local revision retains full provenance in its title');
   await js('document.querySelector(".rc-record-detail .rc-source-content").scrollIntoView({block:"center"})');
   await capture('10-desktop-bilingual-local-revision');
   await clickKey('.rc-filters button', 'resetCalendar.types.banked');
@@ -352,19 +357,19 @@ async function main() {
   })()`);
   assert.equal(safety.unsafeHasLink, false, 'javascript source rejected');
   assert.equal(safety.executed, false);
-  await click('.rc-source-footer button');
-  await visible('document.querySelector(".rc-source-feedback")?.textContent === window.__acceptance.t("resetCalendar.sourceContent.copied")');
+  await click('.rc-record-detail .rc-source-footer button');
+  await visible('document.querySelector(".rc-record-detail .rc-source-feedback")?.textContent === window.__acceptance.t("resetCalendar.sourceContent.copied")');
   assert.deepEqual(await js('window.__acceptance.mock.copied'), [records[2].source.url], 'Copy writes full original URL');
-  assert.equal(await js('document.querySelector(".rc-source-feedback").getAttribute("role")'), 'status');
+  assert.equal(await js('document.querySelector(".rc-record-detail .rc-source-feedback").getAttribute("role")'), 'status');
   await js('window.__acceptance.mock.clipboardError = true');
-  await click('.rc-source-footer button');
-  await visible('document.querySelector(".rc-source-feedback")?.textContent === window.__acceptance.t("resetCalendar.sourceContent.copyFailed")');
-  assert.equal(await js('document.querySelector(".rc-source-feedback").getAttribute("role")'), 'alert');
-  assert.equal(await js('document.querySelector(".rc-source-copy-fallback")?.value'), records[2].source.url, 'Failed copy exposes a manual-copy fallback');
-  assert.equal(await js('document.querySelector(".rc-source-copy-fallback")?.readOnly'), true);
+  await click('.rc-record-detail .rc-source-footer button');
+  await visible('document.querySelector(".rc-record-detail .rc-source-feedback")?.textContent === window.__acceptance.t("resetCalendar.sourceContent.copyFailed")');
+  assert.equal(await js('document.querySelector(".rc-record-detail .rc-source-feedback").getAttribute("role")'), 'alert');
+  assert.equal(await js('document.querySelector(".rc-record-detail .rc-source-copy-fallback")?.value'), records[2].source.url, 'Failed copy exposes a manual-copy fallback');
+  assert.equal(await js('document.querySelector(".rc-record-detail .rc-source-copy-fallback")?.readOnly'), true);
   await js('window.__acceptance.mock.clipboardError = false');
-  await click('.rc-source-footer button');
-  await visible('!document.querySelector(".rc-source-copy-fallback")', 'Successful copy removes manual fallback');
+  await click('.rc-record-detail .rc-source-footer button');
+  await visible('!document.querySelector(".rc-record-detail .rc-source-copy-fallback")', 'Successful copy removes manual fallback');
   await clickKey('.rc-filters button', 'resetCalendar.types.regular');
   assert.equal(await js('document.querySelectorAll(".rc-calendar-event.is-banked").length'), 0);
   await clickKey('.rc-filters button', 'resetCalendar.types.all');
@@ -397,6 +402,9 @@ async function main() {
   await openSettings();
   assert.deepEqual(await js('[...document.querySelectorAll(".rc-switch")].map(node => node.checked)'), [false, true], 'Saved settings survive mock refresh and reopen');
   await capture('02-notification-settings');
+  assert.ok(await js('document.querySelector(".rc-card-guide").textContent.includes(window.__acceptance.t("resetCalendar.settings.cardDescription"))'), 'Desktop card guidance replaces OS permissions');
+  assert.equal(await js('document.querySelectorAll("iframe.rc-notification-preview[sandbox]").length'), 2, 'Both examples use the actual sandboxed card renderer');
+  assert.equal(await js('document.querySelectorAll(".rc-notification-actions button").length'), 1, 'Only the test action remains');
   checks.push('cancelled draft discarded, periodic page refresh preserves draft, explicit save persists and survives refresh');
 
   for (const [mode, key] of [
@@ -419,21 +427,51 @@ async function main() {
   const testsBefore = await js('window.__acceptance.mock.requests.filter(request => request.path.endsWith("/test-notification")).length');
   await js('document.querySelector(".rc-notification-support button").click()');
   assert.equal(await js('window.__acceptance.mock.requests.filter(request => request.path.endsWith("/test-notification")).length'), testsBefore);
-  await escape();
+  await js("window.dispatchEvent(new Event('azt:open-reset-calendar'))");
+  await visible('!document.querySelector(".rc-modal")', 'Card click reveals the calendar beneath settings');
   checks.push('notification success, rejected delivery, network failure, unsupported desktop state, Escape focus return');
 
   const scheduled = { ...translated(announcement('fixture-scheduled', 'banked', '2026-10-12T01:00:00Z', 'A public scheduled reset is awaiting confirmation. Synthetic acceptance fixture.'), '公开信号预告储备重置，预计时间已过，仍待公开确认。（验收示例）'),
     status: 'scheduled', scheduled_for: '2026-10-12T01:30:00Z' };
   await js(`window.__acceptance.mock.state.status.scheduled_reset = ${JSON.stringify(scheduled)}`);
   await sync();
-  assert.ok(await js('document.querySelector(".rc-signal-card").textContent.includes(window.__acceptance.t("resetCalendar.signal.overdueHint"))'), 'Expired scheduled time remains awaiting confirmation');
+  assert.ok(await js('document.querySelector(".rc-signal-detail").textContent.includes(window.__acceptance.t("resetCalendar.signal.overdueHint"))'), 'Expired scheduled time remains awaiting confirmation');
+  assert.ok(await js('document.querySelector(".rc-signal-detail").compareDocumentPosition(document.querySelector(".rc-intel-confirmation-grid")) & Node.DOCUMENT_POSITION_FOLLOWING'), 'Signal precedes the latest confirmation');
+  assert.equal(await js('document.querySelector(".rc-signal-timing time").dateTime'), scheduled.scheduled_for);
+  assert.equal(await js('document.querySelector(".rc-signal-timing time strong").textContent'), '09:30', 'Expected time prominent in Beijing time');
   await selectDay(12);
   assert.equal(await js('document.querySelector(".rc-record-detail .rc-badge").textContent'), await t('resetCalendar.compactStage.scheduled'));
   assert.equal(await js('document.querySelectorAll(".rc-record-detail .is-confirmed").length'), 0, 'Scheduled reset never promoted by time alone');
   await assertSourceContent('.rc-signal-detail .rc-source-content', scheduled);
   await assertSourceContent('.rc-record-detail .rc-source-content', scheduled);
-  await js('document.querySelector(".rc-signal-detail").scrollIntoView({block:"start"})');
+  assert.equal(await js('document.querySelector(".rc-calendar-event.is-scheduled .rc-event-stage").textContent'), await t('resetCalendar.signal.previewShort'));
+  await clickKey('.rc-filters button', 'resetCalendar.types.regular');
+  await clickKey('.rc-month-buttons button', 'resetCalendar.previousMonth');
+  await click('.rc-signal-view');
+  await visible('document.activeElement === document.querySelector(".rc-detail-panel h2")');
+  assert.equal(await js('Number(document.querySelector(".rc-day.is-selected .rc-day-number").textContent)'), 12, 'Preview action restores announcement month and day');
+  assert.equal(await js('document.querySelector(".rc-filters [aria-pressed=true]").textContent'), await t('resetCalendar.types.all'), 'Preview action clears incompatible filter');
+  assert.equal(await js('document.querySelectorAll(".rc-record-detail .is-scheduled").length'), 1);
+  await js('document.querySelector(".rc-page").scrollIntoView({block:"start"})');
   await capture('03-scheduled-awaiting-confirmation');
+  const upcoming = { ...translated({ ...scheduled, text: 'A banked reset is planned for October 13 at 10:30 UTC. Awaiting public confirmation. Synthetic acceptance fixture.' }, '公开公告预告 10 月 13 日北京时间 18:30 发放储备重置，仍待公开确认。（验收示例）'), scheduled_for: '2026-10-13T10:30:00Z' };
+  await js(`window.__acceptance.mock.state.status.scheduled_reset = ${JSON.stringify(upcoming)}`);
+  await sync();
+  assert.ok(await js('document.querySelector(".rc-signal-description").textContent === window.__acceptance.t("resetCalendar.signal.scheduledHint")'), 'Future time remains a pending announcement');
+  assert.equal(await js('document.querySelector(".rc-signal-timing time strong").textContent'), '18:30');
+  await capture('10-upcoming-reset');
+  await js('window.__acceptance.mock.state.status.scheduled_reset.scheduled_for = null');
+  await sync();
+  assert.equal(await js('document.querySelector(".rc-signal-time-unknown").textContent'), await t('resetCalendar.signal.timeUnknown'), 'No invented deadline when source omits time');
+  assert.equal(await js('document.querySelectorAll(".rc-signal-timing time").length'), 0);
+  // The scheduled item must stay visible even when newer same-day records would fill both slots.
+  await js(`window.__acceptance.mock.state.records.push(${JSON.stringify(announcement('preview-crowded-1', 'regular', '2026-10-12T01:50:00Z', 'Another record'))}, ${JSON.stringify(announcement('preview-crowded-2', 'regular', '2026-10-12T01:55:00Z', 'Another record'))})`);
+  await sync();
+  assert.equal(await js('document.querySelectorAll(".rc-day.is-selected .rc-calendar-event.is-scheduled").length'), 1, 'Preview stays visible on crowded dates');
+  await js(`window.__acceptance.mock.state.records = window.__acceptance.mock.state.records.filter(record => !record.id.startsWith('preview-crowded-'));
+    window.__acceptance.mock.state.status.scheduled_reset = ${JSON.stringify(scheduled)}`);
+  await sync();
+  checks.push('top-priority preview, prominent Beijing deadline, calendar preview badge, date/filter navigation with focus, unknown/future/past times, crowded-day visibility');
   const watch = translated({ level: 'strong', reset_chance_percent: 90, forecast_window: 'The coming hours',
     observed_at: '2026-10-12T01:45:00Z', expires_at: '2026-10-12T03:00:00Z',
     text: 'A public reset signal remains unconfirmed. Synthetic acceptance fixture.', source: { type: 'observed', url: 'https://codex-resets.com/' } },
@@ -459,27 +497,44 @@ async function main() {
     window.__acceptance.mock.state.notificationsSupported = true`);
   await sync();
   assert.equal(await js('Boolean(document.querySelector(".rc-signal-detail"))'), false, 'Expired watch hidden');
-  assert.ok(await js('document.querySelector(".rc-signal-card").textContent.includes(window.__acceptance.t("resetCalendar.signal.noneTitle"))'));
+  assert.ok(await js('document.querySelector(".rc-intel-no-preview").textContent.includes(window.__acceptance.t("intelStation.noPreview"))'));
   checks.push('scheduled and watch show direct bilingual sources without cross-object translation; scheduled stays unconfirmed after expected time; expired watch disappears');
 
   await selectDay(11);
   const cachedEvents = await js('document.querySelectorAll(".rc-calendar-event").length');
+  await js('window.__acceptance.mock.state.sync.manualRetryAt = null');
+  await poll();
   await js('window.__acceptance.mock.networkError = true');
   await sync();
   assert.equal(await js('document.querySelectorAll(".rc-calendar-event").length'), cachedEvents, 'Network error retains cached events');
   assert.ok(await js('document.querySelector(".rc-sync-error").textContent.includes(window.__acceptance.t("resetCalendar.cachedError"))'));
   assert.equal(await js('document.querySelectorAll(".rc-record-detail").length'), 1, 'Cached day details retained');
-  assert.equal(await js('document.querySelector(".rc-actions button").disabled'), true, 'Backoff disables manual sync');
-  assert.equal(await js('document.querySelector(".rc-sync-error button").disabled'), true, 'Backoff disables retry');
-  assert.ok(await js('document.querySelector(".rc-retry-time")?.textContent.includes("10:04")'), 'Next retry displays Beijing time');
-  await capture('04-cached-network-error');
-  await js('window.__acceptance.mock.now += 5 * 60_000');
+  assert.equal(await js('document.querySelector(".rc-actions button").disabled'), false, 'Local API failure does not invent an upstream cooldown');
+  await js(`window.__acceptance.mock.networkError = false;
+    window.__acceptance.mock.state.sync.phase = 'error';
+    window.__acceptance.mock.state.sync.error = '同步超时，已保留本地记录，将自动重试。';
+    window.__acceptance.mock.state.sync.nextSyncAt = new Date(window.__acceptance.mock.now + 40 * 60_000).toISOString();
+    window.__acceptance.mock.state.sync.manualRetryAt = new Date(window.__acceptance.mock.now + 10_000).toISOString()`);
   await poll();
-  assert.equal(await js('document.querySelector(".rc-actions button").disabled'), false, 'Retry unlocks after backoff deadline');
-  await js('window.__acceptance.mock.networkError = false');
+  assert.equal(await js('document.querySelector(".rc-actions button").disabled'), true, 'Short cooldown prevents repeated clicks');
+  assert.equal(await js('document.querySelector(".rc-sync-error button").disabled'), true, 'Retry also honors short cooldown');
+  assert.equal(await js('document.querySelectorAll(".rc-retry-time").length'), 2, 'Automatic and manual retry deadlines are distinct');
+  await capture('04-cached-network-error');
+  await js('window.__acceptance.mock.now += 10_001');
+  await visible('document.querySelector(".rc-actions button").disabled === false');
+  assert.ok(await js('Date.parse(window.__acceptance.mock.state.sync.nextSyncAt) > Date.now()'), 'Manual retry unlocks before automatic backoff');
+  await capture('04-manual-retry-available');
+  await js('window.__acceptance.mock.state.sync.manualRetryAt = new Date(Date.now() + 600_000).toISOString()');
+  await poll();
+  await js('window.__acceptance.mock.now += 30_000');
+  await poll();
+  assert.equal(await js('document.querySelector(".rc-sync-error button").disabled'), true, 'Server rate limit remains binding');
+  await js('window.__acceptance.mock.now += 600_000');
+  await poll();
+  await js('window.__acceptance.mock.state.sync.phase = "ready"; window.__acceptance.mock.state.sync.error = null; window.__acceptance.mock.state.sync.manualRetryAt = null');
   await sync();
   assert.equal(await js('Boolean(document.querySelector(".rc-sync-error"))'), false, 'Successful retry clears error');
-  checks.push('network failure keeps cached calendar/details, backoff disables controls until deadline, retry recovers');
+  checks.push('network failure keeps cached calendar/details; short manual cooldown expires before automatic backoff; upstream rate limits remain binding; retry recovers');
 
   await js('window.__acceptance.setLocale("en")');
   await visible('document.documentElement.lang === "en"');
@@ -511,6 +566,56 @@ async function main() {
   await js('document.querySelector(".rc-record-detail .rc-source-content").scrollIntoView({block:"start"})');
   await capture('08-narrow-english-source');
   checks.push('English 440px page, modal and compact bilingual source without horizontal overflow, keyboard focus trap and Escape return');
+
+  await js(`window.__acceptance.mock.state.status.scheduled_reset = ${JSON.stringify(scheduled)}`);
+  await sync();
+  await js('document.querySelector(".rc-page").scrollIntoView({block:"start"})');
+  await noHorizontalOverflow('.rc-signal-detail');
+  await noHorizontalOverflow('.rc-signal-heading');
+  await noHorizontalOverflow('.rc-signal-timing');
+  await assertSourceContent('.rc-signal-detail .rc-source-content', scheduled);
+  await capture('11-narrow-english-preview');
+  await click('.rc-signal-view');
+  await visible('document.activeElement === document.querySelector(".rc-detail-panel h2")');
+  await noHorizontalOverflow('.rc-calendar-event.is-scheduled');
+  await js('document.querySelector(".rc-calendar").scrollIntoView({block:"start"})');
+  await capture('12-narrow-english-preview-calendar');
+  await js('window.__acceptance.setLocale("zh-CN")');
+  await visible('document.documentElement.lang === "zh-CN"');
+  await js('document.querySelector(".rc-page").scrollIntoView({block:"start"})');
+  await noHorizontalOverflow('.rc-signal-detail');
+  await capture('13-narrow-chinese-preview');
+  win.setContentSize(1000, 850);
+  await pause(100);
+  await noHorizontalOverflow('.rc-page');
+  await noHorizontalOverflow('.rc-signal-detail');
+  await noHorizontalOverflow('.rc-signal-detail .rc-source-content');
+  await capture('14-medium-chinese-preview');
+  await js(`window.__acceptance.mock.state.status.scheduled_reset = null;
+    window.__acceptance.mock.state.status.latest_reset = ${JSON.stringify(scheduled)}`);
+  await sync();
+  assert.equal(await js('document.querySelectorAll(".rc-signal-detail, .rc-calendar-event.is-scheduled").length'), 0, 'Public confirmation clears the pending preview and calendar styling');
+  assert.equal(await js('document.querySelector(".rc-record-detail .rc-badge").textContent'), await t('resetCalendar.compactStage.confirmed'), 'Actual confirmation updates the record stage');
+  checks.push('440px English and Chinese previews, bilingual source stays visible, narrow calendar preview badge and keyboard navigation');
+
+  await click('#intel-tab-prices');
+  await visible('document.querySelectorAll(".intel-price-table tbody tr").length > 0', 'Bundled subscription prices remain available offline');
+  assert.equal(await js('document.querySelector("#intel-tab-prices").getAttribute("aria-selected")'), 'true');
+  assert.ok(await js('document.querySelector(".intel-price-warning").textContent.includes("报价更新暂不可用")'), 'Offline pricing keeps the saved snapshot with an explicit notice');
+  await capture('15-subscription-prices');
+  await clickKey('.rc-actions button', 'intelStation.share');
+  await visible('Boolean(document.querySelector(".intel-share-preview canvas:not([hidden])"))', 'Share image renders');
+  const canvasSize = await js('(() => { const canvas = document.querySelector(".intel-share-preview canvas"); return { width: canvas.width, height: canvas.height }; })()');
+  assert.ok(canvasSize.width >= 600 && canvasSize.height >= 600);
+  await click('.intel-share-actions button', '复制摘要');
+  await visible('document.querySelector(".intel-share-feedback").textContent.includes(window.__acceptance.t("common.copySuccess"))');
+  assert.ok(await js('window.__acceptance.mock.copied.at(-1).includes("Plus")'), 'Copied summary includes the recorded subscription prices');
+  await capture('16-intelligence-share');
+  await escape();
+  await visible('!document.querySelector(".intel-share-shell")');
+  await click('#intel-tab-resets');
+  await visible('Boolean(document.querySelector(".rc-month-table"))');
+  checks.push('offline subscription price snapshot and notice, independent tabs, share image generation, copy summary, Escape close');
 
   assert.deepEqual(await js('window.__acceptance.mock.unexpected'), [], 'Only expected local mock APIs used');
   assert.deepEqual(blockedRequests, [], 'No outbound website or account requests');

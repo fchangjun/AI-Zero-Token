@@ -1,4 +1,5 @@
 import type { ReasoningEffort } from "../../../../src/core/models/reasoning-effort";
+import type { ModelHealthChecks, ModelHealthInterval } from "../../../../src/core/models/model-availability";
 export type { ReasoningEffort } from "../../../../src/core/models/reasoning-effort";
 
 export type ProviderInspectionStatus =
@@ -24,18 +25,24 @@ export type ProviderModelCapabilities = {
 
 export type ProviderModelInspection = {
   status: ProviderInspectionStatus;
+  compatibility?: import("../../../../src/core/models/model-compatibility").CompatibilityAssessment;
+  latestCapabilities?: ProviderModelCapabilities;
+  lastSuccessfulAt?: number;
   message?: string;
   checkedAt?: number | string;
   latencyMs?: number;
   capabilities?: ProviderModelCapabilities;
   capabilitiesSource?: "latest" | "last_successful";
-  history?: Array<{ checkedAt: number | string; status: ProviderInspectionStatus; message?: string; latencyMs?: number }>;
+  history?: Array<{ checkedAt: number | string; status: ProviderInspectionStatus; message?: string; latencyMs?: number; capabilities?: ProviderModelCapabilities }>;
 };
 
 export type ProviderModel = {
+  health?: ModelHealthChecks;
+  compatibility?: import("../../../../src/core/models/model-compatibility").ModelCompatibility;
   contextWindow?: number;
   contextWindowOverride?: number;
   effectiveContextWindow?: number;
+  activeDirectContextWindow?: number;
   contextWindowSource?: "api" | "default" | "manual";
   id: string;
   name?: string;
@@ -74,8 +81,16 @@ export type ApiProvider = {
 };
 
 export type ProvidersSnapshot = {
+  modelStatus?: ModelStatusSettings;
   providers: ApiProvider[];
   activeProviderId?: string;
+  mixed?: import("../../../../src/core/models/mixed-provider").PublicMixedConfig;
+};
+
+export type ModelStatusSettings = {
+  intervalMinutes: ModelHealthInterval;
+  enabled: boolean;
+  job: { running: boolean; total: number; completed: number; finishedAt?: number; error?: string };
 };
 
 export type ProviderDraft = {

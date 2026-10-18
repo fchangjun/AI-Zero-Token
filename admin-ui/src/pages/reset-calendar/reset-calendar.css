@@ -4,6 +4,7 @@
 .rc-time-zone { display: inline-flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; }
 .rc-actions { gap: 8px; }
 .rc-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.rc-summary-grid.has-signal { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .rc-summary-card { display: flex; align-items: flex-start; gap: 16px; min-width: 0; min-height: 112px; padding: 21px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow-sm); }
 .rc-summary-card > div { display: grid; gap: 9px; min-width: 0; }
 .rc-summary-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 47px; width: 47px; height: 47px; border-radius: 17px; }
@@ -65,8 +66,13 @@
 .rc-day-records { display: grid; gap: 3px; min-width: 0; }
 .rc-calendar-event { display: grid; gap: 1px; min-width: 0; }
 .rc-event-time { color: var(--text-muted); font-size: 10px; line-height: 1.5; }
+.rc-event-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 5px; }
+.rc-event-stage { color: #8a4907; font-size: 10px; font-weight: 800; line-height: 1.5; }
+.rc-calendar-event.is-scheduled { padding: 3px 4px; border-left: 3px solid #dc850d; border-radius: 4px; background: #fff0d0; }
 .rc-event-type { display: flex; align-items: center; gap: 4px; min-width: 0; padding: 4px 5px; border-radius: 6px; color: #078341; background: #e8f8ef; font-size: 10px; line-height: 1.3; font-weight: 650; overflow: hidden; }
 .rc-calendar-event.is-banked .rc-event-type { color: var(--brand-strong); background: #eeedff; }
+.rc-calendar-event.is-scheduled .rc-event-type { padding-inline: 0; color: #8a4907; background: transparent; }
+.rc-calendar-event.is-scheduled .rc-event-dot { background: #b86708; }
 .rc-event-type > svg { flex-shrink: 0; }
 .rc-event-label { min-width: 0; overflow-wrap: anywhere; }
 .rc-event-dot { flex: 0 0 6px; width: 6px; height: 6px; border-radius: 50%; background: #0e9f55; }
@@ -77,6 +83,7 @@
 .rc-calendar-legend i { width: 8px; height: 8px; border-radius: 50%; }
 .rc-calendar-legend .is-regular { background: #0e9f55; }
 .rc-calendar-legend .is-banked { background: var(--brand); }
+.rc-calendar-legend .is-scheduled { border-radius: 2px; background: #dc850d; }
 .rc-detail-panel { display: flex; flex-direction: column; align-self: start; gap: 14px; padding: 18px; }
 .rc-detail-panel > header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .rc-detail-panel > header h2 { font-size: 16px; }
@@ -131,12 +138,27 @@
 .rc-sync-error button { flex-shrink: 0; border: 0; color: #9a631c; background: transparent; font-size: 12px; font-weight: 700; text-decoration: underline; }
 .rc-sync-error button:disabled { opacity: .5; }
 .rc-loading { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 330px; border: 1px solid var(--line); border-radius: 13px; color: var(--text-muted); background: #fff; font-size: 13px; }
-.rc-signal-detail { display: grid; gap: 9px; padding: 16px 18px; border: 1px solid #f7dfb7; border-radius: 11px; background: #fffaf1; }
-.rc-signal-detail > div { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; color: #aa6613; font-size: 13px; }
-.rc-signal-detail > div > span { margin-left: auto; color: var(--text-soft); font-size: 12px; }
-.rc-signal-detail > p { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
-.rc-signal-detail > .rc-source-content { margin-top: 4px; padding-top: 13px; border-top: 1px solid #f3e2c8; }
-.rc-signal-detail .rc-source-texts { background: rgba(255, 255, 255, .8); }
+.rc-signal-detail { display: grid; grid-template-columns: minmax(250px, .9fr) minmax(0, 1.4fr); gap: 28px; min-width: 0; padding: 24px; border: 1px solid #efc378; border-top: 4px solid #d98613; border-radius: 13px; background: linear-gradient(110deg, #fff2d8 0%, #fffbf3 60%); box-shadow: 0 3px 15px rgba(157, 95, 13, .07); }
+.rc-signal-overview { display: grid; align-content: start; justify-items: start; gap: 16px; min-width: 0; }
+.rc-signal-heading { min-width: 0; }
+.rc-signal-eyebrow { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; color: #91500b; font-size: 12px; font-weight: 700; }
+.rc-signal-state { margin-left: 3px; padding: 3px 8px; border: 1px solid #e8bd78; border-radius: 5px; color: #87480c; background: #fff9ee; font-size: 10px; }
+.rc-signal-heading h2 { margin: 10px 0 7px; color: #6e3b0b; font-size: 26px; line-height: 1.35; letter-spacing: -.4px; overflow-wrap: anywhere; }
+.rc-signal-description { margin: 0; color: #8b5a24; font-size: 12px; line-height: 1.8; }
+.rc-signal-timing { display: grid; gap: 5px; min-width: 0; }
+.rc-signal-timing > span { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: #8b5a24; font-size: 11px; }
+.rc-signal-timing time { display: flex; align-items: baseline; flex-wrap: wrap; gap: 7px 12px; color: #6e3b0b; }
+.rc-signal-timing time > span { font-size: 18px; font-weight: 650; }
+.rc-signal-timing time strong { font-size: 34px; line-height: 1.25; letter-spacing: -.7px; font-variant-numeric: tabular-nums; }
+.rc-signal-time-unknown { color: #6e3b0b; font-size: 18px; line-height: 1.6; }
+.rc-signal-forecast { display: grid; gap: 5px; }
+.rc-signal-forecast p { margin: 0; color: #8b5a24; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.rc-signal-view { display: inline-flex; align-items: center; justify-content: center; gap: 8px; max-width: 100%; padding: 8px 12px; border: 1px solid #e2b368; border-radius: 7px; color: #78400a; background: #fffaf1; font-size: 12px; font-weight: 700; cursor: pointer; }
+.rc-signal-view:hover { border-color: #c77a12; background: #fff; }
+.rc-signal-view svg { flex-shrink: 0; }
+.rc-signal-detail > .rc-source-content { align-content: start; padding-left: 24px; border-left: 1px solid #efd8b1; }
+.rc-signal-detail .rc-source-texts { border-color: #efdfc5; background: rgba(255, 255, 255, .85); }
+.rc-detail-panel h2:focus { outline: 2px solid var(--brand); outline-offset: 4px; border-radius: 3px; }
 .rc-partial-note { display: flex; align-items: center; gap: 7px; color: var(--text-muted); font-size: 12px; line-height: 1.6; }
 .rc-partial-note svg { flex-shrink: 0; }
 .rc-page button:focus-visible, .rc-page a:focus-visible, .rc-page summary:focus-visible, .rc-page input:focus-visible, .rc-modal button:focus-visible, .rc-modal input:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
@@ -169,17 +191,16 @@
 .rc-support-row > span:first-child { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; color: var(--text-soft); font-size: 12px; font-weight: 650; }
 .rc-support-row .rc-badge { text-align: right; font-size: 10px; }
 .rc-notification-support > p { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
+.rc-card-guide { display: grid; gap: 8px; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft, #f8fafc); color: var(--text-soft); font-size: 12px; line-height: 1.7; }
+.rc-card-guide strong { color: var(--text); }
+.rc-card-guide p { margin: 0; }
+.rc-card-guide summary { cursor: pointer; color: var(--brand); }
+.rc-card-guide details p { margin-top: 7px; }
+.rc-notification-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.rc-notification-actions button { flex: 1 1 150px; justify-content: center; }
 .rc-notification-previews { display: grid; align-content: start; gap: 12px; min-width: 0; padding-left: 27px; border-left: 1px solid var(--line); }
 .rc-notification-previews > p { margin: -5px 0 1px; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
-.rc-notification-preview { display: flex; align-items: flex-start; gap: 12px; padding: 15px 13px; border: 1px solid var(--line); border-radius: 11px; background: #fff; box-shadow: var(--shadow-sm); }
-.rc-preview-mark { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 33px; width: 33px; height: 33px; border: 1.5px solid var(--brand); border-radius: 10px; color: var(--brand); }
-.rc-notification-preview > div { flex: 1; min-width: 0; }
-.rc-preview-meta { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 5px; font-size: 11px; line-height: 1.5; }
-.rc-preview-meta strong { color: var(--text-soft); }
-.rc-preview-meta > span { color: var(--text-muted); white-space: nowrap; }
-.rc-notification-preview .rc-badge { padding: 2px 5px; font-size: 10px; }
-.rc-notification-preview h4 { margin: 7px 0 6px; color: var(--text); font-size: 13px; line-height: 1.6; }
-.rc-notification-preview p { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
+.rc-notification-preview { display: block; width: calc(100% + 32px); max-width: 432px; margin: -8px -16px; border: 0; pointer-events: none; }
 .rc-modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin: 0 28px; padding: 17px 0 23px; border-top: 1px solid var(--line); }
 .rc-modal-footer button { min-width: 85px; }
 .rc-modal-feedback.is-error { color: #b45309; }
@@ -204,7 +225,7 @@
   .rc-toolbar { align-items: flex-start; flex-direction: column; }
   .rc-actions { align-self: stretch; }
   .rc-actions button { flex: 1; }
-  .rc-summary-grid { grid-template-columns: 1fr; }
+  .rc-summary-grid, .rc-summary-grid.has-signal { grid-template-columns: 1fr; }
   .rc-summary-card { flex-direction: row; min-height: 96px; padding: 16px; gap: 14px; }
   .rc-summary-card > div { gap: 6px; }
   .rc-types-columns { grid-template-columns: 1fr; gap: 16px; }
@@ -220,7 +241,10 @@
   .rc-event-time { font-size: 9px; }
   .rc-calendar-footer { padding: 12px; font-size: 10px; }
   .rc-calendar-legend { gap: 13px; }
-  .rc-signal-detail > div > span { width: 100%; margin-left: 0; }
+  .rc-signal-detail { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 19px; }
+  .rc-signal-heading h2 { font-size: 23px; }
+  .rc-signal-detail > .rc-source-content { padding: 17px 0 0; border-left: 0; border-top: 1px solid #efd8b1; }
+  .rc-calendar-legend { flex-wrap: wrap; }
   .rc-modal-backdrop { padding: 12px; }
   .rc-modal { max-height: calc(100dvh - 24px); }
   .rc-modal-head { margin-inline: 19px; padding-top: 20px; }

@@ -2,11 +2,20 @@ export type UpdatePhase = "idle" | "checking" | "up-to-date" | "available" | "do
 
 export type UpdateErrorCode = "check-failed" | "download-failed" | "download-network" | "download-write" | "integrity" | "missing-digest" | "install-location" | "install-permission" | "disk-space" | "invalid-app" | "prepare-failed" | "install-failed" | "recovery-required";
 
+export type ReleaseHistoryEntry = {
+  version: string;
+  highlights: string[];
+  releaseUrl: string;
+  publishedAt?: string;
+};
+
 export type DesktopUpdateState = {
   phase: UpdatePhase;
   currentVersion: string;
   version?: string;
   releaseNotes?: string;
+  releaseHistory?: ReleaseHistoryEntry[];
+  releaseHistoryComplete?: boolean;
   releaseUrl?: string;
   publishedAt?: string;
   downloadSize?: number;

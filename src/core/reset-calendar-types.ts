@@ -5,7 +5,11 @@ export type ResetSource =
 
 export type ResetTranslation = {
   zhCN: string;
-  source: "ai-resets.com" | "ai-zero-token";
+  source: "ai-resets.com" | "ai-zero-token" | "codex-intel";
+  machine?: boolean;
+  provider?: string;
+  modelRevision?: string;
+  translatedAt?: string;
   sourceUrl: string;
   /** Exact API text this translation matched, for rejecting stale translations. */
   originalText: string;
@@ -64,14 +68,22 @@ export type ResetCalendarState = {
     generatedAt: string | null;
     error: string | null;
     nextSyncAt: string | null;
+    /** Manual retry cooldown; absent in older backends. */
+    manualRetryAt?: string | null;
     historyComplete: boolean;
+    /** Actual origin of the displayed status, separate from successful live synchronization. */
+    source?: "live" | "snapshot";
+    snapshotCapturedAt?: string | null;
   };
+  /** Whether the desktop host can display reset-calendar cards. */
   notificationsSupported: boolean;
 };
 
 export type ResetCalendarNotification = {
   kind: "signal" | "confirmed" | "test";
+  stage?: "watch" | "scheduled" | "confirmed";
   title: string;
   body: string;
+  detail?: string;
   eventId: string;
 };

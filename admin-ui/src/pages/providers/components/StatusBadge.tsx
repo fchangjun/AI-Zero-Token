@@ -13,9 +13,9 @@ const INSPECTION_STATUS_META: Record<ProviderInspectionStatus, { label: string; 
   unknown: { label: "未检测", tone: "neutral" },
 };
 
-export function InspectionStatusBadge({ status, title }: { status: ProviderInspectionStatus; title?: string }) {
+export function InspectionStatusBadge({ status, title, label }: { status: ProviderInspectionStatus; title?: string; label?: string }) {
   const meta = INSPECTION_STATUS_META[status] ?? INSPECTION_STATUS_META.unknown;
-  return <span className={`provider-status-badge is-${meta.tone}`} title={title}>{meta.label}</span>;
+  return <span className={`provider-status-badge is-${meta.tone}`} title={title}>{label ?? meta.label}</span>;
 }
 
 function connectionMeta(status: string): { label: string; tone: string } {

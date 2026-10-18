@@ -1,6 +1,6 @@
 {
   "name": "ai-zero-token",
-  "version": "2.0.20",
+  "version": "2.0.21",
   "description": "Local-first OpenAI-compatible AI CLI and gateway with Codex OAuth, multi-account management, and gpt-image-2 image generation/editing.",
   "license": "MIT",
   "author": "AI Zero Token Contributors",
@@ -50,6 +50,7 @@
     "build": "npm run build:ui && npm run build:server",
     "build:server": "tsup",
     "build:ui": "vite build --config admin-ui/vite.config.ts",
+    "predesktop": "node scripts/prepare-electron.mjs",
     "desktop": "npm run build && electron .",
     "desktop:dev": "node scripts/dev.mjs desktop",
     "dist": "npm run build && electron-builder",
@@ -68,8 +69,8 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
-    "fastify": "^5.8.2",
-    "fflate": "^0.8.2",
+    "fastify": "^5.12.7",
+    "fflate": "^0.8.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -78,7 +79,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
-    "electron": "^41.3.0",
+    "electron": "^42.11.14",
     "electron-builder": "^26.8.1",
     "lucide-react": "^1.14.0",
     "react": "^19.2.5",
@@ -116,7 +117,11 @@
       "main": "dist/desktop/main.js"
     },
     "asar": true,
-    "asarUnpack": ["modules/response-reviewer/**/*", "modules/response-reviewer/.mcp.json", "modules/response-reviewer/.codex-plugin/plugin.json"],
+    "asarUnpack": [
+      "modules/response-reviewer/**/*",
+      "modules/response-reviewer/.mcp.json",
+      "modules/response-reviewer/.codex-plugin/plugin.json"
+    ],
     "mac": {
       "icon": "build/icon.icns",
       "category": "public.app-category.developer-tools",

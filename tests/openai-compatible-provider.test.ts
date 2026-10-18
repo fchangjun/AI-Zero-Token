@@ -263,7 +263,7 @@ describe("OpenAI-compatible provider inspection", () => {
       },
     });
     expect(result.results.find((model) => model.id === "first-round-only")).toMatchObject({
-      status: "incompatible",
+      status: "transport_error",
       capabilities: {
         functionCalling: true,
         functionCallOutput: false,
@@ -382,7 +382,9 @@ describe("OpenAI-compatible provider inspection", () => {
     const result = await inspect(server.origin);
     expect(result.summary.ready).toBe(0);
     expect(result.results).toHaveLength(3);
-    expect(result.results.every((model) => model.status === "incompatible")).toBe(true);
+    expect(result.results.find((model) => model.id === "chat-completions-json")?.status).toBe("incompatible");
+    expect(result.results.find((model) => model.id === "done-only")?.status).toBe("transport_error");
+    expect(result.results.find((model) => model.id === "incomplete-response")?.status).toBe("unavailable");
   });
 
   test("classifies transient overload as busy, unsupported protocols as incompatible, and prefers an explicit model", async () => {

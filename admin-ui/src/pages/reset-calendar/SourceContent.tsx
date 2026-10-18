@@ -4,6 +4,7 @@ import { useLocaleValue, useT } from "@/i18n";
 import { copyText } from "@/shared/lib/app-utils";
 import { formatBeijing, safeSourceUrl } from "./calendar";
 import type { ResetSource, ResetTranslation } from "./types";
+import tiboAvatar from "../../../../sites/codex-reset/public/tibo-avatar.jpg";
 
 export function SourceContent({ text, source, at, translation, wide = false }: {
   text: string;
@@ -15,8 +16,9 @@ export function SourceContent({ text, source, at, translation, wide = false }: {
   const t = useT();
   const locale = useLocaleValue();
   const url = safeSourceUrl(source.url);
-  const chinese = translation?.originalText === text ? translation.zhCN.trim() : "";
-  const translationNoteKey = translation?.source === "ai-zero-token" ? "localTranslationNote" : "translationNote";
+  const displayText = (value: string) => value.replace(/https?:\/\/t\.co\/[a-z0-9]+(?:[?#][^\s]*)?/giu, "").trim();
+  const chinese = translation?.originalText === text ? displayText(translation.zhCN) : "";
+  const translationNoteKey = translation?.machine ? "automaticTranslationNote" : translation?.source === "codex-intel" ? "intelTranslationNote" : translation?.source === "ai-zero-token" ? "localTranslationNote" : "translationNote";
   const fullTime = `${formatBeijing(at, locale, { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })} · ${t("resetCalendar.timeZone")}`;
   const [feedback, setFeedback] = useState<{ url: string; key: string; error: boolean } | null>(null);
   const shownFeedback = feedback?.url === url ? feedback : null;
@@ -30,10 +32,10 @@ export function SourceContent({ text, source, at, translation, wide = false }: {
   }
 
   return <section className={`rc-source-content ${wide ? "is-wide" : ""}`} aria-label={t("resetCalendar.sourceContent.title")}>
-    <p className="rc-source-meta-line"><span>{source.author || t("resetCalendar.sourceContent.authorUnknown")}</span><span aria-hidden="true">·</span><span>{t(source.type === "x_post" ? "resetCalendar.xPost" : "resetCalendar.publicObservation")}</span><span aria-hidden="true">·</span><time dateTime={at} title={fullTime} aria-label={fullTime}>{formatBeijing(at, locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}</time></p>
+    <p className="rc-source-meta-line">{source.author === "thsottiaux" && <img src={tiboAvatar} alt="Tibo" />}<span>{source.author === "thsottiaux" ? "Tibo · @thsottiaux" : source.author || t("resetCalendar.sourceContent.authorUnknown")}</span><span aria-hidden="true">·</span><span>{t(source.type === "x_post" ? "resetCalendar.xPost" : "resetCalendar.publicObservation")}</span><span aria-hidden="true">·</span><time dateTime={at} title={fullTime} aria-label={fullTime}>{formatBeijing(at, locale, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}</time></p>
     <div className="rc-source-texts">
-      <section className="rc-source-text is-chinese" lang="zh-CN"><h5 lang={locale}>{t("resetCalendar.sourceContent.chineseTitle")}</h5><p className={chinese ? undefined : "rc-translation-empty"} lang={chinese ? "zh-CN" : locale}>{chinese || t("resetCalendar.sourceContent.chineseUnavailable")}</p></section>
-      <section className="rc-source-text is-english" lang="en"><h5 lang={locale}>{t("resetCalendar.sourceContent.englishTitle")}</h5><p lang={text ? "en" : locale}>{text || t("resetCalendar.noOriginalText")}</p></section>
+      <section className="rc-source-text is-chinese" lang="zh-CN"><h5 lang={locale}>{t(translation?.machine && chinese ? "resetCalendar.sourceContent.automaticChineseTitle" : "resetCalendar.sourceContent.chineseTitle")}</h5><p className={chinese ? undefined : "rc-translation-empty"} lang={chinese ? "zh-CN" : locale}>{chinese || t("resetCalendar.sourceContent.chineseUnavailable")}</p></section>
+      <section className="rc-source-text is-english" lang="en"><h5 lang={locale}>{t("resetCalendar.sourceContent.englishTitle")}</h5><p lang={text ? "en" : locale}>{displayText(text) || t("resetCalendar.noOriginalText")}</p></section>
     </div>
     <footer className="rc-source-footer">
       {chinese && <small className="rc-translation-note" title={t(`resetCalendar.sourceContent.${translationNoteKey}`)}>{t(`resetCalendar.sourceContent.${translationNoteKey}Short`)}</small>}

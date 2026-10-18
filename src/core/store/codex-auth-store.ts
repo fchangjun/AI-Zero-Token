@@ -8,6 +8,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import type { OAuthProfile } from "../types.js";
 import { getStateDir } from "./state-paths.js";
+import { enableManagedModelDiscovery, isModelDiscoveryEnabled, restoreManagedModelDiscovery } from "../services/codex-model-discovery-config.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,6 +25,8 @@ type CodexAuthFile = {
 };
 
 export type CodexGatewayProviderStatus = {
+  modelCatalogUrl?: string;
+  modelDiscoveryEnabled?: boolean;
   path: string;
   providerId: string;
   exists: boolean;
@@ -73,7 +76,10 @@ export type CodexCatalogModelInput = {
   displayName?: string;
   contextWindow?: number;
   reasoningEfforts?: ReasoningEffort[];
+  defaultReasoningEffort?: ReasoningEffort;
   inputModalities?: Array<"text" | "image">;
+  /** Local Codex tool discovery, translated by the mixed gateway for converted routes. */
+  supportsToolSearch?: boolean;
 };
 
 export type CodexHistoryMigrationResult = {
@@ -430,6 +436,7 @@ function parseGatewayProviderTable(raw: string, providerId: string): {
   baseUrl?: string;
   bearerToken?: string;
   envKey?: string;
+  modelCatalogUrl?: string;
   authType?: "none" | "bearer_token" | "env_key";
 } {
   const lines = raw.split(/\r?\n/);
@@ -442,8 +449,9 @@ function parseGatewayProviderTable(raw: string, providerId: string): {
   let baseUrl: string | undefined;
   let bearerToken: string | undefined;
   let envKey: string | undefined;
+  let modelCatalogUrl: string | undefined;
   for (let index = start + 1; index < lines.length && !/^\s*\[/.test(lines[index] ?? ""); index += 1) {
-    const match = /^\s*(base_url|experimental_bearer_token|env_key)\s*=\s*(.+)$/.exec(lines[index] ?? "");
+    const match = /^\s*(base_url|experimental_bearer_token|env_key|model_catalog_url)\s*=\s*(.+)$/.exec(lines[index] ?? "");
     if (!match) {
       continue;
     }
@@ -455,6 +463,8 @@ function parseGatewayProviderTable(raw: string, providerId: string): {
       bearerToken = parsed;
     } else if (match[1] === "env_key") {
       envKey = parsed;
+    } else if (match[1] === "model_catalog_url") {
+      modelCatalogUrl = parsed;
     }
   }
 
@@ -463,6 +473,7 @@ function parseGatewayProviderTable(raw: string, providerId: string): {
     baseUrl,
     bearerToken,
     envKey,
+    modelCatalogUrl,
     authType: bearerToken ? "bearer_token" : envKey ? "env_key" : "none",
   };
 }
@@ -694,7 +705,7 @@ function removeManagedCatalogMarker(raw: string): string {
 function upsertManagedRootModelCatalog(raw: string, catalogPath: string): string {
   const marker = parseManagedCatalogMarker(raw);
   const currentCatalogPath = parseRootModelCatalogPath(raw);
-  const previous = marker && currentCatalogPath === marker.managed ? marker.previous : currentCatalogPath;
+  const previous = marker && currentCatalogPath === (marker.managed || undefined) ? marker.previous : currentCatalogPath;
   const withoutMarker = removeManagedCatalogMarker(raw);
   const withCatalog = upsertRootString(withoutMarker, "model_catalog_json", catalogPath);
   const payload = Buffer.from(JSON.stringify({ managed: catalogPath, previous }), "utf8").toString("base64url");
@@ -712,7 +723,7 @@ function restoreManagedRootModelCatalog(raw: string): { raw: string; restored: b
   }
   const currentCatalogPath = parseRootModelCatalogPath(raw);
   let next = removeManagedCatalogMarker(raw);
-  if (currentCatalogPath !== marker.managed) {
+  if (currentCatalogPath !== (marker.managed || undefined)) {
     return { raw: next, restored: false };
   }
   next = marker.previous
@@ -897,7 +908,7 @@ function getCodexAccountId(profile: OAuthProfile): string | undefined {
   return profile.codexAccountId ?? (!profile.accountIdSource ? profile.accountId : undefined);
 }
 
-function formatCodexModelDisplayName(modelId: string): string {
+export function formatCodexModelDisplayName(modelId: string): string {
   const knownWords: Record<string, string> = {
     claude: "Claude",
     code: "Code",
@@ -962,7 +973,9 @@ function normalizeCodexCatalogModels(
       ...(displayName ? { displayName } : {}),
       ...(contextWindow ? { contextWindow } : {}),
       ...(reasoningEfforts ? { reasoningEfforts } : {}),
+      ...(candidate.defaultReasoningEffort && reasoningEfforts?.includes(candidate.defaultReasoningEffort) ? { defaultReasoningEffort: candidate.defaultReasoningEffort } : {}),
       ...(inputModalities?.length ? { inputModalities } : {}),
+      ...(candidate.supportsToolSearch === true ? { supportsToolSearch: true } : {}),
     };
     if (seen.has(id)) continue;
     seen.add(id);
@@ -1032,7 +1045,7 @@ function buildCodexCatalogEntry(
     slug: model.id,
     display_name: model.displayName || formatCodexModelDisplayName(model.id),
     description: "User-selected API model configured by AI Zero Token.",
-    ...(reasoningEfforts.length > 0 ? { default_reasoning_level: reasoningEfforts.includes("medium") ? "medium" : reasoningEfforts[0] } : {}),
+    ...(reasoningEfforts.length > 0 ? { default_reasoning_level: model.defaultReasoningEffort ?? (reasoningEfforts.includes("medium") ? "medium" : reasoningEfforts[0]) } : {}),
     supported_reasoning_levels: reasoningEfforts.map((effort) => ({ effort, description: reasoningDescriptions[effort] })),
     shell_type: "unified_exec",
     visibility: "list",
@@ -1058,13 +1071,24 @@ function buildCodexCatalogEntry(
     effective_context_window_percent: 95,
     experimental_supported_tools: [],
     input_modalities: model.inputModalities?.length ? model.inputModalities : ["text"],
-    supports_search_tool: false,
+    supports_search_tool: model.supportsToolSearch === true,
     supports_experimental_context: false,
     use_responses_lite: false,
     node_repl_auto_review_required: false,
     node_repl_disabled: false,
     base_instructions: baseInstructions,
   };
+}
+
+export async function buildCodexModelCatalog(models: readonly CodexCatalogModelInput[], selectedModel?: string) {
+  const instructions = await loadCodexCatalogInstructions(selectedModel);
+  return { models: normalizeCodexCatalogModels(models, selectedModel).map((model, index) => buildCodexCatalogEntry(model, index, instructions)) };
+}
+
+export function serializeRemoteModelCatalog(catalog: Awaited<ReturnType<typeof buildCodexModelCatalog>>): string {
+  const json = JSON.stringify(catalog);
+  if (Buffer.byteLength(json) > 1024 * 1024) throw new Error("模型目录超过 Codex 的 1 MiB 限制，请减少接入模型数量。");
+  return json;
 }
 
 async function writeManagedCodexModelCatalog(
@@ -1124,6 +1148,7 @@ async function readManagedCodexModelCatalog(catalogPath: string | undefined): Pr
         ...(displayName ? { displayName } : {}),
         ...(levels.length ? { reasoningEfforts: levels } : {}),
         ...(inputModalities.length ? { inputModalities } : {}),
+        ...(item.supports_search_tool === true ? { supportsToolSearch: true } : {}),
       });
     }
     return normalizeCodexCatalogModels(models, undefined);
@@ -1195,13 +1220,15 @@ export async function getCodexGatewayProviderStatus(params?: {
   }
 
   const table = parseGatewayProviderTable(raw, providerId);
-  const catalogModels = await readManagedCodexModelCatalog(modelCatalogPath);
+  const catalogModels = await readManagedCodexModelCatalog(modelCatalogPath ?? (table.modelCatalogUrl ? path.join(getCodexHomeDir(), MANAGED_CATALOG_RELATIVE_PATH) : undefined));
   return {
     path: configPath,
     providerId,
     exists: table.exists,
     active: modelProvider === providerId && table.exists,
     baseUrl: table.baseUrl,
+    modelCatalogUrl: table.modelCatalogUrl,
+    modelDiscoveryEnabled: isModelDiscoveryEnabled(raw),
     model,
     modelCatalogPath,
     modelProvider,
@@ -1298,6 +1325,7 @@ export async function applyProfileToCodexAuth(profile: OAuthProfile): Promise<Ap
 }
 
 type ApplyProviderConfigParams = {
+  modelCatalogUrl?: string;
   baseUrl: string;
   providerId?: string;
   kind?: "codex_gateway" | "openai_compatible";
@@ -1508,7 +1536,7 @@ export function readManagedNativeCodexSettings(raw: string): NativeCodexSettings
   const model = parseManagedModelMarker(raw);
   const catalog = parseManagedCatalogMarker(raw);
   if (model && model.managed === parseRootModel(raw)) native.model = model.previous;
-  if (catalog && catalog.managed === parseRootModelCatalogPath(raw)) native.catalog = catalog.previous;
+  if (catalog && (catalog.managed || undefined) === parseRootModelCatalogPath(raw)) native.catalog = catalog.previous;
   // There is no legacy effort marker: never recover a third-party effort as a native preference.
   return native;
 }
@@ -1536,12 +1564,22 @@ export async function buildCodexSwitchFiles(
       displayName: target.displayName, bearerToken: token, model: target.model,
     });
     next = next.replace(`[model_providers.${ACTIVE_CODEX_PROVIDER_ID}]`, `[model_providers.${ACTIVE_CODEX_PROVIDER_ID}]\nrequires_openai_auth = false`);
-    next = upsertManagedRootModelCatalog(next, path.join(getCodexHomeDir(), MANAGED_CATALOG_RELATIVE_PATH));
+    if (target.modelCatalogUrl) {
+      const url = new URL(target.modelCatalogUrl);
+      if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.pathname.startsWith("/_gateway/codex/model-catalog/") || url.username || url.password || url.hash || url.search) throw new Error("模型目录必须使用 AZT 本机接口。");
+      next = next.replace(`[model_providers.${ACTIVE_CODEX_PROVIDER_ID}]`, `[model_providers.${ACTIVE_CODEX_PROVIDER_ID}]\nmodel_catalog_url = ${formatTomlString(url.href)}`);
+      next = removeRootString(upsertManagedRootModelCatalog(next, ""), "model_catalog_json").raw;
+      next = enableManagedModelDiscovery(next);
+    } else {
+      next = restoreManagedModelDiscovery(next);
+      next = upsertManagedRootModelCatalog(next, path.join(getCodexHomeDir(), MANAGED_CATALOG_RELATIVE_PATH));
+    }
     next = setOptional(next, "model_reasoning_effort", effort);
-    const instructions = await loadCodexCatalogInstructions(target.model);
-    return { config: next, catalog: `${JSON.stringify({ models: models.map((model, index) => buildCodexCatalogEntry(model, index, instructions)) }, null, 2)}\n` };
+    const catalog = await buildCodexModelCatalog(models, target.model);
+    if (target.modelCatalogUrl) serializeRemoteModelCatalog(catalog);
+    return { config: next, catalog: `${JSON.stringify(catalog, null, 2)}\n` };
   }
-  next = removeManagedCatalogMarker(removeManagedModelMarker(removeManagedProviderMarker(next)));
+  next = restoreManagedModelDiscovery(removeManagedCatalogMarker(removeManagedModelMarker(removeManagedProviderMarker(next))));
   next = upsertRootModelProvider(next, "openai");
   next = setOptional(next, "model", native.model);
   next = setOptional(next, "model_reasoning_effort", native.effort);
@@ -1551,7 +1589,7 @@ export async function buildCodexSwitchFiles(
   let activeTable = false;
   next = lines.filter((line) => {
     if (/^\s*\[/.test(line)) activeTable = line.trim() === `[model_providers.${ACTIVE_CODEX_PROVIDER_ID}]`;
-    return !activeTable || !/^\s*(experimental_bearer_token|env_key)\s*=/.test(line);
+    return !activeTable || !/^\s*(experimental_bearer_token|env_key|model_catalog_url)\s*=/.test(line);
   }).join("\n");
   return { config: next };
 }

@@ -1,7 +1,23 @@
 import { expect, spyOn, test } from "bun:test";
 import fs from "node:fs/promises";
 import { createServer } from "node:http";
+import { createRequire } from "node:module";
 import { requestStream } from "../src/core/providers/http-client.ts";
+
+test("pooled HTTP reuses sockets without replaying redirects/errors and cancels pending reads in Node/Electron", async () => {
+  const build = await Bun.build({ entrypoints: ["./tests/fixtures/http-pool-lifecycle.ts"], target: "node", format: "cjs" });
+  expect(build.success).toBe(true);
+  const source = await build.outputs[0].text();
+  const electron = createRequire(import.meta.url)("electron") as string;
+  for (const runtime of ["node", electron]) {
+    const worker = Bun.spawn([runtime, "--input-type=commonjs", "-e", source], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdout: "pipe", stderr: "pipe",
+    });
+    const [output, error, code] = await Promise.all([new Response(worker.stdout).text(), new Response(worker.stderr).text(), worker.exited]);
+    expect({ runtime, code, error }).toEqual({ runtime, code: 0, error: "" });
+    expect(output).toContain("HTTP_POOL_OK");
+  }
+}, 20_000);
 
 test("curl preserves fast error and SSE responses when header reads are delayed", async () => {
   const server = createServer((request, response) => {
@@ -37,3 +53,22 @@ test("curl preserves fast error and SSE responses when header reads are delayed"
     await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });
+
+test("curl stream cancellation and health checks survive Node and Electron callback ordering", async () => {
+  // Bun's stream adapter has different cancellation timing and cannot reproduce this crash.
+  const build = await Bun.build({
+    entrypoints: ["./tests/fixtures/http-stream-lifecycle.ts"], target: "node", format: "cjs",
+    define: { "import.meta.url": JSON.stringify("file:///azt-isolated-tests/src/core/store/state-paths.ts") },
+  });
+  expect(build.success).toBe(true);
+  const source = await build.outputs[0].text();
+  const electron = createRequire(import.meta.url)("electron") as string;
+  for (const runtime of ["node", electron]) {
+    const worker = Bun.spawn([runtime, "--input-type=commonjs", "-e", source], {
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" }, stdout: "pipe", stderr: "pipe",
+    });
+    const [output, error, code] = await Promise.all([new Response(worker.stdout).text(), new Response(worker.stderr).text(), worker.exited]);
+    expect({ runtime, code, error }).toEqual({ runtime, code: 0, error: "" });
+    expect(output).toContain("STREAM_LIFECYCLE_OK");
+  }
+}, 20_000);

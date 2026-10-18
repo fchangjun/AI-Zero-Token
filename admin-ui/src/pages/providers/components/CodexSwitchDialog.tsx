@@ -1,9 +1,12 @@
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { useEffect, useRef } from "react";
+import { CROSS_VENDOR_NOTICE, MIXED_RUNTIME_NOTICE } from "../../../../../src/core/models/mixed-provider";
 
 export function CodexSwitchDialog(props: {
   title: string;
   detail: string;
+  mode?: "direct" | "mixed";
+  autoModelCount?: number;
   busy: boolean;
   error?: string;
   onClose: () => void;
@@ -25,6 +28,8 @@ export function CodexSwitchDialog(props: {
         <button className="provider-icon-button" type="button" aria-label="关闭确认框" disabled={props.busy} onClick={props.onClose}><X size={18} /></button>
       </header>
       <p id="codex-switch-detail">{props.detail}</p>
+      {props.mode && <div className="codex-switch-risks"><p>{CROSS_VENDOR_NOTICE}</p>{props.mode === "mixed" && <p>{MIXED_RUNTIME_NOTICE}</p>}</div>}
+      {Boolean(props.autoModelCount) && <p className="codex-switch-note">确认后将为 {props.autoModelCount} 个模型自动识别接口，优先复用已确认的结果。未确认的模型最多发送 3 次短请求，每次输出上限 32 token，服务商可能计费。识别未完成时会提示重试，当前接入配置会保留。</p>}
       <div className="codex-switch-steps">
         <strong>请先完全退出 Codex，再继续</strong>
         <ol>
@@ -34,7 +39,7 @@ export function CodexSwitchDialog(props: {
         </ol>
       </div>
       <p className="codex-switch-note">确认前不会修改设置，也不会开始计时。确认后，退出检查最多等待 15 秒；超时可处理后重试。macOS 桌面版会尝试正常退出仍打开的空闲客户端。</p>
-      {props.busy && <div className="codex-switch-progress" role="status"><Loader2 className="provider-spin" size={18} /><span>正在检查退出状态并切换，请保持 Codex 关闭……</span></div>}
+      {props.busy && <div className="codex-switch-progress" role="status"><Loader2 className="provider-spin" size={18} /><span>{props.autoModelCount ? "正在识别接口并准备接管，请保持 Codex 关闭……" : "正在检查退出状态并切换，请保持 Codex 关闭……"}</span></div>}
       {props.error && <div className="codex-switch-error" role="alert"><AlertCircle size={18} /><span>{props.error}</span></div>}
       <footer>
         <button className="btn-secondary" type="button" disabled={props.busy} onClick={props.onClose}>取消</button>

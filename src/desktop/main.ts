@@ -12,6 +12,7 @@ import { getCodexHomeDir } from "../core/store/codex-auth-store.js";
 import { DesktopUpdater } from "./updater.js";
 import { MacUpdateInstaller } from "./mac-update-installer.js";
 import { fetchDesktopUpdate } from "./update-fetch.js";
+import { ResetNotificationCards } from "./reset-notification-card.js";
 import { ResetCalendarNavigator } from "./reset-calendar-navigation.js";
 import { openExternalHttpUrl } from "./external-links.js";
 
@@ -54,7 +55,10 @@ let currentAdminUrl: string | null = null;
 let desktopUpdater: DesktopUpdater | null = null;
 let updateInstaller: MacUpdateInstaller | null = null;
 let updateNotification: Notification | null = null;
-const resetNotifications = new Set<Notification>();
+const resetCards = new ResetNotificationCards({
+  onOpen: openResetCalendar,
+  onError: (error) => console.warn("[desktop:reset-calendar:card]", error),
+});
 const resetCalendarNavigator = new ResetCalendarNavigator({
   getWindow: () => mainWindow,
   focusWindow: focusMainWindow,
@@ -76,6 +80,8 @@ const codexQuitTimeoutMs = 3000;
 const codexOpenTimeoutMs = 5000;
 
 electronApp.setName("AI Zero Token");
+// Match electron-builder's appId and the NSIS Start Menu shortcut identity.
+if (process.platform === "win32") electronApp.setAppUserModelId("com.aizerotoken.desktop");
 
 function createBrowserUrl(host: string, port: number): string {
   if (host === "0.0.0.0" || host === "::") {
@@ -123,12 +129,16 @@ function isAllowedAppUrl(targetUrl: string): boolean {
   return Boolean((currentAdminUrl && isGatewayUrl(targetUrl, currentAdminUrl)) || (currentGatewayUrl && isGatewayUrl(targetUrl, currentGatewayUrl)));
 }
 
-ipcMain.handle("desktop:open-external", async (event, url: unknown) => {
+function isTrustedDesktopRequest(event: Electron.IpcMainInvokeEvent): boolean {
   if (!mainWindow || !currentAdminUrl || event.sender !== mainWindow.webContents
     || event.senderFrame !== mainWindow.webContents.mainFrame || !isAllowedAppUrl(event.senderFrame.url)) return false;
   const sender = new URL(event.senderFrame.url);
   const admin = new URL(currentAdminUrl);
-  if (sender.origin !== admin.origin || sender.pathname !== admin.pathname) return false;
+  return sender.origin === admin.origin && sender.pathname === admin.pathname;
+}
+
+ipcMain.handle("desktop:open-external", async (event, url: unknown) => {
+  if (!isTrustedDesktopRequest(event)) return false;
   return openExternalHttpUrl(url, (value) => shell.openExternal(value));
 });
 
@@ -1103,7 +1113,7 @@ async function ensureGatewayServer(): Promise<GatewayServer> {
     onCompleteCodexSwitch: completeCodexSwitch,
     onStartCodexWithReviewer: startCodexWithReviewer,
     onResetNotification: notifyResetCalendar,
-    resetNotificationsSupported: () => Notification.isSupported(),
+    resetNotificationsSupported: () => electronApp.isReady() && !isQuitting,
   });
   updateDesktopUrls(gatewayServer);
 
@@ -1148,6 +1158,9 @@ async function createMainWindow(): Promise<void> {
   });
 
   mainWindow.webContents.on("did-finish-load", () => resetCalendarNavigator.consume());
+  // With child frames, did-finish-load/loadURL can precede isLoading() becoming
+  // false. Consume pending card navigation after the entire page finishes too.
+  mainWindow.webContents.on("did-stop-loading", () => resetCalendarNavigator.consume());
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -1221,43 +1234,8 @@ function openResetCalendar(): void {
 }
 
 function notifyResetCalendar(event: ResetCalendarNotification): Promise<boolean> {
-  if (isQuitting || !Notification.isSupported()) return Promise.resolve(false);
-  return new Promise((resolve) => {
-    let notification: Notification;
-    let timeout: ReturnType<typeof setTimeout> | undefined;
-    let settled = false;
-    const finish = (sent: boolean) => {
-      if (settled) return;
-      settled = true;
-      if (timeout) clearTimeout(timeout);
-      resolve(sent);
-    };
-    try {
-      notification = new Notification({ title: event.title, body: event.body, icon: appIconPath });
-      // Retain native notification objects until closed, with a bounded live set.
-      for (const previous of [...resetNotifications].slice(0, Math.max(0, resetNotifications.size - 9))) {
-        previous.close();
-        resetNotifications.delete(previous);
-      }
-      resetNotifications.add(notification);
-      notification.on("click", openResetCalendar);
-      notification.once("show", () => finish(true));
-      notification.once("close", () => { resetNotifications.delete(notification); finish(false); });
-      notification.once("failed", (_event, error) => {
-        resetNotifications.delete(notification);
-        console.warn("[desktop:reset-calendar:notification]", error);
-        finish(false);
-      });
-      timeout = setTimeout(() => {
-        resetNotifications.delete(notification);
-        finish(false);
-      }, 5_000);
-      notification.show();
-    } catch (error) {
-      console.warn("[desktop:reset-calendar:notification]", error);
-      finish(false);
-    }
-  });
+  if (isQuitting) return Promise.resolve(false);
+  return resetCards.notify(event);
 }
 
 async function closeGatewayServer(): Promise<void> {
@@ -1334,7 +1312,12 @@ async function initializeDesktopUpdater(): Promise<void> {
 const hasSingleInstanceLock = electronApp.requestSingleInstanceLock();
 
 if (!hasSingleInstanceLock) {
-  electronApp.quit();
+  if (!electronApp.isPackaged) {
+    console.error("[desktop] 开发版未启动：已有 AI Zero Token 实例在运行。请先从菜单或托盘退出旧应用，再重新运行开发命令；仅关闭窗口不会退出应用。");
+    electronApp.exit(1);
+  } else {
+    electronApp.quit();
+  }
 } else {
   electronApp.on("second-instance", () => {
     focusMainWindow();
@@ -1356,7 +1339,7 @@ if (!hasSingleInstanceLock) {
   }).catch(handleStartupError);
 
   electronApp.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       focusMainWindow();
     }
   });
@@ -1377,6 +1360,7 @@ if (!hasSingleInstanceLock) {
       return;
     }
     isQuitting = true;
+    resetCards.dispose();
     void (async () => {
       await desktopUpdater?.stop().catch((error) => console.error("[desktop:update:stop]", error));
       await closeGatewayServer();

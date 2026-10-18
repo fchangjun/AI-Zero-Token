@@ -88,8 +88,29 @@ export function recordsByDay(records: ResetAnnouncement[]): Map<string, ResetAnn
 
 export function currentWatch(status: ResetStatus | null, now: number): ResetWatch | null {
   const watch = status?.active_watch;
-  if (!watch || !Number.isFinite(Date.parse(watch.expires_at)) || Date.parse(watch.expires_at) <= now) return null;
+  if (!watch || !Number.isFinite(now)) return null;
+  const observed = Date.parse(watch.observed_at);
+  const expires = Date.parse(watch.expires_at);
+  if (!Number.isFinite(observed) || !Number.isFinite(expires)
+    || observed > now + 5 * 60_000 || expires <= observed || expires <= now) return null;
+  // Old cached payloads have no status field. An observation or a forecast is
+  // not a public completion and must not suppress a later valid watch.
+  const latest = status?.latest_reset as (ResetAnnouncement & { status?: string }) | null;
+  const completed = latest && latest.source.type === "x_post"
+    && (latest.status === undefined || ["completed", "complete", "confirmed", "propagated"].includes(latest.status));
+  const completedAt = completed ? Date.parse(latest.announced_at) : NaN;
+  if (Number.isFinite(completedAt) && completedAt <= now + 5 * 60_000 && observed <= completedAt) return null;
   return watch;
+}
+
+export function formatWatchWindow(value: string | null | undefined, locale: string): string {
+  const original = typeof value === "string" ? value.trim() : "";
+  if (!locale.startsWith("zh")) return original;
+  const match = /^within\s*(?:the\s+)?(?:next\s+)?(\d+(?:\.\d+)?)\s*(h|hours?|m|mins?|minutes?|d|days?)\.?$/i.exec(original);
+  if (!match || !Number.isFinite(Number(match[1])) || Number(match[1]) <= 0) return original;
+  const unit = match[2].toLowerCase();
+  const chineseUnit = unit.startsWith("h") ? "小时" : unit.startsWith("d") ? "天" : "分钟";
+  return `未来 ${Number(match[1])} ${chineseUnit}内`;
 }
 
 export function scheduledIsPast(status: ResetStatus | null, now: number): boolean {

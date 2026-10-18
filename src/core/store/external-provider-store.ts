@@ -1,5 +1,6 @@
-import { MAX_CONTEXT_WINDOW, resolveContextWindow } from "../models/context-window.js";
-import { createHash, randomUUID } from "node:crypto";
+import { MAX_CONTEXT_WINDOW, resolveContextWindow, resolveMixedContextWindow } from "../models/context-window.js";
+import { createHash, randomUUID, randomBytes } from "node:crypto";
+import { MIXED_PROTOCOLS, type MixedActivationInput, type PublicMixedConfig, type PublicMixedRoute } from "../models/mixed-provider.js";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +12,9 @@ import type {
   ReasoningEffort,
 } from "../providers/openai-compatible/inspect.js";
 import { normalizeOpenAICompatibleBaseUrl } from "../providers/openai-compatible/inspect.js";
+import { MODEL_HEALTH_INTERVALS, type ModelAvailability, type ModelHealthChecks, type ModelHealthInterval } from "../models/model-availability.js";
+import type { MixedProtocol } from "../models/mixed-provider.js";
+import { directCompatibilityEvidence, mixedCompatibilityEvidence, resolveDirectCompatibility, type CompatibilityAssessment, type ModelCompatibility } from "../models/model-compatibility.js";
 import type { CodexGatewayProviderStatus } from "./codex-auth-store.js";
 import type { ExternalProviderInspectionHistoryEntry } from "./external-provider-inspection-history.js";
 import { ensureStateMigrated, getStateDir } from "./state-paths.js";
@@ -48,6 +52,7 @@ export type ExternalProviderModelInspectionHistory = {
 
 export type ExternalProviderModelInspectionState = {
   status: ExternalProviderModelInspectionStatus;
+  compatibility?: CompatibilityAssessment;
   checkedAt?: number;
   lastSuccessfulAt?: number;
   lastFailureAt?: number;
@@ -59,6 +64,8 @@ export type ExternalProviderModelInspectionState = {
 };
 
 export type ExternalProviderModel = {
+  health?: ModelHealthChecks;
+  compatibility?: ModelCompatibility;
   /** Manual override; discovery only updates contextWindow. */
   contextWindowOverride?: number;
   id: string;
@@ -115,6 +122,8 @@ export type ExternalProviderRecord = {
 
 export type PublicExternalProviderModel = Omit<ExternalProviderModel, "inspection" | "capabilities"> & {
   effectiveContextWindow: number;
+  /** Last applied direct catalog value; may differ from pending model settings. */
+  activeDirectContextWindow?: number;
   contextWindowSource: "api" | "default" | "manual";
   capabilities?: Partial<ExternalProviderModelCapabilities>;
   inspection: Omit<ExternalProviderModelInspectionState, "status"> & {
@@ -222,7 +231,151 @@ type ExternalProviderStore = {
   legacyImported?: boolean;
   activeProviderId?: string;
   providers: ExternalProviderRecord[];
+  mixed?: MixedProviderConfig;
+  modelHealthIntervalMinutes?: ModelHealthInterval;
 };
+
+/** Internal snapshot: contains secrets. Never return it from an HTTP handler. */
+export async function readModelStatusState() {
+  const store = await readStore();
+  return { providers: store.providers, mixed: store.mixed, intervalMinutes: store.modelHealthIntervalMinutes ?? 30 };
+}
+
+export async function setModelHealthInterval(intervalMinutes: ModelHealthInterval): Promise<void> {
+  if (!MODEL_HEALTH_INTERVALS.includes(intervalMinutes)) throw new Error("不支持的检测周期。");
+  await mutateStore((store) => { store.modelHealthIntervalMinutes = intervalMinutes; });
+}
+
+export async function recordModelHealth(providerId: string, modelId: string, protocol: MixedProtocol,
+  result: ModelAvailability, connection: { baseUrl: string; token: string }): Promise<void> {
+  await mutateStore((store) => {
+    const provider = requireProvider(store, providerId);
+    assertProviderPrecondition(provider, { expectedConnection: connection });
+    const model = requireModel(provider, modelId);
+    if ((model.health?.[protocol]?.checkedAt ?? 0) > (result.checkedAt ?? 0)) return;
+    model.health = { ...model.health, [protocol]: result };
+  });
+}
+
+export async function recordModelCompatibility(providerId: string, modelId: string, result: ModelCompatibility,
+  connection: { baseUrl: string; token: string }): Promise<void> {
+  await mutateStore((store) => {
+    const provider = requireProvider(store, providerId);
+    assertProviderPrecondition(provider, { expectedConnection: connection });
+    const model = requireModel(provider, modelId);
+    if ((model.compatibility?.checkedAt ?? 0) > result.checkedAt) return;
+    const previous = model.compatibility;
+    const next = { ...result };
+    // A failed connection cannot erase an already identified interface, including
+    // a converted interface when the first Responses request happens to time out.
+    if (result.inconclusive && previous?.protocol) {
+      next.protocol = previous.protocol;
+      next.status = "identified";
+      next.source = previous.source;
+    }
+    const assessment = next.source === "responses" ? resolveDirectCompatibility(model)
+      : mixedCompatibilityEvidence(next) ?? next.assessment
+        ?? (next.protocol === previous?.protocol ? previous?.assessment ?? mixedCompatibilityEvidence(previous) : undefined);
+    model.compatibility = { ...next, ...(assessment ? { assessment } : {}) };
+  });
+}
+
+/** Kept in the existing transactional store; never serialize apiKey or connectionVersion to the UI. */
+export type MixedProviderConfig = {
+  active: boolean; port: number; apiKey: string; defaultModelId: string;
+  routes: Array<PublicMixedRoute & { connectionVersion: string }>;
+};
+
+export function mixedConnectionVersion(provider: ExternalProviderRecord): string {
+  return createHash("sha256").update(JSON.stringify([provider.baseUrl, provider.token])).digest("hex");
+}
+
+export function mixedModelId(providerId: string, modelId: string): string {
+  return `azt_m_${createHash("sha256").update(JSON.stringify([providerId, modelId])).digest("hex").slice(0, 32)}`;
+}
+
+function normalizeMixedConfig(value: MixedProviderConfig | undefined): MixedProviderConfig | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value.active !== "boolean" || !Number.isInteger(value.port) || value.port < 1 || value.port > 65535
+    || !/^azt_mixed_[a-f0-9]{64}$/.test(value.apiKey) || !Array.isArray(value.routes) || !value.routes.length
+    || value.routes.some((route) => !route || !MIXED_PROTOCOLS.includes(route.protocol)
+      || (route.autoDetected !== undefined && typeof route.autoDetected !== "boolean")
+      || typeof route.providerId !== "string" || typeof route.modelId !== "string"
+      || route.id !== mixedModelId(route.providerId, route.modelId) || typeof route.displayName !== "string"
+      || !Number.isInteger(route.contextWindow) || route.contextWindow < 1
+      || !/^[a-f0-9]{64}$/.test(route.connectionVersion))
+    || new Set(value.routes.map((route) => route.id)).size !== value.routes.length
+    || !value.routes.some((route) => route.id === value.defaultModelId)) {
+    throw new Error("混合接管配置无效，请保留配置文件并重新检查。");
+  }
+  return value;
+}
+
+export function publicMixedConfig(config: MixedProviderConfig): PublicMixedConfig {
+  return { active: config.active, port: config.port, defaultModelId: config.defaultModelId,
+    routes: config.routes.map(({ connectionVersion: _connection, ...route }) => route) };
+}
+
+export async function readMixedProviderConfig(): Promise<MixedProviderConfig | undefined> {
+  return (await readStore()).mixed;
+}
+
+export async function getPublicMixedConfig(): Promise<PublicMixedConfig | undefined> {
+  const store = await readStore();
+  if (!store.mixed) return undefined;
+  return { ...publicMixedConfig(store.mixed), needsApply: store.mixed.routes.some((route) => {
+    const provider = store.providers.find((item) => item.id === route.providerId);
+    return !provider || mixedConnectionVersion(provider) !== route.connectionVersion
+      || !provider.models.some((model) => model.id === route.modelId && resolveMixedContextWindow(model, route.protocol) === route.contextWindow);
+  }) };
+}
+
+export async function resolveMixedRoute(modelId: string) {
+  const store = await readStore();
+  if (!store.mixed?.active) throw Object.assign(new Error("混合接管尚未启用。"), { statusCode: 409 });
+  const route = store.mixed.routes.find((item) => item.id === modelId);
+  if (!route) throw Object.assign(new Error("未找到已接管的混合模型，请重新选择模型。"), { statusCode: 400 });
+  const provider = requireProvider(store, route.providerId);
+  if (mixedConnectionVersion(provider) !== route.connectionVersion) {
+    throw Object.assign(new Error("模型服务的地址或密钥已变更，请重新保存混合接管后重试。"), { statusCode: 409 });
+  }
+  return { config: store.mixed, route, provider };
+}
+
+export async function commitMixedActivation(input: MixedActivationInput, port: number,
+  prepare: (config: MixedProviderConfig) => Promise<void>, options: ExternalProviderStoreOptions): Promise<PublicMixedConfig> {
+  return mutateStore(async (store) => {
+    if (!input.routes.length || input.routes.length > 1000) throw new Error("请选择 1–1000 个混合模型。");
+    const routes = input.routes.map((item) => {
+      if (!MIXED_PROTOCOLS.includes(item.protocol)) throw new Error("不支持的模型接口。");
+      const provider = requireProvider(store, item.providerId);
+      assertProviderPrecondition(provider, { expectedConnection: options.expectedConnections?.[provider.id] });
+      const model = requireModel(provider, item.modelId);
+      if (!provider.token) throw new Error(`API 服务 ${provider.name} 尚未配置 Token。`);
+      return { ...item, id: mixedModelId(provider.id, model.id), displayName: `${model.displayName || model.id} · ${provider.name}`,
+        contextWindow: resolveMixedContextWindow(model, item.protocol), connectionVersion: mixedConnectionVersion(provider) };
+    });
+    if (new Set(routes.map((route) => route.id)).size !== routes.length) throw new Error("混合模型不能重复选择。");
+    const defaultModelId = mixedModelId(input.defaultModel.providerId, input.defaultModel.modelId);
+    if (!routes.some((route) => route.id === defaultModelId)) throw new Error("默认模型必须包含在所选混合模型中。");
+    const config: MixedProviderConfig = { active: true, port, defaultModelId, routes,
+      apiKey: store.mixed?.apiKey ?? `azt_mixed_${randomBytes(32).toString("hex")}` };
+    normalizeMixedConfig(config);
+    await prepare(config);
+    store.mixed = config;
+    delete store.activeProviderId;
+    for (const provider of store.providers) provider.activeForCodex = false;
+    return publicMixedConfig(config);
+  }, options);
+}
+
+export async function commitMixedDeactivation(options: ExternalProviderStoreOptions): Promise<PublicMixedConfig> {
+  return mutateStore((store) => {
+    if (!store.mixed?.active) throw Object.assign(new Error("当前未启用混合接管。"), { statusCode: 409 });
+    store.mixed.active = false;
+    return publicMixedConfig(store.mixed);
+  }, options);
+}
 
 export type ExternalProviderStoreOptions = {
   path?: string;
@@ -233,6 +386,8 @@ export type ExternalProviderStoreOptions = {
   expectedProviderVersion?: string;
   /** Reject delayed inspection results from an endpoint/token that is no longer current. */
   expectedConnection?: { baseUrl: string; token: string };
+  /** Connections used for automatic protocol detection; checked inside the activation transaction. */
+  expectedConnections?: Record<string, { baseUrl: string; token: string }>;
 };
 
 function emptyStore(): ExternalProviderStore {
@@ -391,7 +546,8 @@ export function toPublicExternalProvider(provider: ExternalProviderRecord): Publ
 
 /** Opaque in-memory version used for optimistic checks around network work. */
 export function getExternalProviderVersion(provider: ExternalProviderRecord): string {
-  return createHash("sha256").update(JSON.stringify(provider)).digest("hex");
+  // Background health snapshots do not invalidate an otherwise unchanged edit/sync.
+  return createHash("sha256").update(JSON.stringify({ ...provider, models: provider.models.map(({ health: _health, compatibility: _compatibility, ...model }) => model) })).digest("hex");
 }
 
 function assertProviderPrecondition(provider: ExternalProviderRecord, options?: ExternalProviderStoreOptions): void {
@@ -560,6 +716,9 @@ function normalizeLoadedStore(parsed: unknown): ExternalProviderStore {
   return {
     version: STORE_VERSION,
     legacyImported: candidate.legacyImported === true,
+    modelHealthIntervalMinutes: MODEL_HEALTH_INTERVALS.includes(candidate.modelHealthIntervalMinutes as ModelHealthInterval)
+      ? candidate.modelHealthIntervalMinutes : 30,
+    ...(candidate.mixed !== undefined ? { mixed: normalizeMixedConfig(candidate.mixed) } : {}),
     ...(activeProviderId && providers.some((provider) => provider.id === activeProviderId)
       ? { activeProviderId }
       : {}),
@@ -747,6 +906,8 @@ export async function updateExternalProvider(
     if (patch.modelSource !== undefined) provider.modelSource = patch.modelSource;
     if (patch.resetInspections) {
       for (const model of provider.models) {
+        delete model.health;
+        delete model.compatibility;
         model.inspection = { status: "untested", history: [] };
         delete model.capabilities;
         delete model.reasoningEfforts;
@@ -825,6 +986,7 @@ export async function commitExternalProviderActivation(
     provider.codexNeedsApply = false;
     provider.updatedAt = Date.now();
     store.activeProviderId = providerId;
+    if (store.mixed) store.mixed.active = false;
     return toPublicExternalProvider(provider);
   }, options);
 }
@@ -859,6 +1021,9 @@ export async function deleteExternalProviderWithCodex(
     const index = store.providers.findIndex((provider) => provider.id === providerId);
     if (index < 0) return false;
     const provider = store.providers[index]!;
+    if (store.mixed?.active && store.mixed.routes.some((route) => route.providerId === providerId)) {
+      throw Object.assign(new Error("此服务正在用于混合接管，请先从混合模型中移除该服务，或解除混合接管。"), { statusCode: 409 });
+    }
     await removeFromCodex(structuredClone(provider));
     store.providers.splice(index, 1);
     if (store.activeProviderId === providerId) delete store.activeProviderId;
@@ -1034,6 +1199,8 @@ function updateModelFromProbe(
   inspectionId?: string,
 ): void {
   const capabilities = cloneCapabilities(probe.capabilities);
+  const compatibility = directCompatibilityEvidence({ status: probe.status, checkedAt, message: probe.error ?? probe.message }, capabilities)
+    ?? resolveDirectCompatibility(model);
   const historyEntry: ExternalProviderModelInspectionHistory = {
     checkedAt,
     status: probe.status,
@@ -1045,6 +1212,7 @@ function updateModelFromProbe(
   };
   model.inspection = {
     status: probe.status,
+    ...(compatibility ? { compatibility } : {}),
     checkedAt,
     ...(probe.status === "ready"
       ? { lastSuccessfulAt: checkedAt }

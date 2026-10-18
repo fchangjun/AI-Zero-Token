@@ -144,12 +144,22 @@ describe("managed external providers", () => {
     expect((await getCodexGatewayProviderStatus()).model).toBe("model-239");
   });
 
-  test("caps each capability-inspection batch before making billable requests", async () => {
-    const modelIds = Array.from({ length: 21 }, (_, index) => `model-${index}`);
-    const provider = await service.create({ name: "Inspection cap", baseUrl: fixture.baseUrl, apiToken: token, modelSource: "manual", manualModelIds: modelIds });
-    await expect(service.inspect(provider.id)).rejects.toThrow("单次最多检测 20 个模型");
-    await expect(service.startInspection(provider.id, modelIds)).rejects.toThrow("单次最多检测 20 个模型");
+  test("full inspection completes both checks for every model beyond 20 without changing the active selection", async () => {
+    const modelIds = Array.from({ length: 29 }, (_, index) => `model-${index}`);
+    const provider = await service.create({ name: "Full inspection", baseUrl: fixture.baseUrl, apiToken: token, modelSource: "manual", manualModelIds: modelIds });
+    await expect(service.startInspection(provider.id, [...modelIds, "missing-model"])).rejects.toThrow("没有模型");
     expect(fixture.state.requests).toHaveLength(0);
+    await service.activate(provider.id, [modelIds[0]], modelIds[0]);
+    const beforeConfig = await readFile(configPath, "utf8");
+    const started = await service.startInspection(provider.id, [...modelIds, modelIds[0]]);
+    expect(started.inspectionJob).toMatchObject({ status: "running", total: 29 });
+    await waitFor(async () => (await service.get(provider.id))?.inspectionJob?.status !== "running", "Full inspection did not finish");
+    const checked = (await service.get(provider.id))!;
+    expect(checked.inspectionJob).toMatchObject({ status: "completed", total: 29, completed: 29 });
+    expect(checked.models.filter((model) => model.inspection.checkedAt && model.compatibility?.checkedAt)).toHaveLength(29);
+    expect(new Set(fixture.state.requests.map((request) => request.body?.model))).toEqual(new Set(modelIds));
+    expect(checked.models.filter((model) => model.selectedForCodex).map((model) => model.id)).toEqual([modelIds[0]]);
+    expect(await readFile(configPath, "utf8")).toBe(beforeConfig);
   });
 
   test("small-context API models can still be selected", async () => {
@@ -520,6 +530,7 @@ describe("provider context windows", () => {
     const changed = await service.setContextWindow(provider.id, "model-ready", 500000);
     expect(find(changed)).toMatchObject({ contextWindow: 128000, contextWindowOverride: 500000, effectiveContextWindow: 500000, contextWindowSource: "manual" });
     expect(changed.codexNeedsApply).toBe(true);
+    expect(find((await service.get(provider.id))!)).toMatchObject({ activeDirectContextWindow: 128000, effectiveContextWindow: 500000 });
     expect(await readFile(catalogPath, "utf8")).toBe(beforeCatalog);
     expect(await readFile(configPath, "utf8")).toBe(beforeConfig);
     fixture.state.models[0].context_window = 400000;
@@ -527,7 +538,7 @@ describe("provider context windows", () => {
     expect(find(synced)).toMatchObject({ contextWindow: 400000, effectiveContextWindow: 500000, contextWindowSource: "manual" });
     await service.activate(provider.id, ["model-ready"], "model-ready");
     expect(JSON.parse(await readFile(catalogPath, "utf8")).models[0]).toMatchObject({ context_window: 500000, max_context_window: 500000 });
-    expect(find((await new ExternalProviderService().get(provider.id))!)).toMatchObject({ effectiveContextWindow: 500000 });
+    expect(find((await new ExternalProviderService().get(provider.id))!)).toMatchObject({ effectiveContextWindow: 500000, activeDirectContextWindow: 500000 });
     expect(find(await service.setContextWindow(provider.id, "model-ready", null))).toMatchObject({ effectiveContextWindow: 400000, contextWindowSource: "api" });
     fixture.state.models = [{ id: "model-ready" }];
     const noMetadata = await service.sync(provider.id);

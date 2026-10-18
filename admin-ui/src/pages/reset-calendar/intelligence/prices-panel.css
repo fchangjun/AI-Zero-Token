@@ -1,0 +1,117 @@
+.intel-price-summary, .intel-prices { display: grid; gap: 17px; min-width: 0; }
+.intel-price-section-heading, .intel-price-section-heading h2, .intel-price-featured header, .intel-price-meta, .intel-price-detail-heading, .intel-price-filters, .intel-price-table-footer { display: flex; align-items: center; }
+.intel-price-section-heading { justify-content: space-between; flex-wrap: wrap; gap: 10px 18px; }
+.intel-price-section-heading h2, .intel-price-detail-heading h2 { margin: 0; gap: 8px; color: var(--text); font-size: 16px; line-height: 1.5; font-weight: 750; }
+.intel-price-section-heading h2 svg { color: var(--brand); }
+.intel-price-section-heading p { margin: 5px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
+.intel-price-featured-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.intel-price-featured { display: grid; min-width: 0; padding: 19px 21px 15px; border: 1px solid var(--line); border-radius: 13px; background: #fff; box-shadow: var(--shadow-sm); }
+.intel-price-featured header { flex-wrap: wrap; gap: 8px; }
+.intel-price-plan-icon { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 10px; color: var(--brand); background: var(--brand-soft); }
+.intel-price-featured h3 { margin: 0; color: var(--text); font-size: 17px; font-weight: 750; }
+.intel-price-lowest-label { margin-left: auto; padding: 4px 7px; border-radius: 5px; color: #078341; background: #e8f8ef; font-size: 10px; font-weight: 650; }
+.intel-price-comparison { display: grid; grid-template-columns: 1fr; gap: 11px; margin-top: 18px; }
+.intel-price-standard, .intel-price-best { display: grid; gap: 7px; min-width: 0; }
+.intel-price-standard { padding-bottom: 13px; border-bottom: 1px dashed var(--line); }
+.intel-price-standard > span, .intel-price-best > span:first-child { color: var(--text-muted); font-size: 11px; line-height: 1.6; }
+.intel-price-standard > strong { color: var(--text-soft); font-size: 19px; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.intel-price-standard small, .intel-price-best small { margin-left: 5px; color: var(--text-muted); font-size: 11px; font-weight: 500; }
+.intel-price-standard > span:last-child { margin-top: -5px; }
+.intel-price-change-arrow { display: none; }
+.intel-price-best > strong { color: var(--brand-strong); font-size: clamp(25px, 2.4vw, 33px); line-height: 1.3; letter-spacing: -.7px; font-variant-numeric: tabular-nums; }
+.intel-price-saving { width: fit-content; color: #078341; font-size: 11px; line-height: 1.7; font-weight: 700; }
+.intel-price-saving.is-higher { color: #a46719; }
+.intel-price-card-link { display: flex; justify-content: flex-end; align-items: center; gap: 4px; margin-top: 11px; padding: 7px 0 0; border: 0; color: var(--brand-strong); background: transparent; font-size: 11px; font-weight: 650; cursor: pointer; }
+.intel-price-meta { flex-wrap: wrap; gap: 6px 18px; color: var(--text-muted); font-size: 11px; line-height: 1.7; }
+.intel-price-meta > span { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 5px; }
+.intel-price-meta > .btn-secondary { min-height: 32px; padding: 6px 10px; margin-left: auto; font-size: 11px; }
+.intel-price-warning { display: flex; align-items: flex-start; gap: 7px; padding: 11px 13px; border: 1px solid #efdfbc; border-radius: 8px; color: #95601d; background: #fff9ee; font-size: 11px; line-height: 1.7; }
+.intel-price-warning svg { flex-shrink: 0; margin-top: 1px; }
+.intel-price-channel-label { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 12px; }
+.intel-prices select { max-width: 100%; min-height: 34px; padding: 7px 29px 7px 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--text-soft); background-color: #fff; font-size: 12px; }
+.intel-price-rankings { display: grid; gap: 12px; min-width: 0; }
+.intel-price-plan-row { display: grid; grid-template-columns: minmax(135px, .75fr) repeat(3, minmax(0, 1fr)); overflow: hidden; min-width: 0; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: var(--shadow-sm); }
+.intel-price-plan-cell { display: grid; align-content: center; gap: 5px; padding: 18px; }
+.intel-price-plan-cell h3 { margin: 0; color: var(--text); font-size: 17px; }
+.intel-price-plan-cell p, .intel-price-plan-cell > span { margin: 0; color: var(--text-muted); font-size: 11px; line-height: 1.6; }
+.intel-price-plan-cell > strong { margin-top: 5px; color: var(--text-soft); font-size: 18px; line-height: 1.4; }
+.intel-price-plan-cell small { color: var(--text-muted); font-size: 10px; font-weight: 500; }
+.intel-price-rank { display: grid; align-content: center; justify-items: start; gap: 8px; min-width: 0; padding: 18px; border: 0; border-left: 1px solid var(--line); border-radius: 0; text-align: left; background: #fff; cursor: pointer; }
+.intel-price-rank.is-best { background: #f7f6ff; }
+.intel-price-rank:hover { background: var(--brand-soft); }
+.intel-price-rank-region { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: var(--text); font-size: 12px; line-height: 1.5; }
+.intel-price-rank-region > strong { font-weight: 650; }
+.intel-price-rank-number { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-right: 1px; border-radius: 5px; color: var(--text-muted); background: var(--panel-soft); font-size: 10px; font-weight: 700; }
+.intel-price-rank.is-best .intel-price-rank-number { color: #fff; background: var(--brand); }
+.intel-price-rank-amount { color: var(--text); font-size: clamp(18px, 1.9vw, 25px); line-height: 1.4; letter-spacing: -.4px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.intel-price-rank.is-best .intel-price-rank-amount { color: var(--brand-strong); }
+.intel-price-rank-amount > small { display: inline-block; margin-left: 4px; color: var(--text-muted); font-size: 10px; font-weight: 500; letter-spacing: 0; }
+.intel-price-rank-channel { color: var(--text-muted); font-size: 10px; line-height: 1.7; overflow-wrap: anywhere; }
+.intel-price-rank-empty { grid-column: 2 / -1; display: flex; align-items: center; justify-content: center; padding: 18px; margin: 0; border-left: 1px solid var(--line); color: var(--text-muted); font-size: 12px; }
+.intel-price-details { display: grid; gap: 15px; min-width: 0; padding: 20px; border: 1px solid var(--line); border-radius: 12px; background: #fff; box-shadow: var(--shadow-sm); }
+.intel-price-detail-heading { justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.intel-price-detail-heading > span { color: var(--text-muted); font-size: 11px; }
+.intel-price-detail-heading h2 { scroll-margin-top: 90px; }
+.intel-price-plan-tabs { display: flex; flex-wrap: wrap; gap: 7px; }
+.intel-price-plan-tabs button { display: inline-flex; align-items: center; gap: 5px; min-height: 31px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px; color: var(--text-muted); background: #fff; font-size: 12px; font-weight: 600; cursor: pointer; }
+.intel-price-plan-tabs button.is-active { border-color: var(--brand); color: var(--brand-strong); background: var(--brand-soft); }
+.intel-price-filters { flex-wrap: wrap; gap: 10px; }
+.intel-price-search { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 180px; min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; color: var(--text-muted); }
+.intel-price-search > svg { flex-shrink: 0; }
+.intel-price-search > input { width: 100%; min-width: 0; height: 33px; padding: 0; border: 0; border-radius: 0; color: var(--text-soft); background: transparent; box-shadow: none; font-size: 12px; }
+.intel-price-search > input:focus { outline: 0; }
+.intel-price-search:focus-within { outline: 2px solid var(--brand); outline-offset: 2px; }
+.intel-price-filters .btn-secondary { min-height: 34px; padding: 6px 10px; font-size: 11px; }
+.intel-price-detail-baseline { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 10px; margin: -1px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.7; }
+.intel-price-detail-baseline strong { color: var(--text-soft); font-weight: 650; }
+.intel-price-table-scroll { min-width: 0; overflow-x: auto; }
+.intel-price-table { width: 100%; min-width: 590px; border-collapse: collapse; text-align: left; }
+.intel-price-table th { padding: 11px 10px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); color: var(--text-muted); background: var(--panel-soft); font-size: 11px; font-weight: 550; white-space: nowrap; }
+.intel-price-table td { padding: 13px 10px; border-bottom: 1px solid var(--line); color: var(--text-soft); font-size: 12px; }
+.intel-price-table tr:last-child td { border-bottom: 0; }
+.intel-price-table td > strong { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.intel-price-table small { display: block; margin-top: 4px; color: var(--text-muted); font-size: 10px; font-weight: 400; line-height: 1.7; }
+.intel-price-table-region { display: flex; align-items: center; gap: 9px; min-width: 130px; }
+.intel-price-table-region > span:first-child { font-size: 19px; }
+.intel-price-table-region strong { color: var(--text); font-size: 12px; font-weight: 650; }
+.intel-price-table td > strong.intel-price-table-cny { color: var(--brand-strong); font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.intel-price-table a, .intel-price-footnote a { display: inline-flex; align-items: center; gap: 3px; color: var(--brand-strong); font-size: 11px; white-space: nowrap; }
+.intel-price-table-empty { display: grid; justify-items: center; gap: 7px; padding: 32px 10px; color: var(--text-muted); font-size: 12px; }
+.intel-price-table-empty p { margin: 0; }
+.intel-price-table-footer { justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--text-muted); font-size: 11px; }
+.intel-price-table-footer .btn-secondary { min-height: 31px; font-size: 11px; }
+.intel-price-footnote { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 17px; color: var(--text-muted); font-size: 10px; line-height: 1.8; }
+.intel-price-footnote p { flex-basis: 100%; margin: 0 0 3px; }
+.intel-price-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.intel-prices button:focus-visible, .intel-prices a:focus-visible, .intel-prices select:focus-visible, .intel-price-summary button:focus-visible, .intel-price-detail-heading h2:focus { outline: 2px solid var(--brand); outline-offset: 3px; }
+@media (min-width: 1250px) {
+  .intel-price-comparison { grid-template-columns: minmax(0, .85fr) 20px minmax(0, 1.15fr); align-items: center; gap: 10px; }
+  .intel-price-standard { border: 0; padding: 0; }
+  .intel-price-change-arrow { display: block; color: #a7acc0; transform: rotate(-90deg); }
+}
+@media (max-width: 980px) {
+  .intel-price-plan-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .intel-price-plan-cell { grid-column: 1 / -1; display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; padding: 14px 17px; border-bottom: 1px solid var(--line); }
+  .intel-price-plan-cell > strong { margin: 0 0 0 auto; }
+  .intel-price-plan-row > .intel-price-rank:nth-child(2) { border-left: 0; }
+  .intel-price-rank { padding: 15px 12px; }
+  .intel-price-rank-empty { grid-column: 1 / -1; border-left: 0; }
+}
+@media (max-width: 640px) {
+  .intel-price-featured-grid { grid-template-columns: 1fr; }
+  .intel-price-featured { padding: 16px; }
+  .intel-price-featured h3 { font-size: 16px; }
+  .intel-price-meta > .btn-secondary { margin-left: 0; }
+  .intel-price-rank { padding: 13px 9px; gap: 6px; }
+  .intel-price-rank-region { gap: 4px; font-size: 11px; }
+  .intel-price-rank-number { width: 16px; height: 16px; font-size: 9px; }
+  .intel-price-rank-amount { font-size: 17px; }
+  .intel-price-rank-amount > small { display: block; margin-left: 0; }
+  .intel-price-plan-cell { gap: 7px; padding: 13px; }
+  .intel-price-plan-cell p, .intel-price-plan-cell > span { display: none; }
+  .intel-price-plan-cell small { font-size: 9px; }
+  .intel-price-details { padding: 16px 13px; }
+  .intel-price-filters > label:first-child { flex-basis: 100%; }
+  .intel-price-channel-label { width: 100%; }
+  .intel-price-channel-label select { flex: 1; }
+}

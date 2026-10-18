@@ -1,3 +1,4 @@
+import { anthropicReasoningCatalog } from "../providers/mixed/anthropic-options.js";
 import {
   discoverExternalProviderModels,
   inspectExternalProviderModels,
@@ -12,10 +13,17 @@ import {
 } from "../store/codex-auth-store.js";
 import { CodexProviderSwitch, hasPendingCodexSwitch, type ThirdPartySwitchTarget } from "./codex-provider-switch.js";
 import type { CodexSwitchRuntime } from "./codex-switch-runtime.js";
+import type { MixedActivationRequest, PublicMixedConfig } from "../models/mixed-provider.js";
+import { inspectModelCompatibility, resolveMixedProtocols } from "./mixed-protocol-service.js";
+import { modelCatalogUrl } from "./model-status-service.js";
 import { listExternalProviderInspectionHistory } from "../store/external-provider-inspection-history.js";
 import {
   commitExternalProviderActivation,
+  buildExternalProviderActivation,
   commitExternalProviderDeactivation,
+  commitMixedActivation,
+  commitMixedDeactivation,
+  getPublicMixedConfig,
   hasImportedLegacyExternalProvider,
   createExternalProvider,
   deleteExternalProviderWithCodex,
@@ -25,6 +33,7 @@ import {
   importLegacyExternalProvider,
   listExternalProviders,
   recordExternalProviderInspection,
+  recordModelCompatibility,
   saveExternalProviderModels,
   setExternalProviderModelContextWindow,
   updateExternalProvider,
@@ -44,9 +53,9 @@ export type ExternalProviderDraft = {
 export type ExternalProvidersSnapshot = {
   providers: PublicExternalProvider[];
   activeProviderId?: string;
+  mixed?: PublicMixedConfig;
 };
 
-const MAX_PROVIDER_INSPECTION_MODELS = 20;
 
 function toStoredModelSource(value: "auto" | "manual" | undefined): ExternalProviderModelSource {
   return value === "manual" ? "manual" : "api";
@@ -94,9 +103,6 @@ function inspectionModelIds(
     .map((id) => id.trim())
     .filter(Boolean))];
   if (!modelIds.length) throw serviceError("这个 API 服务还没有可检测的模型。");
-  if (modelIds.length > MAX_PROVIDER_INSPECTION_MODELS) {
-    throw serviceError(`单次最多检测 ${MAX_PROVIDER_INSPECTION_MODELS} 个模型，请先搜索或筛选后分批检测。`);
-  }
   const known = new Set(provider.models.map((model) => model.id));
   const unknown = modelIds.find((id) => !known.has(id));
   if (unknown) throw serviceError(`API 服务中没有模型: ${unknown}`);
@@ -149,8 +155,15 @@ export class ExternalProviderService {
   async list(): Promise<ExternalProvidersSnapshot> {
     await this.migrateLegacyProviderOnce();
     const providers = await this.withActualCodexStatus(await listExternalProviders());
+    const mixed = await getPublicMixedConfig();
+    if (mixed) {
+      const actual = await getCodexGatewayProviderStatus();
+      mixed.active = mixed.active && !(await hasPendingCodexSwitch()) && actual.active
+        && actual.providerId === ACTIVE_CODEX_PROVIDER_ID && actual.baseUrl === `http://127.0.0.1:${mixed.port}/v1`;
+    }
     return {
       providers,
+      ...(mixed ? { mixed } : {}),
       ...(providers.find((provider) => provider.activeForCodex)?.id
         ? { activeProviderId: providers.find((provider) => provider.activeForCodex)?.id }
         : {}),
@@ -272,7 +285,6 @@ export class ExternalProviderService {
       return { provider, modelIds: inspectionModelIds(provider, requestedModelIds) };
     }, providerId);
 
-    let result = await this.requirePublic(providerId);
     for (let offset = 0; offset < plan.modelIds.length; offset += 4) {
       const inspection = await inspectExternalProviderModels({
         baseUrl: plan.provider.baseUrl,
@@ -281,7 +293,8 @@ export class ExternalProviderService {
         tokenSource: plan.provider.token ? "stored" : "none",
         modelIds: plan.modelIds.slice(offset, offset + 4),
       });
-      result = await mutate(async () => {
+      const checkedAt = Date.now();
+      await mutate(async () => {
         const current = await this.requireSecret(providerId);
         if (current.baseUrl !== plan.provider.baseUrl || current.token !== plan.provider.token) {
           throw serviceError("检测期间服务地址或凭据已变更，请重新开始检测。", 409);
@@ -289,16 +302,33 @@ export class ExternalProviderService {
         return recordExternalProviderInspection(
           providerId,
           inspection,
-          { inspectedAt: Date.now() },
+          { inspectedAt: checkedAt },
           { expectedConnection: { baseUrl: plan.provider.baseUrl, token: plan.provider.token } },
         );
       }, providerId);
-      {
+      // Native forwarding shares the entire direct result. Only converted
+      // interfaces require additional conversation/tool validation.
+      const checks = await Promise.allSettled(inspection.models.map(async (model) => {
+        try {
+          await inspectModelCompatibility(providerId, model.id, undefined, {
+            directInspection: { ...model, checkedAt },
+            expectedConnection: plan.provider,
+          });
+        } catch (error) {
+          const statusCode = (error as { statusCode?: number })?.statusCode;
+          if (statusCode === 404 || statusCode === 409) throw error;
+          await recordModelCompatibility(providerId, model.id, {
+            status: "failed", inconclusive: true, checkedAt: Date.now(),
+            message: statusCode === 408 ? "兼容性检测超时，请重新检测能力。" : "兼容性检测未完成，请检查服务连接后重新检测能力。",
+          }, plan.provider);
+        }
         const job = inspectionJobs.get(providerId);
-        if (job?.status === "running") job.completed = Math.min(offset + 4, plan.modelIds.length);
-      }
+        if (job?.status === "running") job.completed++;
+      }));
+      const failed = checks.find((check) => check.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
     }
-    return result;
+    return this.requirePublic(providerId);
   }
 
   async startInspection(providerId: string, requestedModelIds?: string[]): Promise<PublicExternalProvider> {
@@ -315,7 +345,7 @@ export class ExternalProviderService {
     return { ...provider, inspectionJob: { ...job } };
   }
 
-  async activate(providerId: string, modelIds: string[], defaultModelId: string): Promise<PublicExternalProvider> {
+  async activate(providerId: string, modelIds: string[], defaultModelId: string, catalogPort?: number): Promise<PublicExternalProvider> {
     return mutate(async () => {
       await this.migrateLegacyProviderOnce();
       const ids = [...new Set(modelIds.map((id) => id.trim()))];
@@ -326,6 +356,7 @@ export class ExternalProviderService {
           return commitExternalProviderActivation(providerId, ids, defaultModelId, async (activation) => {
             if (!activation.defaultModel) throw serviceError("请先选择第三方默认模型。");
             target = {
+              ...(catalogPort ? { modelCatalogUrl: modelCatalogUrl(catalogPort, providerId) } : {}),
               baseUrl: activation.baseUrl,
               bearerToken: activation.bearerToken,
               model: activation.defaultModel, catalogModels: activation.catalogModels,
@@ -350,6 +381,44 @@ export class ExternalProviderService {
         throw error;
       }
     }, providerId);
+  }
+
+  async activateMixed(input: MixedActivationRequest, port: number, catalogPort?: number, signal?: AbortSignal): Promise<PublicMixedConfig> {
+    return mutate(async () => {
+      await this.migrateLegacyProviderOnce();
+      const resolved = await resolveMixedProtocols(input, { signal });
+      signal?.throwIfAborted();
+      let target: ThirdPartySwitchTarget;
+      return withCodexProviderConfigLock(() => commitMixedActivation(resolved.input, port, async (config) => {
+        const catalogModels = await Promise.all(config.routes.map(async (route) => {
+          const provider = await getExternalProviderWithSecret(route.providerId);
+          const model = provider?.models.find((item) => item.id === route.modelId);
+          if (!provider || !model) throw serviceError("混合模型已发生变化，请重新选择。");
+          const metadata = buildExternalProviderActivation({ ...provider, defaultModelId: model.id, models: [{ ...model, selectedForCodex: true }] }).catalogModels[0]!;
+          return { ...metadata, id: route.id, displayName: route.displayName, contextWindow: route.contextWindow,
+            supportsToolSearch: route.protocol !== "responses",
+            ...(route.protocol === "anthropic" ? anthropicReasoningCatalog(route.modelId) : {}) };
+        }));
+        target = { baseUrl: `http://127.0.0.1:${port}/v1`, bearerToken: config.apiKey,
+          ...(catalogPort ? { modelCatalogUrl: modelCatalogUrl(catalogPort, "mixed") } : {}),
+          model: config.defaultModelId, displayName: "AI Zero Token · 混合接管",
+          catalogModels };
+      }, { expectedConnections: resolved.connections, beforeMutation: () => { signal?.throwIfAborted(); return this.switcher.recover(); },
+        commitTransaction: (content, commit) => this.switcher.commit(target, content, commit) }), true);
+    }, "mixed");
+  }
+
+  async deactivateMixed(): Promise<PublicMixedConfig> {
+    return mutate(() => withCodexProviderConfigLock(() => commitMixedDeactivation({
+      beforeMutation: async () => {
+        await this.switcher.recover();
+        const config = await getPublicMixedConfig();
+        const actual = await getCodexGatewayProviderStatus();
+        if (!config?.active || !actual.active || actual.providerId !== ACTIVE_CODEX_PROVIDER_ID
+          || actual.baseUrl !== `http://127.0.0.1:${config.port}/v1`) throw serviceError("当前 Codex 未使用此混合接管配置。", 409);
+      },
+      commitTransaction: (content, commit) => this.switcher.commit(undefined, content, commit),
+    }), true), "mixed");
   }
 
   async deactivate(providerId: string): Promise<PublicExternalProvider> {
@@ -382,13 +451,19 @@ export class ExternalProviderService {
   private async withActualCodexStatus(providers: PublicExternalProvider[]): Promise<PublicExternalProvider[]> {
     const actual = await getCodexGatewayProviderStatus();
     const pending = await hasPendingCodexSwitch();
-    return providers.map((provider) => ({
-      ...provider,
-      inspectionJob: inspectionJobs.get(provider.id),
-      codexNeedsApply: pending || provider.codexNeedsApply,
-      activeForCodex: !pending && actual.active && actual.providerId === (provider.codexProviderId ?? codexProviderId(provider.id))
-        && (actual.providerId !== ACTIVE_CODEX_PROVIDER_ID || provider.activeForCodex),
-    }));
+    return providers.map((provider) => {
+      const activeForCodex = !pending && actual.active && actual.providerId === (provider.codexProviderId ?? codexProviderId(provider.id))
+        && (actual.providerId !== ACTIVE_CODEX_PROVIDER_ID || provider.activeForCodex);
+      return {
+        ...provider,
+        models: provider.models.map((model) => ({ ...model,
+          activeDirectContextWindow: activeForCodex ? actual.catalogModels?.find((entry) => entry.id === model.id)?.contextWindow : undefined,
+        })),
+        inspectionJob: inspectionJobs.get(provider.id),
+        codexNeedsApply: pending || provider.codexNeedsApply,
+        activeForCodex,
+      };
+    });
   }
 
   private async requirePublic(providerId: string): Promise<PublicExternalProvider> {

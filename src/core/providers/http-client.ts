@@ -2,9 +2,10 @@ import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { PassThrough, Readable } from "node:stream";
+import { PassThrough } from "node:stream";
 import { loadSettings } from "../store/settings-store.js";
 import type { GatewaySettings } from "../types.js";
+import type { HttpConnectionPool } from "./http-connection-pool.js";
 
 type HttpTiming = {
   phasesMs: Record<string, number>;
@@ -23,7 +24,8 @@ type HttpTextResponse = {
 type HttpStreamResponse = {
   body: ReadableStream<Uint8Array>;
   status: number;
-  transport: "fetch" | "curl";
+  transport: "fetch" | "curl" | "node";
+  reusedConnection?: boolean;
   timing: HttpTiming;
   requestId: string;
   headers: Record<string, string>;
@@ -40,7 +42,11 @@ type TextRequestInit = {
 };
 
 type StreamRequestInit = TextRequestInit & {
+  /** Opt in only for mixed takeover; explicit/environment proxies retain their transport. */
+  connectionPool?: HttpConnectionPool;
   signal?: AbortSignal;
+  /** Mixed external calls must never replay an ambiguous failed POST or forward keys through redirects. */
+  singleAttempt?: boolean;
 };
 
 type NetworkProxySettings = GatewaySettings["networkProxy"];
@@ -466,6 +472,7 @@ async function waitForCurlHeaders(params: {
   requestId: string;
   timeoutMs: number;
   url: string;
+  followRedirects: boolean;
 }): Promise<{ status: number; headers: Record<string, string> }> {
   const startedAt = performance.now();
   while (performance.now() - startedAt < params.timeoutMs) {
@@ -473,7 +480,9 @@ async function waitForCurlHeaders(params: {
       const raw = await fs.readFile(params.headerPath, "utf8");
       const parsed = parseCurlHeaderDump(raw);
       if (parsed) {
-        if (parsed.status >= 300 && parsed.status < 400 && !params.isClosed()) {
+        // With redirects disabled this is the final response. Waiting for curl
+        // to close can deadlock when its response body fills the unread pipe.
+        if (params.followRedirects && parsed.headers.location && parsed.status >= 300 && parsed.status < 400 && !params.isClosed()) {
           await new Promise((resolve) => setTimeout(resolve, 25));
           continue;
         }
@@ -536,7 +545,7 @@ async function runCurlStream(
   const args = [
     "--silent",
     "--show-error",
-    "--location",
+    ...(init.singleAttempt ? [] : ["--location"]),
     "--no-buffer",
     "--request",
     init.method,
@@ -586,9 +595,12 @@ async function runCurlStream(
   let headerReadSettled = false;
 
   const abort = () => {
+    child.stdout.unpipe(body);
+    body.destroy(init.signal?.reason instanceof Error ? init.signal.reason : new Error("stream 请求已取消。"));
     child.kill("SIGTERM");
   };
   init.signal?.addEventListener("abort", abort, { once: true });
+  if (init.signal?.aborted) abort();
 
   child.stdout.pipe(body);
   child.stderr.setEncoding("utf8");
@@ -634,6 +646,7 @@ async function runCurlStream(
       requestId,
       timeoutMs: getCurlStreamHeaderTimeoutMs(params?.timeoutMs),
       url: init.url,
+      followRedirects: !init.singleAttempt,
     });
   } catch (error) {
     child.kill("SIGTERM");
@@ -657,8 +670,32 @@ async function runCurlStream(
     fallbackFrom: params?.fallbackFrom,
   });
 
+  // Readable.toWeb can enqueue buffered data after cancel() closes its controller
+  // in Node/Electron. Pull from the iterator and ignore reads settled after cancellation.
+  const chunks = body[Symbol.asyncIterator]();
+  let cancelled = false;
+  const webBody = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await chunks.next();
+        if (cancelled) return;
+        if (chunk.done) controller.close();
+        else controller.enqueue(new Uint8Array(chunk.value));
+      } catch (error) {
+        if (!cancelled) controller.error(error);
+      }
+    },
+    async cancel() {
+      cancelled = true;
+      child.stdout.unpipe(body);
+      body.destroy();
+      child.kill("SIGTERM");
+      await chunks.return?.().catch(() => undefined);
+    },
+  });
+
   return {
-    body: Readable.toWeb(body) as ReadableStream<Uint8Array>,
+    body: webBody,
     status: parsed.status,
     transport: "curl",
     timing,
@@ -757,6 +794,12 @@ export async function requestStream(init: StreamRequestInit): Promise<HttpStream
   const useConfiguredProxy = !!proxy?.enabled && !!proxy.url.trim();
   const timeoutMs = init.timeoutMs;
 
+  const environmentProxy = !init.ignoreProxy && Object.entries(process.env).some(([name, value]) => /^(https?|all)_proxy$/i.test(name) && value?.trim());
+  if (init.connectionPool && process.env.OAUTH_DEMO_USE_CURL !== "1" && !useConfiguredProxy && !environmentProxy) {
+    // No automatic replay: a failed POST may already have been processed upstream.
+    return { ...await init.connectionPool.request(init), requestId };
+  }
+
   if (!useCurlOnly && !useConfiguredProxy) {
     const phases: Record<string, number> = {};
     try {
@@ -766,6 +809,7 @@ export async function requestStream(init: StreamRequestInit): Promise<HttpStream
         headers: init.headers,
         body: init.body,
         signal: init.signal,
+        ...(init.singleAttempt ? { redirect: "manual" as const } : {}),
       });
       phases.waitForHeadersMs = performance.now() - fetchStartedAt;
       const timing = finalizeTiming(requestStartedAt, phases);
@@ -791,7 +835,7 @@ export async function requestStream(init: StreamRequestInit): Promise<HttpStream
         headers: normalizeHeaders(response.headers),
       };
     } catch (error) {
-      if (init.signal?.aborted) {
+      if (init.signal?.aborted || init.singleAttempt) {
         throw error;
       }
 

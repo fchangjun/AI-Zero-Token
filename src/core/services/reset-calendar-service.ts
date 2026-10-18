@@ -10,23 +10,29 @@ import type {
   ResetSource,
   ResetStatus,
 } from "../reset-calendar-types.js";
+import { resetNotificationContent } from "../reset-notification-content.js";
 import { getStateDir } from "../store/state-paths.js";
 import {
   attachPublicResetTranslation,
-  parsePublicResetTranslations,
+  parseCentralResetTranslations,
   resetTranslationMaxHtmlLength,
   resetTranslationSourceUrl,
   type PublicResetTranslation,
 } from "./reset-calendar-translations.js";
 
 const apiOrigin = "https://codex-resets.com";
+
 const dateSchema = z.iso.datetime({ offset: true });
 const translationSchema = z.object({
-  zhCN: z.string().min(1), source: z.enum(["ai-resets.com", "ai-zero-token"]),
+  zhCN: z.string().min(1), source: z.enum(["ai-resets.com", "ai-zero-token", "codex-intel"]),
+  machine: z.boolean().optional(), provider: z.string().optional(), modelRevision: z.string().optional(), translatedAt: dateSchema.optional(),
   sourceUrl: z.url().refine((url) => new URL(url).protocol === "https:"), originalText: z.string(),
 });
 const publicTranslationSchema = z.object({
-  sourceId: z.string().regex(/^[0-9]+$/), originalText: z.string().min(1), zhCN: z.string().min(1),
+  sourceId: z.string().min(1).max(128), originalText: z.string().min(1), zhCN: z.string().min(1),
+  source: z.enum(["ai-resets.com", "ai-zero-token", "codex-intel"]).optional(),
+  sourceUrl: z.url().optional(), originalSourceUrl: z.url().optional(), exactOriginal: z.boolean().optional(),
+  machine: z.boolean().optional(), provider: z.string().optional(), modelRevision: z.string().optional(), translatedAt: dateSchema.optional(),
 });
 const sourceSchema = z.union([
   z.object({ type: z.literal("x_post"), author: z.literal("thsottiaux"), url: z.url() }),
@@ -50,12 +56,13 @@ const watchSchema = z.object({
   source: sourceSchema,
   translation: translationSchema.optional(),
 });
+const completedStatuses = ["completed", "complete", "confirmed", "propagated"] as const;
 const statusSchema = z.object({
-  latest_reset: announcementSchema.nullable(),
-  scheduled_reset: announcementSchema.extend({
-    status: z.literal("scheduled"),
-    scheduled_for: dateSchema.nullable(),
-  }).nullable(),
+  latest_reset: announcementSchema.extend({ status: z.enum(completedStatuses).optional() }).nullable(),
+  scheduled_reset: z.union([
+    announcementSchema.extend({ status: z.literal("scheduled"), scheduled_for: dateSchema.nullable() }),
+    announcementSchema.extend({ status: z.enum(["cancelled", "canceled", ...completedStatuses]), scheduled_for: dateSchema.nullable().optional() }),
+  ]).nullable(),
   active_watch: watchSchema.nullable(),
   stats: z.object({
     total: z.number().int().nonnegative(),
@@ -63,7 +70,20 @@ const statusSchema = z.object({
     days_since_last: z.number().nonnegative().nullable(),
     avg_interval_days: z.number().nonnegative().nullable(),
   }),
+}).transform((status): ResetStatus => {
+  const latest = status.latest_reset;
+  let scheduled = status.scheduled_reset;
+  // A terminal forecast closes that forecast only. Its announced_at still names
+  // the original announcement, not a new completion; wait for latest_reset.
+  if (scheduled && (scheduled.status !== "scheduled" || (latest?.source.type === "x_post"
+    && latest.reset_type === scheduled.reset_type && Date.parse(latest.announced_at) >= Date.parse(scheduled.announced_at)))) scheduled = null;
+  return { ...status, latest_reset: latest, scheduled_reset: scheduled as ResetStatus["scheduled_reset"] };
 });
+const centralSnapshotSchema = z.object({
+  version: z.literal(1), generatedAt: dateSchema, capturedAt: dateSchema,
+  status: statusSchema, records: z.array(announcementSchema).max(5000), historyComplete: z.boolean(),
+});
+type CentralSnapshot = z.infer<typeof centralSnapshotSchema>;
 const metaSchema = z.object({ api_version: z.literal("v1"), generated_at: dateSchema });
 const statusResponseSchema = z.object({ data: statusSchema, meta: metaSchema });
 const historyResponseSchema = z.object({
@@ -80,11 +100,15 @@ const persistedSchema = z.object({
   lastSyncedAt: dateSchema.nullable(),
   generatedAt: dateSchema.nullable(),
   historyComplete: z.boolean(),
+  source: z.enum(["live", "snapshot"]).default("live"), snapshotCapturedAt: dateSchema.nullable().default(null),
+  historyRetryAt: z.number().nonnegative().default(0),
   historyCursor: z.string().nullable(),
   baselineEstablished: z.boolean(),
   seenSignals: z.array(z.string()),
   seenConfirmed: z.array(z.string()),
   retryAt: z.number().nonnegative().default(0),
+  manualRetryAt: z.number().nonnegative().optional(),
+  lastError: z.string().nullable().default(null),
   consecutiveFailures: z.number().int().nonnegative().default(0),
   latestConfirmedAnnouncedAt: dateSchema.nullable().default(null),
   publicTranslations: z.array(publicTranslationSchema).default([]),
@@ -95,7 +119,7 @@ const persistedSchema = z.object({
 export type ResetCalendarServiceOptions = {
   statePath?: string;
   fetcher?: typeof fetch;
-  /** null disables the secondary public translation source (useful in isolated tests). */
+  /** null disables the central static snapshot and translation catalogue. */
   translationFetcher?: typeof fetch | null;
   now?: () => number;
   notify?: (notification: ResetCalendarNotification) => boolean | void | Promise<boolean | void>;
@@ -127,8 +151,9 @@ function announcementKey(record: ResetAnnouncement): string {
 function mergeRecords(previous: ResetAnnouncement[], incoming: ResetAnnouncement[]): ResetAnnouncement[] {
   const byId = new Map(previous.map((record) => [record.id, record]));
   for (const record of incoming) {
-    const previousTranslation = byId.get(record.id)?.translation;
-    byId.set(record.id, !record.translation && previousTranslation?.originalText === record.text
+    const previousRecord = byId.get(record.id);
+    const previousTranslation = previousRecord?.translation;
+    byId.set(record.id, !record.translation && previousRecord?.source.url === record.source.url && previousTranslation?.originalText === record.text
       ? { ...record, translation: previousTranslation } : record);
   }
   return [...byId.values()].sort((a, b) => Date.parse(b.announced_at) - Date.parse(a.announced_at) || a.id.localeCompare(b.id));
@@ -160,7 +185,10 @@ export class ResetCalendarService {
   private stopGeneration = 0;
   private baselineEstablished = false;
   private historyCursor: string | null = null;
+  private historyRetryAt = 0;
+  private centralSnapshot: CentralSnapshot | null = null;
   private retryAt = 0;
+  private manualRetryAt = 0;
   private consecutiveFailures = 0;
   private latestConfirmedAnnouncedAt: string | null = null;
   private readonly publicTranslations = new Map<string, PublicResetTranslation>();
@@ -184,10 +212,10 @@ export class ResetCalendarService {
   }
 
   /** Calls share a single flight, including when manual refresh overlaps a poll. */
-  sync(): Promise<ResetCalendarState> {
+  sync(options: { manual?: boolean } = {}): Promise<ResetCalendarState> {
     if (this.syncPromise) return this.syncPromise;
     const generation = this.stopGeneration;
-    this.syncPromise = this.performSync(generation).finally(() => {
+    this.syncPromise = this.performSync(generation, options.manual === true).finally(() => {
       this.syncPromise = null;
       this.controller = null;
       if (this.running) this.schedule();
@@ -205,9 +233,9 @@ export class ResetCalendarService {
   }
 
   async testNotification(): Promise<{ sent: boolean }> {
+    const content = resetNotificationContent("scheduled");
     return { sent: await this.send({
-      kind: "test", title: "AI Zero Token · 重置日历",
-      body: "测试通知已送达。开启提醒后，将在出现公开重置信号或公开确认时通知你。",
+      ...content, kind: "test", title: `${content.title} · 测试`,
       eventId: `test:${randomUUID()}`,
     }) };
   }
@@ -242,9 +270,13 @@ export class ResetCalendarService {
 
   private snapshot(): ResetCalendarState {
     const snapshot = structuredClone(this.state);
+    snapshot.sync.manualRetryAt = this.manualRetryAt > this.now() ? new Date(this.manualRetryAt).toISOString() : null;
     snapshot.notificationsSupported = this.supportsNotifications();
     const watch = snapshot.status?.active_watch;
-    if (watch && Date.parse(watch.expires_at) <= this.now()) snapshot.status!.active_watch = null;
+    if (watch && (Date.parse(watch.expires_at) <= this.now()
+      || Date.parse(watch.observed_at) > this.now() + 5 * 60_000
+      || (snapshot.status?.latest_reset?.source.type === "x_post"
+        && Date.parse(watch.observed_at) <= Date.parse(snapshot.status.latest_reset.announced_at)))) snapshot.status!.active_watch = null;
     return snapshot;
   }
 
@@ -262,11 +294,23 @@ export class ResetCalendarService {
       this.state.sync.lastSyncedAt = data.lastSyncedAt;
       this.state.sync.generatedAt = data.generatedAt;
       this.state.sync.historyComplete = data.historyComplete;
+      this.state.sync.source = data.source;
+      this.state.sync.snapshotCapturedAt = data.snapshotCapturedAt;
+      this.historyRetryAt = data.historyRetryAt;
       this.state.sync.phase = data.lastSyncedAt ? "ready" : "idle";
       this.historyCursor = data.historyCursor;
       this.baselineEstablished = data.baselineEstablished;
       this.retryAt = data.retryAt;
+      // Old caches only record automatic backoff, not a known manual deadline.
+      // Let a deliberate retry reach the source; any returned Retry-After will
+      // then be honored and persisted separately by the new client.
+      this.manualRetryAt = data.manualRetryAt ?? 0;
       this.consecutiveFailures = data.consecutiveFailures;
+      if (data.consecutiveFailures > 0) {
+        this.state.sync.phase = "error";
+        this.state.sync.error = data.lastError ?? "同步失败，已保留本地记录，将自动重试。";
+        this.state.sync.nextSyncAt = new Date(this.retryAt).toISOString();
+      }
       this.latestConfirmedAnnouncedAt = data.latestConfirmedAnnouncedAt ?? data.status?.latest_reset?.announced_at ?? null;
       this.translationLastAttemptAt = data.translationLastAttemptAt;
       this.translationRetryAt = data.translationRetryAt;
@@ -286,9 +330,12 @@ export class ResetCalendarService {
       version: 1, records: this.state.records, status: this.state.status, settings: this.state.settings,
       lastSyncedAt: this.state.sync.lastSyncedAt, generatedAt: this.state.sync.generatedAt,
       historyComplete: this.state.sync.historyComplete, historyCursor: this.historyCursor,
+      source: this.state.sync.source ?? "live", snapshotCapturedAt: this.state.sync.snapshotCapturedAt ?? null,
+      historyRetryAt: this.historyRetryAt,
       baselineEstablished: this.baselineEstablished,
       seenSignals: [...this.seenSignals], seenConfirmed: [...this.seenConfirmed],
       retryAt: this.retryAt, consecutiveFailures: this.consecutiveFailures,
+      manualRetryAt: this.manualRetryAt, lastError: this.state.sync.error,
       latestConfirmedAnnouncedAt: this.latestConfirmedAnnouncedAt,
       publicTranslations: [...this.publicTranslations.values()], translationLastAttemptAt: this.translationLastAttemptAt,
       translationRetryAt: this.translationRetryAt,
@@ -307,10 +354,10 @@ export class ResetCalendarService {
     return this.saveQueue;
   }
 
-  private async performSync(generation: number): Promise<ResetCalendarState> {
+  private async performSync(generation: number, manual: boolean): Promise<ResetCalendarState> {
     await this.ensureLoaded();
     if (generation !== this.stopGeneration) return this.snapshot();
-    if (this.retryAt > this.now()) {
+    if ((manual ? this.manualRetryAt : this.retryAt) > this.now()) {
       this.state.sync.nextSyncAt = new Date(this.retryAt).toISOString();
       return this.snapshot();
     }
@@ -330,20 +377,40 @@ export class ResetCalendarService {
         this.state.status = parsedStatus.data.data;
         this.applyTranslations();
         this.state.sync.generatedAt = parsedStatus.data.meta.generated_at;
+        this.state.sync.source = "live";
+        this.state.sync.snapshotCapturedAt = null;
         const notifications = this.advanceStages(parsedStatus.data.data);
         this.baselineEstablished = true;
         if (parsedStatus.data.data.latest_reset) {
           this.state.records = mergeRecords(this.state.records, [parsedStatus.data.data.latest_reset]);
         }
-        // Commit stage receipts before sending, so a restart cannot duplicate alerts.
+        // Persist the baseline and intentionally suppressed stages before delivery.
+        // Eligible stages are acknowledged only after the desktop reports success.
         await this.save();
         if (signal.aborted) return this.snapshot();
         for (const notification of notifications) {
           if (signal.aborted) return this.snapshot();
-          await this.send(notification, signal);
+          if (await this.send(notification, signal)) {
+            const seen = notification.kind === "signal" ? this.seenSignals : this.seenConfirmed;
+            seen.add(notification.eventId);
+            await this.save();
+          }
         }
       }
-      await this.syncHistory(signal);
+      let historyError: string | null = null;
+      if (this.historyRetryAt <= this.now()) {
+        try {
+          await this.syncHistory(signal);
+          this.historyRetryAt = 0;
+        } catch (error) {
+          if (signal.aborted) return this.snapshot();
+          this.state.sync.historyComplete = false;
+          historyError = `通告已更新，历史暂不可用。${error instanceof CalendarRequestError ? error.message : "将稍后重试。"}`;
+          if (error instanceof CalendarRequestError && error.retryAfterMs > 0) this.historyRetryAt = this.now() + error.retryAfterMs;
+        }
+      } else {
+        historyError = "通告已更新，历史接口正在按要求等待重试。";
+      }
       if (signal.aborted) return this.snapshot();
       // Public-stage notifications are already delivered; a slow secondary page
       // cannot delay the signal/confirmation itself or fail the primary sync.
@@ -352,7 +419,9 @@ export class ResetCalendarService {
       this.applyTranslations();
       this.consecutiveFailures = 0;
       this.retryAt = 0;
+      this.manualRetryAt = 0;
       this.state.sync.phase = "ready";
+      this.state.sync.error = historyError;
       this.state.sync.lastSyncedAt = new Date(this.now()).toISOString();
       this.state.sync.nextSyncAt = new Date(this.now() + this.pollIntervalMs).toISOString();
       await this.save();
@@ -362,12 +431,40 @@ export class ResetCalendarService {
         this.state.sync.nextSyncAt = null;
         return this.snapshot();
       }
+      // A validated static backup can restore display data, never replay notifications.
+      await this.syncTranslations(signal);
+      if (generation !== this.stopGeneration || signal.aborted) {
+        this.state.sync.phase = this.state.sync.lastSyncedAt ? "ready" : "idle";
+        this.state.sync.nextSyncAt = null;
+        return this.snapshot();
+      }
+      const backup = this.centralSnapshot;
+      if (backup && (!this.state.sync.generatedAt || Date.parse(backup.generatedAt) >= Date.parse(this.state.sync.generatedAt))) {
+        this.state.status = backup.status;
+        this.state.records = mergeRecords(this.state.records, backup.records);
+        if (backup.status.latest_reset) this.state.records = mergeRecords(this.state.records, [backup.status.latest_reset]);
+        this.state.sync.generatedAt = backup.generatedAt;
+        this.state.sync.source = "snapshot";
+        this.state.sync.snapshotCapturedAt = backup.capturedAt;
+        this.state.sync.historyComplete = backup.historyComplete;
+        // Consume the static backup's stages silently; first live recovery does not
+        // burst old alerts, while any genuinely new live stage remains eligible.
+        this.baselineEstablished = false;
+        this.advanceStages(backup.status);
+        this.baselineEstablished = true;
+        this.applyTranslations();
+      }
       this.consecutiveFailures += 1;
       const backoff = Math.min(60 * 60_000, this.pollIntervalMs * 2 ** Math.min(8, this.consecutiveFailures - 1));
-      this.retryAt = this.now() + Math.max(backoff, error instanceof CalendarRequestError ? error.retryAfterMs : 0);
+      const retryAfter = error instanceof CalendarRequestError ? error.retryAfterMs : 0;
+      this.retryAt = this.now() + Math.max(backoff, retryAfter);
+      // Manual recovery must not wait for exponential polling backoff. A short
+      // cooldown prevents repeated clicks, while server Retry-After stays binding.
+      this.manualRetryAt = this.now() + Math.max(10_000, retryAfter);
       this.state.sync.phase = "error";
-      this.state.sync.error = error instanceof CalendarRequestError
-        ? error.message : "同步失败，已保留本地记录，将自动重试。";
+      this.state.sync.error = this.state.sync.source === "snapshot"
+        ? "实时接口暂不可用，正在显示情报站备用快照，将自动重试。"
+        : error instanceof CalendarRequestError ? error.message : "同步失败，已保留本地记录，将自动重试。";
       this.state.sync.nextSyncAt = new Date(this.retryAt).toISOString();
       await this.save().catch(() => undefined);
     }
@@ -378,19 +475,18 @@ export class ResetCalendarService {
     const notifications: ResetCalendarNotification[] = [];
     const watch = status.active_watch;
     const signalKey = watch && Date.parse(watch.expires_at) > this.now()
+      && Date.parse(watch.expires_at) > Date.parse(watch.observed_at)
+      && Date.parse(watch.observed_at) <= this.now() + 5 * 60_000
+      && !(status.latest_reset?.source.type === "x_post" && Date.parse(watch.observed_at) <= Date.parse(status.latest_reset.announced_at))
       ? sourceKey(watch.source) ?? `watch:${watch.observed_at}` : null;
     if (signalKey) this.advance("signal", signalKey, {
       kind: "signal", eventId: signalKey,
-      title: "Codex 出现重置信号",
-      body: "公开监测出现重置信号，属于预测，尚未确认执行。打开重置日历查看来源与详情。",
+      ...resetNotificationContent("watch"),
     }, notifications);
     const scheduled = status.scheduled_reset;
     if (scheduled) this.advance("signal", announcementKey(scheduled), {
       kind: "signal", eventId: announcementKey(scheduled),
-      title: scheduled.reset_type === "banked" ? "Codex 储备重置发放公告" : "Codex 重置预告",
-      body: scheduled.reset_type === "banked"
-        ? "公开来源已发布储备重置发放预告，仍待执行证据；储备发放不代表账号额度已恢复。"
-        : "公开来源已发布重置预告，仍待执行证据。预计时间到达不会自动视为完成。",
+      ...resetNotificationContent("scheduled", scheduled.reset_type, scheduled.scheduled_for, this.now()),
     }, notifications);
     const latest = status.latest_reset;
     if (latest) {
@@ -398,10 +494,7 @@ export class ResetCalendarService {
         && Date.parse(latest.announced_at) < Date.parse(this.latestConfirmedAnnouncedAt);
       this.advance("confirmed", announcementKey(latest), {
         kind: "confirmed", eventId: announcementKey(latest),
-        title: latest.reset_type === "banked" ? "公开来源确认 Codex 储备重置已发放" : "公开来源确认 Codex 已重置",
-        body: latest.reset_type === "banked"
-          ? "公开来源已确认储备重置发放。储备发放不代表账号额度已恢复，请以账号实际额度为准。"
-          : "公开来源已确认重置执行，请以账号实际额度为准。打开重置日历查看详情。",
+        ...resetNotificationContent("confirmed", latest.reset_type),
       }, notifications, olderThanLatest);
       if (!olderThanLatest) this.latestConfirmedAnnouncedAt = latest.announced_at;
     }
@@ -413,11 +506,15 @@ export class ResetCalendarService {
     notifications: ResetCalendarNotification[], suppress = false,
   ): void {
     const seen = kind === "signal" ? this.seenSignals : this.seenConfirmed;
-    if (seen.has(key)) return;
-    seen.add(key);
-    // Disabled/unsupported notifications still consume the stage, avoiding a later burst.
+    if (seen.has(key) || notifications.some((item) => item.kind === kind && item.eventId === key)) return;
     const enabled = kind === "signal" ? this.state.settings.signalNotifications : this.state.settings.confirmedNotifications;
-    if (this.baselineEstablished && enabled && !suppress) notifications.push(notification);
+    if (this.baselineEstablished && enabled && !suppress && this.supportsNotifications()) {
+      // A failed delivery remains eligible while the source still reports this stage.
+      notifications.push(notification);
+    } else {
+      // First sync and disabled/unsupported notifications do not create a later burst.
+      seen.add(key);
+    }
   }
 
   private async send(notification: ResetCalendarNotification, signal?: AbortSignal): Promise<boolean> {
@@ -482,18 +579,23 @@ export class ResetCalendarService {
       && this.now() - this.translationLastAttemptAt < 5 * 60_000)) return;
     this.translationLastAttemptAt = this.now();
     try {
-      const html = await this.requestPublic(resetTranslationSourceUrl, signal, {
-        fetcher: this.translationFetcher, accept: "text/html", timeoutMs: Math.min(5000, this.requestTimeoutMs),
+      const raw = await this.requestPublic(resetTranslationSourceUrl, signal, {
+        fetcher: this.translationFetcher, accept: "application/json", timeoutMs: Math.min(5000, this.requestTimeoutMs),
         parse: async (response) => {
           if (Number(response.headers.get("content-length")) > resetTranslationMaxHtmlLength) throw new Error("Translation page exceeds the size limit");
           const text = await response.text();
           if (text.length > resetTranslationMaxHtmlLength) throw new Error("Translation page exceeds the size limit");
-          return text;
+          return JSON.parse(text) as unknown;
         },
       });
       if (signal.aborted) return;
+      const parsed = centralSnapshotSchema.safeParse(raw);
+      if (!parsed.success || Date.parse(parsed.data.generatedAt) > this.now() + 5 * 60_000
+        || Date.parse(parsed.data.capturedAt) > this.now() + 5 * 60_000
+        || Date.parse(parsed.data.capturedAt) < Date.parse(parsed.data.generatedAt)) return;
+      this.centralSnapshot = parsed.data;
       this.translationRetryAt = 0;
-      for (const translation of parsePublicResetTranslations(html)) this.publicTranslations.set(translation.sourceId, translation);
+      for (const translation of parseCentralResetTranslations(raw)) this.publicTranslations.set(translation.sourceId, translation);
     } catch (error) {
       if (error instanceof CalendarRequestError && error.retryAfterMs > 0) this.translationRetryAt = this.now() + error.retryAfterMs;
       // A changed layout, missing translation, timeout, or secondary outage must

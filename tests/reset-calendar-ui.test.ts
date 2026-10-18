@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { announcementStage, beijingDay, buildMonthDays, calendarRecords, currentWatch, filterRecords, formatBeijing, recordsByDay, safeSourceUrl, scheduledIsPast, shiftMonth } from "../admin-ui/src/pages/reset-calendar/calendar";
+import { announcementStage, beijingDay, buildMonthDays, calendarRecords, currentWatch, filterRecords, formatBeijing, formatWatchWindow, recordsByDay, safeSourceUrl, scheduledIsPast, shiftMonth } from "../admin-ui/src/pages/reset-calendar/calendar";
 import type { ResetAnnouncement, ResetStatus } from "../admin-ui/src/pages/reset-calendar/types";
 
 const regular: ResetAnnouncement = {
@@ -63,6 +63,52 @@ test("expired and malformed watches are hidden without promoting them to complet
   expect(currentWatch(status({ active_watch: watch }), Date.parse(watch.expires_at))).toBeNull();
   expect(currentWatch(status({ active_watch: { ...watch, expires_at: "invalid" } }), Date.now())).toBeNull();
   expect(currentWatch(null, Date.now())).toBeNull();
+});
+
+test("watch validity rejects impossible observation clocks and windows", () => {
+  const now = Date.parse("2026-10-11T12:00:00Z");
+  const watch = { level: "strong" as const, reset_chance_percent: 80, forecast_window: "within 24h", observed_at: "2026-10-11T11:00:00Z", expires_at: "2026-10-12T11:00:00Z", text: "Signal", source: { type: "observed" as const } };
+  expect(currentWatch(status({ active_watch: watch }), now)).toEqual(watch);
+  for (const override of [
+    { observed_at: "invalid" },
+    { observed_at: "2026-10-11T12:05:01Z" },
+    { expires_at: watch.observed_at },
+    { observed_at: "2026-10-12T12:00:00Z", expires_at: "2026-10-12T11:00:00Z" },
+  ]) expect(currentWatch(status({ active_watch: { ...watch, ...override } }), now)).toBeNull();
+  expect(currentWatch(status({ active_watch: { ...watch, observed_at: "2026-10-11T12:05:00Z" } }), now)).not.toBeNull();
+  expect(currentWatch(status({ active_watch: watch }), NaN)).toBeNull();
+});
+
+test("real public completion suppresses an earlier watch while legacy observations do not", () => {
+  const now = Date.parse("2026-10-11T12:00:00Z");
+  const watch = { level: "strong" as const, reset_chance_percent: 80, forecast_window: "within 24h", observed_at: "2026-10-11T11:00:00Z", expires_at: "2026-10-12T11:00:00Z", text: "Signal", source: { type: "observed" as const } };
+  const latest = { ...regular, announced_at: watch.observed_at };
+  expect(currentWatch(status({ active_watch: watch, latest_reset: latest }), now)).toBeNull();
+  expect(currentWatch(status({ active_watch: watch, latest_reset: { ...latest, announced_at: "2026-10-11T10:59:59Z" } }), now)).toEqual(watch);
+  expect(currentWatch(status({ active_watch: watch, latest_reset: { ...latest, source: { type: "observed" } } }), now)).toEqual(watch);
+  for (const completionStatus of ["completed", "complete", "confirmed", "propagated"]) {
+    const completed = { ...latest, status: completionStatus };
+    expect(currentWatch(status({ active_watch: watch, latest_reset: completed }), now)).toBeNull();
+  }
+  for (const nonCompletionStatus of ["scheduled", "watch", "unknown"]) {
+    const unconfirmed = { ...latest, status: nonCompletionStatus };
+    expect(currentWatch(status({ active_watch: watch, latest_reset: unconfirmed }), now)).toEqual(watch);
+  }
+  for (const announced_at of ["invalid", "2026-10-12T12:00:00Z"]) {
+    expect(currentWatch(status({ active_watch: watch, latest_reset: { ...latest, announced_at } }), now)).toEqual(watch);
+  }
+});
+
+test("observation windows translate known duration syntax without deriving reset timestamps", () => {
+  expect(formatWatchWindow("within 24h", "zh-CN")).toBe("未来 24 小时内");
+  expect(formatWatchWindow("within24h", "zh-CN")).toBe("未来 24 小时内");
+  expect(formatWatchWindow("Within the next 2 hours.", "zh-CN")).toBe("未来 2 小时内");
+  expect(formatWatchWindow("within 30 minutes", "zh-CN")).toBe("未来 30 分钟内");
+  expect(formatWatchWindow("within 1 day", "zh-CN")).toBe("未来 1 天内");
+  expect(formatWatchWindow("within 24h", "en")).toBe("within 24h");
+  expect(formatWatchWindow("Soon", "zh-CN")).toBe("Soon");
+  expect(formatWatchWindow("within 0h", "zh-CN")).toBe("within 0h");
+  expect(formatWatchWindow(null, "zh-CN")).toBe("");
 });
 
 test("source links only allow explicit http(s) URLs without credentials", () => {

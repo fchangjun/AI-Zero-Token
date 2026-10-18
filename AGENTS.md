@@ -110,6 +110,10 @@ Every version release must also deliver a Chinese update message that the user c
 - Include the product name and version, 3–5 concise user-facing highlights (fewer for a small patch), necessary upgrade instructions, and the verified version-specific GitHub Release link. Include the npm update command when that channel was published.
 - Explain practical benefits in plain language. Base claims on the actual release changes and verified results; do not present previous-version features or planned work as newly shipped. Do not promise complete safety or universal platform testing.
 - Keep the group message compact, normally about 150–300 Chinese characters excluding links and commands. Keep commit hashes and detailed test reports in the technical handoff, not the group copy.
+- GitHub Release 正文会直接显示在应用内更新弹窗，必须同样面向用户：只写功能变化、实际收益和必要升级提示。不要附加「验证范围」「测试边界」、测试数量、构建/签名检查结果或开发者机器的 SIP 等环境信息；这些放在单独的技术交接中。
+- 用户确认的写作偏好（2026-10-13）：更新日志要像产品更新，不是工程变更清单。先用一句话概括本次更新，再按 3–5 个用户主题组织（小补丁可更少）；标题说明功能与收益，每项用 1–2 句话讲清「现在能做什么、解决什么问题、必要时从哪里使用」。同一功能的改动合并成一项，例如 Reviewer 的审阅与预填不要拆成重复条目。
+- 文案保持简洁、客观，标题使用「具体功能或操作＋实际变化」，脱离正文也能看懂。沿用界面术语「接入／解除接入」，避免「更顺手」「也能」「继续原来的对话」等口语化或笼统描述。不要把「修复 Codex 第三方服务解除接入失败」概括成「无需登录也能接管」，以免误导为免登录使用 Codex。
+- 不要逐条翻译技术 CHANGELOG，也不要把数据库写锁、内部状态值、超时秒数、标签复用机制或按钮位置等实现细节当作发布亮点。将其转成用户可感知的体验改善；技术依据留在 CHANGELOG/技术交接中。保留影响使用决策的限制和必要操作，不夸大收益、不写空泛营销口号。GitHub 正文、应用内说明和群公告均遵循这一原则，群公告再压缩篇幅。
 - For a major feature/milestone release, also prepare a WeChat Official Account article draft when that communication scope is requested or clearly designated. This is a longer user-oriented story covering use cases, key changes, screenshots where useful, upgrade steps, and known limitations. Do not create a long article for every patch, and do not infer a major product milestone solely from the semantic version number.
 - Preparing copy does not mean it has been sent. Do not post to a group or publish an Official Account article without a clearly identified destination and the user's authorization for that external action. Never report a draft as published.
 

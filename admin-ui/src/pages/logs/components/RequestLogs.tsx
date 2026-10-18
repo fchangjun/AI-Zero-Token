@@ -6,6 +6,7 @@ import { copyText, errorMessage } from "@/shared/lib/app-utils";
 import { formatDuration, formatFileSize, formatTime } from "@/shared/lib/format";
 import { formatJson } from "@/shared/lib/format";
 import { useLocaleValue, useT } from "@/i18n";
+import { MixedTiming } from "./MixedTiming";
 
 type DiagnosticDetailTab = "overview" | "request" | "response" | "protocol";
 
@@ -304,7 +305,7 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
                   <td>
                     <span className={`status-pill ${item.statusCode >= 400 ? "is-error" : "is-ok"}`}>{item.statusCode}</span>
                   </td>
-                  <td>{formatDuration(item.durationMs)}</td>
+                  <td>{formatDuration(item.durationMs)}<MixedTiming value={item.details?.mixedTiming} compact /></td>
                   <td>{item.source || sourceFallback}</td>
                 </tr>
               ))
@@ -326,12 +327,15 @@ export function RequestLogs(props: { logs: RequestLog[] }) {
             </button>
           </div>
           <div className="log-detail-grid">
+            <div>
             <div className="log-detail-meta">
               <div><span>{t("logs.detailMetaAccount")}</span><strong>{selectedLog.account}</strong></div>
               <div><span>{t("logs.detailMetaModel")}</span><strong>{selectedLog.model}</strong></div>
               <div><span>{t("logs.detailMetaStatus")}</span><strong>{selectedLog.statusCode}</strong></div>
               <div><span>{t("logs.detailMetaDuration")}</span><strong>{formatDuration(selectedLog.durationMs)}</strong></div>
               <div><span>{t("logs.detailMetaSource")}</span><strong>{selectedLog.source || sourceFallback}</strong></div>
+            </div>
+            <MixedTiming value={selectedLog.details?.mixedTiming} />
             </div>
             <div className="log-detail-json-stack">
               {selectedDiagnosticCapture && (

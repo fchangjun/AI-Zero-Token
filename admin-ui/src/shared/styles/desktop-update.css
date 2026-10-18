@@ -48,6 +48,21 @@
 .desktop-release-notes hr { border: 0; border-top: 1px solid var(--line); margin: 20px 0; }
 .desktop-release-notes a, .desktop-update-release-link { color: var(--brand-strong); text-decoration: underline; text-underline-offset: 3px; }
 .desktop-update-release-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; margin-top: 8px; }
+.desktop-release-range { color: var(--text-muted); font-size: 12px; margin: -6px 0 18px; }
+.desktop-release-history { list-style: none; margin: 0; padding: 0; }
+.desktop-release-history > li { padding: 16px 0; border-top: 1px solid var(--line); }
+.desktop-release-history > li:first-child { padding-top: 0; border-top: 0; }
+.desktop-release-version-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; }
+.desktop-release-version-heading h4 { margin: 0; font-size: 14px; color: var(--text); }
+.desktop-release-version-heading time { font-size: 11px; color: var(--text-muted); }
+.desktop-release-version-heading a { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; color: var(--brand-strong); font-size: 11px; }
+.desktop-release-highlights { padding-left: 18px; margin: 10px 0 0; font-size: 13px; color: var(--text-soft); line-height: 1.7; overflow-wrap: anywhere; }
+.desktop-release-highlights li { margin: 5px 0; }
+.desktop-release-highlights li::marker { color: var(--brand); }
+.desktop-release-history .desktop-update-hint { margin: 10px 0 0; }
+.desktop-release-history-warning { background: var(--panel-soft); border-radius: 8px; padding: 10px 12px; margin-bottom: 18px; font-size: 12px; line-height: 1.7; color: var(--text-muted); }
+.desktop-release-history-warning p { margin: 0; }
+.desktop-release-history-warning button { color: var(--brand-strong); padding-bottom: 0; }
 .desktop-update-footer { padding: 18px 28px 24px; border-top: 1px solid var(--line); background: var(--panel-soft); flex-shrink: 0; }
 .desktop-update-hint { color: var(--text-muted); font-size: 12px; line-height: 1.7; margin: 0 0 18px; }
 .desktop-update-warning { color: #99550e; background: #fffbeb; border-radius: 8px; padding: 10px 12px; font-size: 12px; line-height: 1.7; margin: 0 0 12px; }

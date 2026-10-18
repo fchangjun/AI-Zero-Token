@@ -14,6 +14,7 @@ const probe = `
   import { pathToFileURL } from 'node:url';
   import { SourceTextModule, SyntheticModule } from 'node:vm';
   const calls = [];
+  let prepareCalls = 0;
   const spawn = (command, args, options) => {
     calls.push({ command, args, env: Object.fromEntries(
       ['PATH', 'HOME', 'CODEX_HOME', 'AI_ZERO_TOKEN_HOME', 'AZT_ADMIN_UI_DEV_URL', 'AZT_DEV_GATEWAY_URL', 'AZT_DEV_UI_PORT']
@@ -31,13 +32,15 @@ const probe = `
     initializeImportMeta(meta) { meta.url = pathToFileURL(filename).href; },
   });
   await mod.link(async (name) => {
-    const exports = name === 'node:child_process' ? { spawn } : await import(name);
+    const exports = name === 'node:child_process' ? { spawn }
+      : name === './prepare-electron.mjs' ? { prepareElectron: async () => { prepareCalls += 1; } }
+      : await import(name);
     return new SyntheticModule(Object.keys(exports), function () {
       for (const [key, value] of Object.entries(exports)) this.setExport(key, value);
     });
   });
   await mod.evaluate();
-  console.log('AZT_LAUNCH_ENV=' + JSON.stringify(calls));
+  console.log('AZT_LAUNCH_ENV=' + JSON.stringify({ calls, prepareCalls }));
 `;
 
 describe("development launcher environment", () => {
@@ -48,7 +51,10 @@ describe("development launcher environment", () => {
     });
     const line = stdout.split("\n").find((line) => line.startsWith("AZT_LAUNCH_ENV="));
     expect(line).toBeDefined();
-    const calls = JSON.parse(line!.slice("AZT_LAUNCH_ENV=".length)) as { args: string[]; env: Record<string, string> }[];
+    const { calls, prepareCalls } = JSON.parse(line!.slice("AZT_LAUNCH_ENV=".length)) as {
+      calls: { args: string[]; env: Record<string, string> }[]; prepareCalls: number;
+    };
+    expect(prepareCalls).toBe(mode === "desktop" ? 1 : 0);
     expect(calls.length).toBe(mode === "desktop" ? 3 : 2);
     for (const call of calls) {
       for (const key of ["PATH", "HOME", "CODEX_HOME", "AI_ZERO_TOKEN_HOME"]) {

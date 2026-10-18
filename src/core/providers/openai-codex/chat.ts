@@ -277,7 +277,7 @@ function buildCodexRequestHeaders(profile: OAuthProfile, requestBody?: Record<st
 function createCodexUpstreamError(
   status: number,
   body: string,
-  transport: "fetch" | "curl" | "stream",
+  transport: "fetch" | "curl" | "node" | "stream",
   quota?: CodexQuotaSnapshot,
   requestId?: string,
 ): Error & {

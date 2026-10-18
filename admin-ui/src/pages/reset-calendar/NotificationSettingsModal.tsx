@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Bell, CheckCircle2, Info, Loader2, X } from "lucide-react";
+import { renderResetNotificationCard, resetCardHeight } from "../../../../src/desktop/reset-notification-card-view";
 import { useT } from "@/i18n";
 import { fetchJson } from "@/shared/api";
 import type { ResetCalendarState, ResetNotificationSettings } from "./types";
@@ -97,18 +98,36 @@ export function NotificationSettingsModal({ state, onClose, onSaved }: {
               })}
               <div className="rc-notification-support">
                 <h3>{t("resetCalendar.settings.delivery")}</h3>
-                <div className="rc-support-row"><span><Bell size={18} />{t("resetCalendar.settings.systemNotification")}</span><span className={`rc-badge ${state.notificationsSupported ? "is-confirmed" : "is-record"}`}>{t(`resetCalendar.settings.${state.notificationsSupported ? "supported" : "unsupported"}`)}</span></div>
+                <div className="rc-support-row"><span><Bell size={18} />{t("resetCalendar.settings.desktopCard")}</span><span className={`rc-badge ${state.notificationsSupported ? "is-confirmed" : "is-record"}`}>{t(`resetCalendar.settings.${state.notificationsSupported ? "supported" : "unsupported"}`)}</span></div>
                 {!state.notificationsSupported && <p>{t("resetCalendar.settings.desktopRequired")}</p>}
-                <button className="btn-secondary" type="button" disabled={!state.notificationsSupported || busy} onClick={() => void sendTest()}>{testing ? <Loader2 size={16} className="spin" /> : <Bell size={16} />}{t("resetCalendar.settings.sendTest")}</button>
+                {state.notificationsSupported && <div className="rc-card-guide">
+                  <strong>{t("resetCalendar.settings.cardTitle")}</strong>
+                  <p>{t("resetCalendar.settings.cardDescription")}</p>
+                  <details><summary>{t("resetCalendar.settings.cardPrivacyTitle")}</summary><p>{t("resetCalendar.settings.cardPrivacy")}</p></details>
+                </div>}
+                <div className="rc-notification-actions">
+                  <button className="btn-secondary rc-send-test" type="button" disabled={!state.notificationsSupported || busy} onClick={() => void sendTest()}>{testing ? <Loader2 size={16} className="spin" /> : <Bell size={16} />}{t("resetCalendar.settings.sendTest")}</button>
+                </div>
                 {feedback && <p className={`rc-modal-feedback ${feedback.error ? "is-error" : ""}`} role={feedback.error ? "alert" : "status"}>{feedback.text}</p>}
               </div>
             </div>
             <div className="rc-notification-previews">
               <h3>{t("resetCalendar.settings.previewTitle")}</h3><p>{t("resetCalendar.settings.previewHint")}</p>
-              {(["signal", "confirmed"] as const).map((kind) => <div className="rc-notification-preview" key={kind}>
-                <span className="rc-preview-mark"><Bell size={22} /></span>
-                <div><div className="rc-preview-meta"><strong>AI Zero Token</strong><span>{t("resetCalendar.settings.now")}</span></div><span className={`rc-badge is-${kind}`}>{t(`resetCalendar.settings.${kind}Badge`)}</span><h4>{t(`resetCalendar.settings.${kind}PreviewTitle`)}</h4><p>{t(`resetCalendar.settings.${kind}PreviewBody`)}</p></div>
-              </div>)}
+              {(["signal", "confirmed"] as const).map((kind) => {
+                const event = {
+                  kind, stage: kind === "signal" ? "scheduled" as const : "confirmed" as const,
+                  eventId: `preview:${kind}`, title: t(`resetCalendar.settings.${kind}PreviewTitle`),
+                  body: t(`resetCalendar.settings.${kind}PreviewBody`),
+                  ...(kind === "signal" ? { detail: t("resetCalendar.settings.signalPreviewDetail") } : {}),
+                };
+                return <iframe key={kind} className="rc-notification-preview" sandbox="" tabIndex={-1}
+                  title={event.title} style={{ height: resetCardHeight(event) }} srcDoc={renderResetNotificationCard(event, {
+                    now: t("resetCalendar.settings.now"), test: t("resetCalendar.settings.testBadge"),
+                    watch: t("resetCalendar.settings.signalBadge"), scheduled: t("resetCalendar.settings.scheduledBadge"),
+                    confirmed: t("resetCalendar.settings.confirmedBadge"), view: t("resetCalendar.settings.viewCalendar"),
+                  })} />;
+              })}
+
             </div>
           </div>
           <div className="rc-info-note"><Info size={18} /><p>{t("resetCalendar.settings.backgroundHint")}</p></div>

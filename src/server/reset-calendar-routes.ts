@@ -20,7 +20,7 @@ export function registerResetCalendarRoutes(app: FastifyInstance, service: Reset
   });
   app.post("/_gateway/admin/reset-calendar/sync", async (_request, reply) => {
     reply.header("Cache-Control", "no-store");
-    return service.sync();
+    return service.sync({ manual: true });
   });
   app.put("/_gateway/admin/reset-calendar/settings", async (request, reply) => {
     reply.header("Cache-Control", "no-store");

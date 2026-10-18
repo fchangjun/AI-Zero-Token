@@ -33,7 +33,7 @@ export class ResetCalendarNavigator {
       || !this.options.isAllowedUrl(window.webContents.getURL())) return;
     this.pending = false;
     // A hash change keeps the current document and cannot abort an awaited loadURL.
-    void window.webContents.executeJavaScript("window.location.hash = 'reset-calendar';").catch((error) => {
+    void window.webContents.executeJavaScript("window.location.hash = 'reset-calendar'; window.dispatchEvent(new Event('azt:open-reset-calendar'));").catch((error) => {
       if (this.options.getWindow() === window && !this.options.isQuitting()) this.pending = true;
       this.options.onError(error);
     });
