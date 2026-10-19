@@ -63,6 +63,9 @@ export function ProviderDetail(props: {
       </div>
 
       {props.provider.activeForCodex && props.provider.codexNeedsApply && <div className="providers-notice">服务设置已变更。Codex 仍使用上次接入配置，请点击“管理接入”重新保存后生效。</div>}
+      {props.provider.activeForCodex && <div className="providers-notice">{props.provider.codexCatalogMode === "local"
+        ? "直接接管 · 本地模型列表：无需保持 AZT 运行，Codex 不显示动态模型状态。修改显示模型后需重新保存接入。"
+        : "直接接管 · 显示模型状态：先启动 AZT，等待管理页加载完成后再打开 Codex，使用期间保持 AZT 运行。"}</div>}
       {props.provider.connectionMessage && <div className="provider-inline-error" role="alert">{props.provider.connectionMessage}</div>}
       <section className="provider-metrics">
         <div><span>已保存的模型</span><strong>{props.provider.modelCount}</strong></div>

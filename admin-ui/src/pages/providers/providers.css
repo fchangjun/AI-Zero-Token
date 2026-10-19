@@ -529,6 +529,7 @@
 .takeover-mode-tips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; padding: 0 4px; }
 .takeover-mode-tips p { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.7; }
 .takeover-mode-tips strong { color: var(--text); margin-right: 8px; }
+.takeover-startup-tip { grid-column: 1 / -1; }
 .provider-codex-protocol { min-width: 0; display: grid; gap: 7px; }
 .provider-codex-mode-status { min-width: 0; display: grid; gap: 7px; }
 .provider-codex-inspection-details { grid-column: 2 / -1; min-width: 0; margin-top: 7px; font-size: 11px; }
@@ -553,3 +554,13 @@
 .codex-switch-risks { border-left: 3px solid #d99b3f; padding: 2px 12px; margin: 15px 0; background: rgba(217, 155, 63, .08); font-size: 13px; line-height: 1.65; }
 .codex-switch-risks p { margin: 8px 0; }
 @media (max-width: 680px) { .takeover-mode-tips { grid-template-columns: 1fr; } }
+
+.codex-catalog-options { display: grid; gap: 10px; min-width: 0; margin: 18px 0; padding: 0; border: 0; }
+.codex-catalog-options legend { margin-bottom: 10px; font-size: 13px; font-weight: 650; }
+.codex-catalog-options label { display: flex; align-items: flex-start; gap: 10px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
+.codex-catalog-options label.is-selected { border-color: #818cf8; background: #f5f7ff; }
+.codex-catalog-options input { flex-shrink: 0; margin: 3px 0 0; accent-color: #4f46e5; }
+.codex-catalog-options strong { display: block; font-size: 13px; }
+.codex-catalog-options small { display: block; margin-top: 5px; color: var(--text-muted); font-size: 12px; line-height: 1.65; }
+.codex-catalog-options:disabled label { cursor: wait; opacity: .7; }
+.codex-switch-dialog .codex-catalog-options p { margin: 0; color: var(--text-muted); font-size: 12px; }

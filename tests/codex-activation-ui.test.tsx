@@ -4,7 +4,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { CodexActivation } from "../admin-ui/src/pages/providers/components/CodexActivation";
 import type { ApiProvider, ProviderInspectionStatus, ProviderModel } from "../admin-ui/src/pages/providers/types";
 import { CompatibilityResult } from "../admin-ui/src/pages/providers/components/CompatibilityResult";
-import { normalizeProviderModel } from "../admin-ui/src/pages/providers/api";
+import { normalizeProvider, normalizeProviderModel } from "../admin-ui/src/pages/providers/api";
+import { CodexSwitchDialog } from "../admin-ui/src/pages/providers/components/CodexSwitchDialog";
 import { matchesTakeoverFilter, takeoverAvailability } from "../admin-ui/src/pages/providers/takeover-availability";
 import { ModelInspectionResult, TakeoverModeInspection } from "../admin-ui/src/pages/providers/components/ModelInspectionResult";
 import { ModelInspectionDrawer } from "../admin-ui/src/pages/providers/components/ModelInspectionDrawer";
@@ -14,6 +15,27 @@ import { TakeoverContextWindow } from "../admin-ui/src/pages/providers/component
 function model(id: string, status: ProviderInspectionStatus, window?: Partial<ProviderModel>): ProviderModel {
   return { id, selectedForCodex: false, inspection: { status }, ...window };
 }
+
+test("direct confirmation offers two exclusive catalog choices with prerequisites and preserves the saved mode", () => {
+  const render = (mode: "direct" | "mixed", catalogMode: "dynamic" | "local", busy = false) => renderToStaticMarkup(createElement(CodexSwitchDialog, {
+    title: "确认接入", detail: "示例", mode, catalogMode, busy, onConfirm: () => {}, onClose: () => {}, onCatalogModeChange: () => {},
+  }));
+  for (const mode of ["dynamic", "local"] as const) {
+    const html = render("direct", mode);
+    expect(html.match(/type="radio"/g)).toHaveLength(2);
+    expect(html.match(/<input\b[^>]*\bchecked=""[^>]*>/)?.[0]).toContain(`value="${mode}"`);
+    expect(html.match(/checked=""/g)).toHaveLength(1);
+    expect(html).toContain("显示模型状态");
+    expect(html).toContain("独立使用 · 本地模型列表");
+    expect(html).toContain("每次使用前先启动 AZT");
+    expect(html).toContain("无需打开 AZT");
+    expect(html).toContain("仅在确认接入后应用所选方式");
+    expect(normalizeProvider({ codexCatalogMode: mode }).codexCatalogMode).toBe(mode);
+  }
+  expect(render("direct", "local", true)).toContain('fieldset class="codex-catalog-options" disabled=""');
+  expect(render("mixed", "local")).not.toContain('type="radio"');
+  expect(normalizeProvider({}).codexCatalogMode).toBe("dynamic");
+});
 
 test("Codex model list sorts by availability while keeping peer order and labels configured context windows", () => {
   const provider: ApiProvider = {

@@ -27,7 +27,7 @@ import { GatewayConnection } from "./components/GatewayConnection";
 import { accountPoolProvider } from "./account-pool";
 import { mixedActivationForProvider, mixedActivationWithoutProvider } from "./takeover-selection";
 import type { AdminConfig } from "@/shared/types";
-import type { ApiProvider, ProviderDraft, ModelStatusSettings } from "./types";
+import type { ApiProvider, ProviderDraft, ModelStatusSettings, CodexCatalogMode } from "./types";
 import "./providers.css";
 
 type ProviderView = { name: "list" } | { name: "remote" } | { name: "detail"; providerId: string } | { name: "codex"; providerId: string };
@@ -55,7 +55,7 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerProvider, setDrawerProvider] = useState<ApiProvider | null>(null);
   const [drawerError, setDrawerError] = useState("");
-  const [switchDialog, setSwitchDialog] = useState<{ title: string; detail: string; mode?: "direct" | "mixed"; autoModelCount?: number; run: () => Promise<boolean> } | null>(null);
+  const [switchDialog, setSwitchDialog] = useState<{ title: string; detail: string; mode?: "direct" | "mixed"; autoModelCount?: number; catalogMode: CodexCatalogMode; run: (catalogMode: CodexCatalogMode) => Promise<boolean> } | null>(null);
   const confirmingSwitch = useRef(false);
 
   const refresh = useCallback(async (silent = false) => {
@@ -117,17 +117,17 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
   function openCreate() { setDrawerProvider(null); setDrawerError(""); setDrawerOpen(true); }
   function openEdit(provider: ApiProvider) { setDrawerProvider(provider); setDrawerError(""); setDrawerOpen(true); }
 
-  function requestSwitch(title: string, detail: string, run: () => Promise<boolean>, mode?: "direct" | "mixed", autoModelCount?: number) {
+  function requestSwitch(title: string, detail: string, run: (catalogMode: CodexCatalogMode) => Promise<boolean>, mode?: "direct" | "mixed", autoModelCount?: number, catalogMode: CodexCatalogMode = "dynamic") {
     if (action || confirmingSwitch.current) return;
     setFeedback(null);
-    setSwitchDialog({ title, detail, run, mode, autoModelCount });
+    setSwitchDialog({ title, detail, run, mode, autoModelCount, catalogMode });
   }
 
   async function confirmSwitch() {
     if (!switchDialog || confirmingSwitch.current) return;
     confirmingSwitch.current = true;
     setFeedback(null);
-    try { if (await switchDialog.run()) setSwitchDialog(null); }
+    try { if (await switchDialog.run(switchDialog.catalogMode)) setSwitchDialog(null); }
     finally { confirmingSwitch.current = false; }
   }
 
@@ -195,11 +195,11 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
     }
   }
 
-  async function applyCodex(provider: ApiProvider, modelIds: string[], defaultModelId: string) {
+  async function applyCodex(provider: ApiProvider, modelIds: string[], defaultModelId: string, catalogMode: CodexCatalogMode) {
     setFeedback(null);
     setAction(`activate:${provider.id}`);
     try {
-      const updated = await activateProvider(provider.id, modelIds, defaultModelId);
+      const updated = await activateProvider(provider.id, modelIds, defaultModelId, catalogMode);
       setProviders((current) => current.map((item) => {
         if (updated && item.id === updated.id) return { ...updated, activeForCodex: true };
         if (item.id === provider.id) {
@@ -207,6 +207,7 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
             ...item,
             activeForCodex: true,
             defaultModelId,
+            codexCatalogMode: catalogMode,
             models: item.models.map((model) => ({ ...model, selectedForCodex: modelIds.includes(model.id) })),
           };
         }
@@ -216,7 +217,7 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
       await refresh(true);
       await onConfigChange?.();
       setView({ name: "detail", providerId: provider.id });
-      showSuccess(updated?.codexSwitchWarning ?? `${provider.name} 已接管。打开 Codex 后，本地新旧对话都使用该服务；不支持的模型已切换为该服务的默认模型。`);
+      showSuccess(updated?.codexSwitchWarning ?? `${provider.name} 已直接接管。${catalogMode === "local" ? "已保存本地模型列表，之后无需启动 AZT 即可使用 Codex；不显示动态模型状态。" : "已启用模型状态。请先启动 AZT、等待管理页加载完成后再打开 Codex，使用期间保持 AZT 运行。"}`);
       return true;
     } catch (error) {
       showError(error);
@@ -385,8 +386,8 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
           onActivate={(modelIds, defaultModelId) => requestSwitch(
             selectedProvider.activeForCodex ? "保存直接接管模型" : `确认直接接管 · ${selectedProvider.name}`,
             `Codex 将直接访问“${selectedProvider.name}”。${mixed?.active ? "当前混合接管将停止，改为仅使用本渠道所选模型。" : ""}本地新旧对话将使用该服务及所选模型，不支持的模型将调整为默认模型“${defaultModelId}”。`,
-            () => applyCodex(selectedProvider, modelIds, defaultModelId),
-            "direct",
+            (catalogMode) => applyCodex(selectedProvider, modelIds, defaultModelId, catalogMode),
+            "direct", undefined, selectedProvider.codexCatalogMode ?? "dynamic",
           )}
           onDeactivate={() => mixed?.active ? removeMixedProvider(selectedProvider) : void removeCodex(selectedProvider)}
         />
@@ -403,6 +404,10 @@ export function ProvidersPage({ config, onConfigUpdate, onStatus, onConfigChange
         title={switchDialog.title}
         detail={switchDialog.detail}
         mode={switchDialog.mode}
+        catalogMode={switchDialog.catalogMode}
+        onCatalogModeChange={(catalogMode) => {
+          if (!confirmingSwitch.current) setSwitchDialog((current) => current ? { ...current, catalogMode } : null);
+        }}
         autoModelCount={switchDialog.autoModelCount}
         busy={Boolean(action)}
         error={feedback?.tone === "error" ? feedback.text : undefined}

@@ -1,4 +1,5 @@
 import { MAX_CONTEXT_WINDOW, resolveContextWindow, resolveMixedContextWindow } from "../models/context-window.js";
+import type { CodexCatalogMode } from "../models/codex-catalog-mode.js";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { MIXED_PROTOCOLS, type MixedActivationInput, type PublicMixedConfig, type PublicMixedRoute } from "../models/mixed-provider.js";
 import fs from "node:fs/promises";
@@ -104,6 +105,8 @@ export type ExternalProviderRecord = {
   id: string;
   codexProviderId?: string;
   codexNeedsApply?: boolean;
+  /** Last committed direct model-list choice, retained across disconnects and mixed takeover. */
+  codexCatalogMode?: CodexCatalogMode;
   name: string;
   baseUrl: string;
   token: string;
@@ -232,8 +235,25 @@ type ExternalProviderStore = {
   activeProviderId?: string;
   providers: ExternalProviderRecord[];
   mixed?: MixedProviderConfig;
+  /** Saved port of the local listener that serves Codex model catalogs (and mixed requests); stable across AZT restarts. */
+  localGatewayPort?: number;
   modelHealthIntervalMinutes?: ModelHealthInterval;
 };
+
+const isPort = (value: unknown): value is number => Number.isInteger(value) && (value as number) >= 1 && (value as number) <= 65535;
+
+/** Port Codex catalogs should use. Older stores only saved the mixed port. */
+export async function readLocalGatewayPort(): Promise<number | undefined> {
+  const store = await readStore();
+  return store.localGatewayPort ?? store.mixed?.port;
+}
+
+/** Whether the local listener must run at startup: a direct or mixed takeover is saved as active. */
+export async function readLocalGatewayStartup(): Promise<number | undefined> {
+  const store = await readStore();
+  if (!store.mixed?.active && !store.activeProviderId) return undefined;
+  return store.mixed?.active ? store.mixed.port : store.localGatewayPort;
+}
 
 /** Internal snapshot: contains secrets. Never return it from an HTTP handler. */
 export async function readModelStatusState() {
@@ -363,6 +383,7 @@ export async function commitMixedActivation(input: MixedActivationInput, port: n
     normalizeMixedConfig(config);
     await prepare(config);
     store.mixed = config;
+    store.localGatewayPort = port;
     delete store.activeProviderId;
     for (const provider of store.providers) provider.activeForCodex = false;
     return publicMixedConfig(config);
@@ -388,6 +409,8 @@ export type ExternalProviderStoreOptions = {
   expectedConnection?: { baseUrl: string; token: string };
   /** Connections used for automatic protocol detection; checked inside the activation transaction. */
   expectedConnections?: Record<string, { baseUrl: string; token: string }>;
+  /** Catalog listener port written into Codex by a direct activation. */
+  localGatewayPort?: number;
 };
 
 function emptyStore(): ExternalProviderStore {
@@ -704,6 +727,7 @@ function normalizeLoadedStore(parsed: unknown): ExternalProviderStore {
 
   const providers = candidate.providers.map((provider) => ({
     ...provider,
+    codexCatalogMode: provider.codexCatalogMode === "local" || provider.codexCatalogMode === "dynamic" ? provider.codexCatalogMode : undefined,
     token: typeof provider.token === "string" ? provider.token : "",
     models: Array.isArray(provider.models) ? provider.models : [],
     inspectionHistory: Array.isArray(provider.inspectionHistory) ? provider.inspectionHistory : [],
@@ -719,6 +743,7 @@ function normalizeLoadedStore(parsed: unknown): ExternalProviderStore {
     modelHealthIntervalMinutes: MODEL_HEALTH_INTERVALS.includes(candidate.modelHealthIntervalMinutes as ModelHealthInterval)
       ? candidate.modelHealthIntervalMinutes : 30,
     ...(candidate.mixed !== undefined ? { mixed: normalizeMixedConfig(candidate.mixed) } : {}),
+    ...(isPort(candidate.localGatewayPort) ? { localGatewayPort: candidate.localGatewayPort } : {}),
     ...(activeProviderId && providers.some((provider) => provider.id === activeProviderId)
       ? { activeProviderId }
       : {}),
@@ -982,6 +1007,9 @@ export async function commitExternalProviderActivation(
     const activation = buildExternalProviderActivation(provider);
     await applyActivation?.(activation);
     if (options?.commitTransaction) provider.codexProviderId = "azt_active";
+    if (options?.localGatewayPort) store.localGatewayPort = options.localGatewayPort;
+    else delete store.localGatewayPort;
+    provider.codexCatalogMode = options?.localGatewayPort ? "dynamic" : "local";
     for (const item of store.providers) item.activeForCodex = item.id === providerId;
     provider.codexNeedsApply = false;
     provider.updatedAt = Date.now();

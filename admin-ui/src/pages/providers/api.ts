@@ -11,6 +11,7 @@ import type {
   ProviderModelSource,
   ProvidersSnapshot,
   ModelStatusSettings,
+  CodexCatalogMode,
 } from "./types";
 
 const PROVIDERS_ENDPOINT = "/_gateway/admin/providers";
@@ -148,6 +149,7 @@ export function normalizeProvider(value: unknown, activeProviderId?: string): Ap
     ...(textValue(source.defaultModelId) ? { defaultModelId: textValue(source.defaultModelId) } : {}),
     tokenConfigured: booleanValue(source.tokenConfigured),
     codexNeedsApply: booleanValue(source.codexNeedsApply),
+    codexCatalogMode: source.codexCatalogMode === "local" ? "local" : "dynamic",
     codexSwitchWarning: textValue(source.codexSwitchWarning) || undefined,
     ...(["running", "completed", "failed"].includes(textValue(job.status)) ? { inspectionJob: {
       status: job.status as "running" | "completed" | "failed", total: numberValue(job.total) ?? 0,
@@ -223,8 +225,8 @@ export async function inspectProvider(providerId: string, modelIds?: string[]): 
   return providerFromMutation(await fetchJson<unknown>(`${PROVIDERS_ENDPOINT}/${encodeURIComponent(providerId)}/inspect`, jsonRequest("POST", modelIds?.length ? { modelIds } : {})));
 }
 
-export async function activateProvider(providerId: string, modelIds: string[], defaultModelId: string): Promise<ApiProvider | null> {
-  return providerFromMutation(await fetchJson<unknown>(`${PROVIDERS_ENDPOINT}/${encodeURIComponent(providerId)}/activate`, jsonRequest("POST", { modelIds, defaultModelId })));
+export async function activateProvider(providerId: string, modelIds: string[], defaultModelId: string, catalogMode: CodexCatalogMode = "dynamic"): Promise<ApiProvider | null> {
+  return providerFromMutation(await fetchJson<unknown>(`${PROVIDERS_ENDPOINT}/${encodeURIComponent(providerId)}/activate`, jsonRequest("POST", { modelIds, defaultModelId, catalogMode })));
 }
 
 export async function deactivateProvider(providerId: string): Promise<ApiProvider | null> {

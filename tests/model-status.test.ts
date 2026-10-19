@@ -99,6 +99,32 @@ test("discovery restoration preserves absence, existing true, dotted false, and 
   expect(restored.config).toContain("api_key_model_discovery = false");
 });
 
+test("direct dynamic/local switching preserves capabilities and restores the original discovery and native catalog", async () => {
+  const original = 'model_provider = "openai"\nmodel = "native"\nmodel_catalog_json = "/my/native.json"\n[features]\napi_key_model_discovery = false # original\n';
+  await fs.writeFile(getCodexConfigPath(), original);
+  const provider = await activate(["one", "two"]);
+  expect((await service.list()).providers.find((item) => item.id === provider.id)?.codexCatalogMode).toBe("dynamic");
+  await service.activate(provider.id, ["one", "two"], "two");
+  const local = await fs.readFile(getCodexConfigPath(), "utf8");
+  expect(local).not.toContain("model_catalog_url");
+  expect(local).toContain('model = "two"');
+  expect(local).toContain("api_key_model_discovery = false # original");
+  const catalog = JSON.parse(await fs.readFile((await getCodexGatewayProviderStatus()).modelCatalogPath!, "utf8"));
+  expect(catalog.models.map((model: any) => model.slug)).toEqual(["one", "two"]);
+  expect(catalog.models.every((model: any) => model.context_window === 128_000 && model.input_modalities.includes("image")
+    && model.supported_reasoning_levels.some((level: any) => level.effort === "max"))).toBe(true);
+  const failed = new ExternalProviderService({ assertStopped: async () => { throw new Error("fixture still running"); } });
+  await expect(failed.activate(provider.id, ["one"], "one", 34567)).rejects.toThrow("fixture still running");
+  expect(await fs.readFile(getCodexConfigPath(), "utf8")).toBe(local);
+  expect((await getExternalProviderWithSecret(provider.id))?.codexCatalogMode).toBe("local");
+  await service.activate(provider.id, ["one", "two"], "two", 34567);
+  expect(await fs.readFile(getCodexConfigPath(), "utf8")).not.toMatch(/^model_catalog_json\s*=/m);
+  await service.deactivate(provider.id);
+  const restored = await fs.readFile(getCodexConfigPath(), "utf8");
+  expect(restored).toContain('model_catalog_json = "/my/native.json"');
+  expect(restored).toContain("api_key_model_discovery = false # original");
+});
+
 test("three states change display names only, preserve Max/context/images/IDs, and catalog GET never probes", async () => {
   const provider = await activate(["green", "yellow", "red"]);
   const before = await fs.readFile(getCodexConfigPath(), "utf8");
@@ -373,7 +399,7 @@ test("monitoring reuses applied, saved and identified interfaces once per model,
     expect((await getExternalProviderWithSecret(provider.id))?.models.map((model) => model.compatibility))
       .toEqual(before?.models.map((model) => model.compatibility));
     await service.activateMixed({ routes: [{ providerId: provider.id, modelId: "chat", protocol: "anthropic" }],
-      defaultModel: { providerId: provider.id, modelId: "chat" } }, 34568, 34567);
+      defaultModel: { providerId: provider.id, modelId: "chat" } }, 34568, true);
     fixture.state.requests.length = 0;
     await monitor.run(true);
     expect(fixture.state.requests).toHaveLength(3);
@@ -410,7 +436,7 @@ test.each(["disabled", "removed"] as const)("queued probes stop when monitoring 
 
 test("mixed catalog uses protocol-specific health with stable route IDs and supported reasoning", async () => {
   const provider = await activate(["one", "two"]);
-  const config = await service.activateMixed({ routes: [{ providerId: provider.id, modelId: "one", protocol: "responses" }, { providerId: provider.id, modelId: "two", protocol: "anthropic" }], defaultModel: { providerId: provider.id, modelId: "one" } }, 34568, 34567);
+  const config = await service.activateMixed({ routes: [{ providerId: provider.id, modelId: "one", protocol: "responses" }, { providerId: provider.id, modelId: "two", protocol: "anthropic" }], defaultModel: { providerId: provider.id, modelId: "one" } }, 34568, true);
   const { readMixedProviderConfig } = await import("../src/core/store/external-provider-store.ts");
   const secret = await readMixedProviderConfig();
   await recordModelHealth(provider.id, "one", "responses", { status: "available", checkedAt: Date.now() }, { baseUrl: fixture.baseUrl, token });
@@ -422,7 +448,7 @@ test("mixed catalog uses protocol-specific health with stable route IDs and supp
   expect(catalog.models[1].supported_reasoning_levels).toEqual([]);
   expect(catalog.models[0].supports_search_tool).toBe(false);
   expect(catalog.models[1].supports_search_tool).toBe(true);
-  expect((await getCodexGatewayProviderStatus()).modelCatalogUrl).toContain("/mixed");
+  expect((await getCodexGatewayProviderStatus()).modelCatalogUrl).toBe("http://127.0.0.1:34568/_gateway/codex/model-catalog/mixed");
 });
 
 test("oversized remote catalogs fail before changing config or activating a provider", async () => {

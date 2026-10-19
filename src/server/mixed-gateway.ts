@@ -3,9 +3,10 @@ import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import { requestStream } from "../core/providers/http-client.js";
 import { collectResponse, compatibilityError, convertedEvents, convertRequest, isLocalOpaqueState, object, responseText, sealCompaction } from "../core/providers/mixed/adapter.js";
-import { readMixedProviderConfig, resolveMixedRoute } from "../core/store/external-provider-store.js";
+import { readLocalGatewayStartup, readMixedProviderConfig, resolveMixedRoute } from "../core/store/external-provider-store.js";
 import { gatewayKeyMatches } from "../core/services/gateway-access-service.js";
 import { hasPendingCodexSwitch } from "../core/services/codex-provider-switch.js";
+import { getModelStatusCatalog, MODEL_CATALOG_PATH } from "../core/services/model-status-service.js";
 import { HttpConnectionPool } from "../core/providers/http-connection-pool.js";
 import { mixedSessionHeaders } from "../core/providers/mixed/routing.js";
 import { MixedRequestMetrics } from "../core/providers/mixed/metrics.js";
@@ -28,8 +29,8 @@ export class MixedGateway {
 
   async restore(): Promise<void> {
     try {
-      const config = await readMixedProviderConfig();
-      if (config?.active) await this.ensure(config.port);
+      const port = await readLocalGatewayStartup();
+      if (port) await this.ensure(port);
     } catch (error) {
       // A mixed listener failure must not stop the existing UI or account-pool gateway.
       this.error = error instanceof Error ? error.message : "混合网关启动失败。";
@@ -67,10 +68,18 @@ export class MixedGateway {
       if (!/^127\.\d+\.\d+\.\d+$/.test(ip) || !["127.0.0.1", "localhost"].includes(host) || request.headers.origin) {
         return reply.code(403).send({ error: { type: "local_access_required", message: "混合网关仅供本机 Codex 使用。" } });
       }
+      // Catalog access is authorised per source (provider token or mixed key) inside getModelStatusCatalog.
+      if (request.routeOptions.url === `${MODEL_CATALOG_PATH}:source`) return;
       if (await hasPendingCodexSwitch()) return reply.code(503).send({ error: { message: "Codex 接管切换尚未完成，请先在 AZT 完成切换或恢复。" } });
       const config = await readMixedProviderConfig();
       if (!config?.active) return reply.code(409).send({ error: { message: "混合接管尚未启用。" } });
       if (!gatewayKeyMatches(config.apiKey, request.headers.authorization)) return reply.code(401).send({ error: { message: "混合网关访问密钥无效。" } });
+    });
+    // Codex reads direct and mixed catalogs from this listener; its saved port survives AZT restarts and dev/installed instance changes.
+    app.get(`${MODEL_CATALOG_PATH}:source`, async (request, reply) => {
+      const { source } = request.params as { source: string };
+      const catalog = await getModelStatusCatalog(source, request.headers.authorization);
+      return reply.header("Cache-Control", "no-store").type("application/json").send(catalog);
     });
     app.get("/v1/models", async () => {
       const config = await readMixedProviderConfig();
@@ -212,7 +221,7 @@ export class MixedGateway {
       return this.port;
     } catch (error) {
       await app.close().catch(() => undefined);
-      this.error = (error as NodeJS.ErrnoException).code === "EADDRINUSE" ? "混合网关端口被占用，请关闭占用该端口的程序后重试。现有直接接管与账号池不受影响。" : "混合网关无法启动，请检查本机网络设置。";
+      this.error = (error as NodeJS.ErrnoException).code === "EADDRINUSE" ? "本机接管端口被占用（模型目录与混合接管共用），请关闭占用该端口的程序后重试。账号池不受影响。" : "混合网关无法启动，请检查本机网络设置。";
       throw new Error(this.error);
     }
   }

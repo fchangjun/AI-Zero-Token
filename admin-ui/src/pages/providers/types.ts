@@ -1,5 +1,7 @@
 import type { ReasoningEffort } from "../../../../src/core/models/reasoning-effort";
 import type { ModelHealthChecks, ModelHealthInterval } from "../../../../src/core/models/model-availability";
+import type { CodexCatalogMode } from "../../../../src/core/models/codex-catalog-mode";
+export type { CodexCatalogMode } from "../../../../src/core/models/codex-catalog-mode";
 export type { ReasoningEffort } from "../../../../src/core/models/reasoning-effort";
 
 export type ProviderInspectionStatus =
@@ -72,6 +74,7 @@ export type ApiProvider = {
   lastSyncedAt?: number | string;
   activeForCodex: boolean;
   codexNeedsApply?: boolean;
+  codexCatalogMode?: CodexCatalogMode;
   codexSwitchWarning?: string;
   inspectionJob?: { status: "running" | "completed" | "failed"; total: number; completed: number; error?: string };
   defaultModelId?: string;

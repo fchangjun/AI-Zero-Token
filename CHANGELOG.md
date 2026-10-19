@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 2.0.22 - 2026-10-19
+
+- Add an explicit direct-takeover catalog choice in the confirmation dialog: dynamic model status requires AZT to start first and stay running; a local model list preserves selected models and capabilities without dynamic status and works after a cold Codex start with AZT closed. Remember each channel's confirmed choice, infer existing connections without changing them, and allow transactional switching in both directions while restoring native discovery settings on disconnect. Opening or cancelling the dialog does not change configuration.
+
+- Fix the Codex model picker becoming empty after a restart under direct or mixed takeover. Live model catalogs are now served by the local takeover listener on a saved port instead of the admin UI port, so they keep working when AZT restarts on a different admin port (for example a development build on 8787 versus the installed app on 8788). Direct takeover still sends chat requests straight to the provider; the listener only serves the catalog, and mixed takeover shares the same port. Takeovers saved by 2.0.21 are flagged for one reapply. Explain that AZT must be ready before starting Codex when using a dynamic catalog: the current client can return an empty picker when remote discovery fails, even with an on-disk cache; dynamic mode does not automatically fall back or start AZT; use the explicit local-list option for independent direct takeover.
+
+- Clarify takeover choices in the UI and user guide: direct takeover uses models already compatible with Codex, while mixed takeover can convert supported Chat / Claude interfaces and combine channels. Include Claude, DeepSeek and Gemini as conditional examples rather than brand-based compatibility guarantees, and explain startup order, AZT runtime requirements and the one-time reapplication after upgrading.
 
 ## 2.0.21 - 2026-10-18
 

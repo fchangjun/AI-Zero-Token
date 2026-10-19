@@ -1,11 +1,14 @@
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { CROSS_VENDOR_NOTICE, MIXED_RUNTIME_NOTICE } from "../../../../../src/core/models/mixed-provider";
+import type { CodexCatalogMode } from "../types";
 
 export function CodexSwitchDialog(props: {
   title: string;
   detail: string;
   mode?: "direct" | "mixed";
+  catalogMode?: CodexCatalogMode;
+  onCatalogModeChange?: (mode: CodexCatalogMode) => void;
   autoModelCount?: number;
   busy: boolean;
   error?: string;
@@ -28,6 +31,18 @@ export function CodexSwitchDialog(props: {
         <button className="provider-icon-button" type="button" aria-label="关闭确认框" disabled={props.busy} onClick={props.onClose}><X size={18} /></button>
       </header>
       <p id="codex-switch-detail">{props.detail}</p>
+      {props.mode === "direct" && <fieldset className="codex-catalog-options" disabled={props.busy}>
+        <legend>模型列表使用方式</legend>
+        <label className={props.catalogMode !== "local" ? "is-selected" : ""}>
+          <input type="radio" name="codex-catalog-mode" value="dynamic" checked={props.catalogMode !== "local"} onChange={() => props.onCatalogModeChange?.("dynamic")} />
+          <span><strong>显示模型状态</strong><small>在 Codex 中显示并更新模型运行状态。每次使用前先启动 AZT，等待管理页加载完成后再打开 Codex；使用期间保持 AZT 运行。</small></span>
+        </label>
+        <label className={props.catalogMode === "local" ? "is-selected" : ""}>
+          <input type="radio" name="codex-catalog-mode" value="local" checked={props.catalogMode === "local"} onChange={() => props.onCatalogModeChange?.("local")} />
+          <span><strong>独立使用 · 本地模型列表</strong><small>不显示动态模型状态。所选模型和能力保存在本地，电脑重启后无需打开 AZT 即可使用 Codex。修改模型列表后需重新保存接入。</small></span>
+        </label>
+        <p>两种方式的对话请求都直接发送到本渠道。仅在确认接入后应用所选方式。</p>
+      </fieldset>}
       {props.mode && <div className="codex-switch-risks"><p>{CROSS_VENDOR_NOTICE}</p>{props.mode === "mixed" && <p>{MIXED_RUNTIME_NOTICE}</p>}</div>}
       {Boolean(props.autoModelCount) && <p className="codex-switch-note">确认后将为 {props.autoModelCount} 个模型自动识别接口，优先复用已确认的结果。未确认的模型最多发送 3 次短请求，每次输出上限 32 token，服务商可能计费。识别未完成时会提示重试，当前接入配置会保留。</p>}
       <div className="codex-switch-steps">

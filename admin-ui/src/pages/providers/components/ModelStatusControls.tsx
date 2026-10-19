@@ -28,7 +28,7 @@ export function ModelStatusControls({ settings, busy, onInterval, onCheck }: {
       <p>绿 · 畅通　黄 · 拥堵　红 · 不可用。灰色表示未检测、待确认或待刷新；悬停可查看上次检测时间与原因。</p>
       <p>自动检测开启时，AZT 启动后即检查已保存渠道中未检测或到期的模型，无需先接入或打开 Codex。之后按所选周期刷新，未到期的结果会复用；退出 AZT 后停止检测。</p>
       <p>手动检测覆盖全部已保存模型；自动检测每批最多 20 个，剩余到期模型在后续轮询中继续检测。每个模型按当前接入、已保存或已识别的接口发送一次短请求，尚未识别时检查 Responses。输出上限 32 token，服务商可能计费；不重复检测兼容性、工具、图片或推理档位。</p>
-      <p>{settings.enabled ? "完成 Codex 接入后，动态目录会使用这些状态。Codex 按自身缓存刷新，可能延迟数分钟；读取目录不消耗模型 token。" : "请先添加渠道并同步或保存模型。"}</p>
+      <p>{settings.enabled ? "选择显示模型状态的直接接管和混合接管，会在 Codex 中使用这些状态，按其缓存刷新，可能延迟数分钟。选择本地模型列表时，运行状态仅在 AZT 查看。读取目录不消耗模型 token。" : "请先添加渠道并同步或保存模型。"}</p>
     </div>
     {settings.job.error && <div className="provider-inline-error" role="alert">{settings.job.error}</div>}
   </section>;

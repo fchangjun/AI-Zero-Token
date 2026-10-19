@@ -135,6 +135,104 @@ test("mixed gateway requires its own key and rejects browser/remote management r
   expect((await app.inject("/v1/models")).statusCode).not.toBe(401);
 });
 
+test("mixed model catalog follows the saved mixed port across AZT restarts", async () => {
+  const { config, headers } = await activate();
+  const catalogUrl = `http://127.0.0.1:${config.port}/_gateway/codex/model-catalog/mixed`;
+  expect((await getCodexGatewayProviderStatus()).modelCatalogUrl).toBe(catalogUrl);
+  // Simulate a reboot: the admin listener port (dev vs installed) is irrelevant; the mixed port is restored from state.
+  await app.close(); app = createApp(); await app.ready();
+  expect((await fetch(catalogUrl)).status).toBe(401);
+  expect((await fetch(catalogUrl, { headers: { ...headers, Origin: "https://example.test" } })).status).toBe(403);
+  const restored = await fetch(catalogUrl, { headers });
+  expect(restored.status).toBe(200);
+  expect(restored.headers.get("cache-control")).toBe("no-store");
+  expect(((await restored.json()) as any).models.map((model: any) => model.slug)).toEqual(config.routes.map((route) => route.id));
+  expect((await app.inject("/_gateway/admin/providers")).json().mixed.needsApply).toBe(false);
+  // A 2.0.21 takeover saved the admin port; it must be flagged for one reapply.
+  const raw = await readFile(getCodexConfigPath(), "utf8");
+  await writeFile(getCodexConfigPath(), raw.replace(catalogUrl, "http://127.0.0.1:8787/_gateway/codex/model-catalog/mixed"));
+  expect((await app.inject("/_gateway/admin/providers")).json().mixed.needsApply).toBe(true);
+});
+
+test("direct takeover catalog uses the saved local gateway port and survives AZT restarts", async () => {
+  const reply = await app.inject({ method: "POST", url: `/_gateway/admin/providers/${a}/activate`, payload: { modelIds: ["shared-model"], defaultModelId: "shared-model" } });
+  expect(reply.statusCode).toBe(200);
+  const catalogUrl = (await getCodexGatewayProviderStatus()).modelCatalogUrl!;
+  const port = Number(new URL(catalogUrl).port);
+  expect(catalogUrl).toBe(`http://127.0.0.1:${port}/_gateway/codex/model-catalog/${a}`);
+  expect((await getCodexGatewayProviderStatus()).baseUrl).toBe(fixture.baseUrl);
+  await app.close(); app = createApp(); await app.ready();
+  const headers = { Authorization: "Bearer fixture-token-A" };
+  expect((await fetch(catalogUrl)).status).toBe(401);
+  expect((await fetch(catalogUrl, { headers: { Authorization: "Bearer fixture-token-B" } })).status).toBe(401);
+  // The listener's /v1 surface stays closed while mixed takeover is inactive.
+  expect((await fetch(`http://127.0.0.1:${port}/v1/models`, { headers })).status).toBe(409);
+  const restored = await fetch(catalogUrl, { headers });
+  expect(restored.status).toBe(200);
+  expect(restored.headers.get("cache-control")).toBe("no-store");
+  expect(((await restored.json()) as any).models.map((model: any) => model.slug)).toEqual(["shared-model"]);
+  const provider = () => app.inject("/_gateway/admin/providers").then((r) => r.json().providers.find((item: any) => item.id === a));
+  expect((await provider()).codexNeedsApply).toBe(false);
+  // Mixed takeover reuses the same listener port.
+  expect((await activate()).config.port).toBe(port);
+  await app.inject({ method: "POST", url: `/_gateway/admin/providers/${a}/activate`, payload: { modelIds: ["shared-model"], defaultModelId: "shared-model" } });
+  // A 2.0.21 takeover saved the admin port; it must be flagged for one reapply.
+  const raw = await readFile(getCodexConfigPath(), "utf8");
+  await writeFile(getCodexConfigPath(), raw.replace(catalogUrl, `http://127.0.0.1:8787/_gateway/codex/model-catalog/${a}`));
+  expect((await provider()).activeForCodex).toBe(true);
+  expect((await provider()).codexNeedsApply).toBe(true);
+});
+
+test("direct catalog choice is validated, persisted and switches both ways without changing the upstream", async () => {
+  const url = `/_gateway/admin/providers/${a}/activate`;
+  const payload = { modelIds: ["shared-model"], defaultModelId: "shared-model" };
+  const before = await readFile(getCodexConfigPath(), "utf8");
+  expect((await app.inject({ method: "POST", url, payload: { ...payload, catalogMode: "invalid" } })).statusCode).toBe(400);
+  expect(await readFile(getCodexConfigPath(), "utf8")).toBe(before);
+  for (const catalogMode of ["dynamic", "local", "dynamic"] as const) {
+    const reply = await app.inject({ method: "POST", url, payload: { ...payload, catalogMode } });
+    expect(reply.statusCode).toBe(200);
+    expect(reply.json().provider.codexCatalogMode).toBe(catalogMode);
+    expect((await getExternalProvider(a))?.codexCatalogMode).toBe(catalogMode);
+    const status = await getCodexGatewayProviderStatus();
+    expect(status.baseUrl).toBe(fixture.baseUrl);
+    expect(Boolean(status.modelCatalogUrl)).toBe(catalogMode === "dynamic");
+    expect(Boolean(status.modelCatalogPath)).toBe(catalogMode === "local");
+    if (catalogMode === "local") {
+      const catalog = await readFile(status.modelCatalogPath!, "utf8");
+      expect(JSON.parse(catalog).models.map((model: any) => model.slug)).toEqual(["shared-model"]);
+      expect(catalog).not.toContain("fixture-token");
+      expect(catalog).not.toContain("畅通");
+    }
+    await app.close(); app = createApp(); await app.ready();
+    const provider = (await app.inject("/_gateway/admin/providers")).json().providers.find((item: any) => item.id === a);
+    expect(provider.codexCatalogMode).toBe(catalogMode);
+    expect(provider.codexNeedsApply).toBe(false);
+  }
+});
+
+test("local direct mode works with an occupied old mixed port and keeps its choice after mixed takeover", async () => {
+  const { config } = await activate();
+  await app.close();
+  const occupied = createServer();
+  await new Promise<void>((resolve) => occupied.listen(config.port, "127.0.0.1", resolve));
+  app = createApp();
+  try {
+    const result = await app.inject({ method: "POST", url: `/_gateway/admin/providers/${a}/activate`,
+      payload: { modelIds: ["shared-model"], defaultModelId: "shared-model", catalogMode: "local" } });
+    expect(result.statusCode).toBe(200);
+    await app.close(); app = createApp(); await app.ready();
+    const status = (await app.inject("/_gateway/admin/providers")).json();
+    expect(status.mixed.gatewayReady).toBe(false);
+    expect(status.mixed.gatewayError).toBeUndefined();
+    expect(status.providers.find((item: any) => item.id === a).codexCatalogMode).toBe("local");
+  } finally { await new Promise<void>((resolve) => occupied.close(() => resolve())); }
+  await activate();
+  const inactive = (await app.inject("/_gateway/admin/providers")).json().providers.find((item: any) => item.id === a);
+  expect(inactive.activeForCodex).toBe(false);
+  expect(inactive.codexCatalogMode).toBe("local");
+});
+
 test("both conversion protocols perform a full tool round trip with distinct upstream credentials", async () => {
   const { config, base, headers } = await activate();
   for (const route of config.routes) {

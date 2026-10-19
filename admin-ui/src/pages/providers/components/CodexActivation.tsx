@@ -114,7 +114,7 @@ export function CodexActivation(props: {
       <section className="provider-codex-actions" aria-label="Codex 接入操作">
         <div className="provider-codex-action-summary">
           <strong>{props.provider.name} · 已选择 {selectedModels.length} 个模型</strong>
-          <span>{props.provider.activeForCodex ? "当前直接接管" : mixedRoutes.length ? "当前混合接管" : "选好模型后，选择接管方式"}</span>
+          <span>{props.provider.activeForCodex ? `当前直接接管 · ${props.provider.codexCatalogMode === "local" ? "本地模型列表" : "显示模型状态"}` : mixedRoutes.length ? "当前混合接管" : "选好模型后，选择接管方式"}</span>
         </div>
         <div className="provider-codex-controls">
           <label className="provider-codex-default">
@@ -126,8 +126,8 @@ export function CodexActivation(props: {
           </label>
           <div className="provider-codex-action-buttons">
             {(props.provider.activeForCodex || mixedRoutes.length > 0) && <button className="btn-danger" type="button" disabled={busy} onClick={props.onDeactivate}>{props.disconnecting ? <Loader2 className="provider-spin" size={15} /> : <Unplug size={15} />}{mixedRoutes.length ? "解除本渠道接入" : "解除接入"}</button>}
-            <button className="btn-secondary" type="button" title="通过 AZT 中转所选模型，兼容更多接口并可混用其他渠道" disabled={!selectedModels.length || !defaultModelId || busy} onClick={() => props.onActivateMixed({ ...selection, modelIds: selectedModels.map((model) => model.id) })}>{props.saving === "mixed" && <Loader2 className="provider-spin" size={15} />}混合接管</button>
-            <button className="btn-primary" type="button" title="Codex 直接访问本渠道的所选模型" disabled={!selectedModels.length || !defaultModelId || busy} onClick={() => props.onActivate(selectedModels.map((model) => model.id), defaultModelId)}>{props.saving === "direct" && <Loader2 className="provider-spin" size={15} />}直接接管</button>
+            <button className="btn-secondary" type="button" title="由 AZT 做兼容转换，接入 Claude、DeepSeek、Gemini 等模型；以渠道兼容性检测结果为准，需保持 AZT 运行" disabled={!selectedModels.length || !defaultModelId || busy} onClick={() => props.onActivateMixed({ ...selection, modelIds: selectedModels.map((model) => model.id) })}>{props.saving === "mixed" && <Loader2 className="provider-spin" size={15} />}混合接管</button>
+            <button className="btn-primary" type="button" title="直接使用本身兼容 Codex 的模型，无需 AZT 做兼容转换" disabled={!selectedModels.length || !defaultModelId || busy} onClick={() => props.onActivate(selectedModels.map((model) => model.id), defaultModelId)}>{props.saving === "direct" && <Loader2 className="provider-spin" size={15} />}直接接管</button>
           </div>
         </div>
       </section>

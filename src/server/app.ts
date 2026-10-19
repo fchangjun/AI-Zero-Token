@@ -16,7 +16,8 @@ import { getModelStatusCatalog, MODEL_CATALOG_PATH, ModelStatusService } from ".
 import { MODEL_HEALTH_INTERVALS, type ModelHealthInterval } from "../core/models/model-availability.js";
 import { MIXED_PROTOCOL_CHOICES } from "../core/models/mixed-provider.js";
 import { inspectModelCompatibility } from "../core/services/mixed-protocol-service.js";
-import { readMixedProviderConfig } from "../core/store/external-provider-store.js";
+import { readLocalGatewayPort } from "../core/store/external-provider-store.js";
+import { CODEX_CATALOG_MODES } from "../core/models/codex-catalog-mode.js";
 import { assertCodexStopped, stoppedCodexRuntime } from "../core/services/codex-switch-runtime.js";
 import { registerToolRoutes } from "./tool-routes.js";
 import { registerResetCalendarRoutes } from "./reset-calendar-routes.js";
@@ -362,6 +363,7 @@ const externalProviderInspectModelsSchema = z.object({
 const externalProviderActivateSchema = z.object({
   modelIds: z.array(z.string().trim().min(1).max(256)).min(1).max(10_000),
   defaultModelId: z.string().trim().min(1).max(256),
+  catalogMode: z.enum(CODEX_CATALOG_MODES).default("dynamic"),
 });
 
 const diagnosticRequestParamsSchema = z.object({
@@ -2989,14 +2991,12 @@ export function createApp(params?: {
     const parsed = z.object({ routes: z.array(z.object({ providerId: z.string().min(1), modelId: z.string().min(1).max(256), protocol: z.enum(MIXED_PROTOCOL_CHOICES).default("auto"), autoDetected: z.boolean().optional() })).min(1).max(1000),
       defaultModel: z.object({ providerId: z.string().min(1), modelId: z.string().min(1).max(256) }) }).safeParse(request.body);
     if (!parsed.success) return reply.code(400).send({ error: { message: "请选择混合模型和默认模型。" } });
-    const saved = await readMixedProviderConfig();
-    const port = await mixedGateway.ensure(saved?.port);
-    const catalogPort = request.raw.socket.localPort || (await ctx.configService.getServerConfig()).port;
+    const port = await mixedGateway.ensure(await readLocalGatewayPort());
     const controller = new AbortController();
     const cancel = () => controller.abort(new Error("接口识别已取消。"));
     reply.raw.once("close", cancel);
     try {
-      const mixed = await ctx.externalProviderService.activateMixed(parsed.data, port, catalogPort, controller.signal);
+      const mixed = await ctx.externalProviderService.activateMixed(parsed.data, port, true, controller.signal);
       return { mixed: { ...mixed, gatewayReady: true }, codexSwitchWarning: await completeCodexSwitch() };
     } finally { reply.raw.off("close", cancel); }
   });
@@ -3132,7 +3132,9 @@ export function createApp(params?: {
       reply.code(400);
       return { error: { type: "validation_error", message: bodyParsed.success ? "API 服务 ID 格式错误" : bodyParsed.error.issues[0]?.message ?? "请求体格式错误" } };
     }
-    const catalogPort = request.raw.socket.localPort || (await ctx.configService.getServerConfig()).port;
+    // Serve the catalog from the saved local gateway port, not this admin port, so Codex keeps finding it after AZT restarts.
+    const catalogPort = bodyParsed.data.catalogMode === "dynamic"
+      ? await mixedGateway.ensure(await readLocalGatewayPort()) : undefined;
     const provider = await ctx.externalProviderService.activate(paramsParsed.data.id, bodyParsed.data.modelIds, bodyParsed.data.defaultModelId, catalogPort);
     return { provider: { ...provider, codexSwitchWarning: await completeCodexSwitch() } };
   });

@@ -25,6 +25,7 @@ import {
   commitMixedDeactivation,
   getPublicMixedConfig,
   hasImportedLegacyExternalProvider,
+  readLocalGatewayPort,
   createExternalProvider,
   deleteExternalProviderWithCodex,
   getExternalProvider,
@@ -160,6 +161,8 @@ export class ExternalProviderService {
       const actual = await getCodexGatewayProviderStatus();
       mixed.active = mixed.active && !(await hasPendingCodexSwitch()) && actual.active
         && actual.providerId === ACTIVE_CODEX_PROVIDER_ID && actual.baseUrl === `http://127.0.0.1:${mixed.port}/v1`;
+      // Takeovers saved by 2.0.21 point the catalog at the admin UI port, which changes between dev/installed instances.
+      if (mixed.active && actual.modelCatalogUrl && actual.modelCatalogUrl !== modelCatalogUrl(mixed.port, "mixed")) mixed.needsApply = true;
     }
     return {
       providers,
@@ -363,6 +366,7 @@ export class ExternalProviderService {
               displayName: activation.providerName,
             };
           }, {
+            localGatewayPort: catalogPort,
             beforeMutation: () => this.switcher.recover(),
             commitTransaction: (content, commit) => this.switcher.commit(target, content, commit),
           });
@@ -383,7 +387,8 @@ export class ExternalProviderService {
     }, providerId);
   }
 
-  async activateMixed(input: MixedActivationRequest, port: number, catalogPort?: number, signal?: AbortSignal): Promise<PublicMixedConfig> {
+  /** The live catalog is served by the mixed gateway so its URL follows the saved mixed port, not the admin UI port. */
+  async activateMixed(input: MixedActivationRequest, port: number, dynamicCatalog = false, signal?: AbortSignal): Promise<PublicMixedConfig> {
     return mutate(async () => {
       await this.migrateLegacyProviderOnce();
       const resolved = await resolveMixedProtocols(input, { signal });
@@ -400,7 +405,7 @@ export class ExternalProviderService {
             ...(route.protocol === "anthropic" ? anthropicReasoningCatalog(route.modelId) : {}) };
         }));
         target = { baseUrl: `http://127.0.0.1:${port}/v1`, bearerToken: config.apiKey,
-          ...(catalogPort ? { modelCatalogUrl: modelCatalogUrl(catalogPort, "mixed") } : {}),
+          ...(dynamicCatalog ? { modelCatalogUrl: modelCatalogUrl(port, "mixed") } : {}),
           model: config.defaultModelId, displayName: "AI Zero Token · 混合接管",
           catalogModels };
       }, { expectedConnections: resolved.connections, beforeMutation: () => { signal?.throwIfAborted(); return this.switcher.recover(); },
@@ -451,16 +456,24 @@ export class ExternalProviderService {
   private async withActualCodexStatus(providers: PublicExternalProvider[]): Promise<PublicExternalProvider[]> {
     const actual = await getCodexGatewayProviderStatus();
     const pending = await hasPendingCodexSwitch();
+    const catalogPort = await readLocalGatewayPort();
     return providers.map((provider) => {
       const activeForCodex = !pending && actual.active && actual.providerId === (provider.codexProviderId ?? codexProviderId(provider.id))
         && (actual.providerId !== ACTIVE_CODEX_PROVIDER_ID || provider.activeForCodex);
+      // Takeovers saved by 2.0.21 point the catalog at the admin UI port, which changes between dev/installed instances.
+      const staleCatalog = activeForCodex && Boolean(actual.modelCatalogUrl)
+        && (!catalogPort || actual.modelCatalogUrl !== modelCatalogUrl(catalogPort, provider.id));
       return {
         ...provider,
+        // Old records lack a saved choice; infer it from the applied config without rewriting anything.
+        codexCatalogMode: activeForCodex
+          ? actual.modelCatalogUrl ? "dynamic" as const : actual.modelCatalogPath ? "local" as const : provider.codexCatalogMode ?? "dynamic" as const
+          : provider.codexCatalogMode ?? "dynamic" as const,
         models: provider.models.map((model) => ({ ...model,
           activeDirectContextWindow: activeForCodex ? actual.catalogModels?.find((entry) => entry.id === model.id)?.contextWindow : undefined,
         })),
         inspectionJob: inspectionJobs.get(provider.id),
-        codexNeedsApply: pending || provider.codexNeedsApply,
+        codexNeedsApply: pending || provider.codexNeedsApply || staleCatalog,
         activeForCodex,
       };
     });
