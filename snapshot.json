@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-19T01:52:40.993Z",
+  "generatedAt": "2026-10-19T07:41:42.606Z",
   "status": {
     "latest_reset": {
       "id": "2111566005684289735",
@@ -25,7 +25,7 @@
     "stats": {
       "total": 63,
       "last_reset_at": "2026-10-17T21:12:21.000Z",
-      "days_since_last": 1.2,
+      "days_since_last": 1.4,
       "avg_interval_days": 6.4
     }
   },
@@ -1153,7 +1153,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-10-19T01:52:56.059Z",
+  "capturedAt": "2026-10-19T07:41:57.790Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1161,6 +1161,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-10-19T01:49:55.235Z",
+  "historyGeneratedAt": "2026-10-19T07:39:07.969Z",
   "historyCursor": null
 }
