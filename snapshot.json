@@ -1,35 +1,88 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-20T04:40:40.592Z",
+  "generatedAt": "2026-10-23T06:36:03.917Z",
   "status": {
     "latest_reset": {
-      "id": "2111566005684289735",
+      "id": "observed-2113162413008884099",
       "reset_type": "regular",
-      "announced_at": "2026-10-17T21:12:21.000Z",
-      "text": "Done",
+      "announced_at": "2026-10-22T17:00:00.000Z",
+      "text": "Codex usage limits have been reset. Check your limits.",
       "source": {
-        "type": "x_post",
-        "author": "thsottiaux",
-        "url": "https://x.com/thsottiaux/status/2111566005684289735"
+        "type": "observed",
+        "url": "https://x.com/thsottiaux/status/2113162413008884099"
       },
-      "translationZh": "完成完成完成完成完成",
+      "translationZh": "代码编码的使用限制已被重置。 请检查您的限制 。",
       "translationMeta": {
         "provider": "opus-mt-en-zh",
         "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
-        "translatedAt": "2026-10-17T23:05:08.593Z",
-        "sourceText": "Done"
+        "translatedAt": "2026-10-23T06:36:22.668Z",
+        "sourceText": "Codex usage limits have been reset. Check your limits."
       }
     },
-    "scheduled_reset": null,
+    "scheduled_reset": {
+      "id": "2113492502355562875",
+      "status": "scheduled",
+      "reset_type": "regular",
+      "announced_at": "2026-10-23T04:47:34.000Z",
+      "scheduled_for": "2026-10-23T17:00:00.000Z",
+      "text": "Landing tomorrow before 10am PST together with a small ship.",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2113492502355562875"
+      },
+      "translationZh": "明天在PST10点前降落 和一艘小船一起降落",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-23T06:36:22.458Z",
+        "sourceText": "Landing tomorrow before 10am PST together with a small ship."
+      }
+    },
     "active_watch": null,
     "stats": {
-      "total": 63,
-      "last_reset_at": "2026-10-17T21:12:21.000Z",
-      "days_since_last": 2.3,
-      "avg_interval_days": 6.4
+      "total": 65,
+      "last_reset_at": "2026-10-22T17:00:00.000Z",
+      "days_since_last": 0.6,
+      "avg_interval_days": 6.3
     }
   },
   "records": [
+    {
+      "id": "observed-2113162413008884099",
+      "reset_type": "regular",
+      "announced_at": "2026-10-22T17:00:00.000Z",
+      "text": "Codex usage limits have been reset. Check your limits.",
+      "source": {
+        "type": "observed",
+        "url": "https://x.com/thsottiaux/status/2113162413008884099"
+      },
+      "translationZh": "代码编码的使用限制已被重置。 请检查您的限制 。",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-23T06:36:22.668Z",
+        "sourceText": "Codex usage limits have been reset. Check your limits."
+      }
+    },
+    {
+      "id": "2112432076767289678",
+      "reset_type": "regular",
+      "announced_at": "2026-10-20T06:33:48.000Z",
+      "text": "Day 15/ Nevermind, we're still cooking... and reset. Enjoy. https://t.co/RZ9WhtI802",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2112432076767289678"
+      },
+      "translationZh": "15日/ 诺明, 我们还在做饭... https://t.co/RZ9WhtI802",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-23T06:36:22.848Z",
+        "sourceText": "Day 15/ Nevermind, we're still cooking... and reset. Enjoy. https://t.co/RZ9WhtI802"
+      }
+    },
     {
       "id": "2111566005684289735",
       "reset_type": "regular",
@@ -1153,7 +1206,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-10-20T04:40:49.359Z",
+  "capturedAt": "2026-10-23T06:36:21.035Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1161,6 +1214,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-10-20T04:38:44.161Z",
+  "historyGeneratedAt": "2026-10-23T06:33:26.416Z",
   "historyCursor": null
 }
