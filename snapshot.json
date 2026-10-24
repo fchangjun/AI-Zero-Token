@@ -1,53 +1,51 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-24T01:56:10.637Z",
+  "generatedAt": "2026-10-24T07:13:39.093Z",
   "status": {
     "latest_reset": {
-      "id": "observed-2113162413008884099",
+      "id": "observed-2113492502355562875",
       "reset_type": "regular",
-      "announced_at": "2026-10-22T17:00:00.000Z",
+      "announced_at": "2026-10-23T17:00:00.000Z",
       "text": "Codex usage limits have been reset. Check your limits.",
       "source": {
         "type": "observed",
-        "url": "https://x.com/thsottiaux/status/2113162413008884099"
+        "url": "https://x.com/thsottiaux/status/2113492502355562875"
       },
       "translationZh": "代码编码的使用限制已被重置。 请检查您的限制 。",
       "translationMeta": {
         "provider": "opus-mt-en-zh",
         "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
-        "translatedAt": "2026-10-23T06:36:22.668Z",
+        "translatedAt": "2026-10-24T07:13:41.086Z",
         "sourceText": "Codex usage limits have been reset. Check your limits."
       }
     },
-    "scheduled_reset": {
-      "id": "2113492502355562875",
-      "status": "scheduled",
-      "reset_type": "regular",
-      "announced_at": "2026-10-23T04:47:34.000Z",
-      "scheduled_for": "2026-10-23T17:00:00.000Z",
-      "text": "Landing tomorrow before 10am PST together with a small ship.",
-      "source": {
-        "type": "x_post",
-        "author": "thsottiaux",
-        "url": "https://x.com/thsottiaux/status/2113492502355562875"
-      },
-      "translationZh": "明天在PST10点前降落 和一艘小船一起降落",
-      "translationMeta": {
-        "provider": "opus-mt-en-zh",
-        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
-        "translatedAt": "2026-10-23T06:36:22.458Z",
-        "sourceText": "Landing tomorrow before 10am PST together with a small ship."
-      }
-    },
+    "scheduled_reset": null,
     "active_watch": null,
     "stats": {
-      "total": 65,
-      "last_reset_at": "2026-10-22T17:00:00.000Z",
-      "days_since_last": 1.4,
-      "avg_interval_days": 6.3
+      "total": 66,
+      "last_reset_at": "2026-10-23T17:00:00.000Z",
+      "days_since_last": 0.6,
+      "avg_interval_days": 6.2
     }
   },
   "records": [
+    {
+      "id": "observed-2113492502355562875",
+      "reset_type": "regular",
+      "announced_at": "2026-10-23T17:00:00.000Z",
+      "text": "Codex usage limits have been reset. Check your limits.",
+      "source": {
+        "type": "observed",
+        "url": "https://x.com/thsottiaux/status/2113492502355562875"
+      },
+      "translationZh": "代码编码的使用限制已被重置。 请检查您的限制 。",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-24T07:13:41.086Z",
+        "sourceText": "Codex usage limits have been reset. Check your limits."
+      }
+    },
     {
       "id": "observed-2113162413008884099",
       "reset_type": "regular",
@@ -1206,7 +1204,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-10-24T01:56:20.341Z",
+  "capturedAt": "2026-10-24T07:13:39.967Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1214,6 +1212,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-10-24T01:53:04.486Z",
+  "historyGeneratedAt": "2026-10-24T07:11:30.480Z",
   "historyCursor": null
 }
