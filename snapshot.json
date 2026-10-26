@@ -1,34 +1,69 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-25T01:34:31.033Z",
+  "generatedAt": "2026-10-26T10:59:50.550Z",
   "status": {
     "latest_reset": {
-      "id": "observed-2113492502355562875",
+      "id": "observed-2114588174249071102",
       "reset_type": "regular",
-      "announced_at": "2026-10-23T17:00:00.000Z",
+      "announced_at": "2026-10-26T07:00:00.000Z",
       "text": "Codex usage limits have been reset. Check your limits.",
       "source": {
         "type": "observed",
-        "url": "https://x.com/thsottiaux/status/2113492502355562875"
+        "url": "https://x.com/thsottiaux/status/2114588174249071102"
       },
       "translationZh": "代码编码的使用限制已被重置。 请检查您的限制 。",
       "translationMeta": {
         "provider": "opus-mt-en-zh",
         "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
-        "translatedAt": "2026-10-24T07:13:41.086Z",
+        "translatedAt": "2026-10-26T11:00:34.326Z",
         "sourceText": "Codex usage limits have been reset. Check your limits."
       }
     },
     "scheduled_reset": null,
     "active_watch": null,
     "stats": {
-      "total": 66,
-      "last_reset_at": "2026-10-23T17:00:00.000Z",
-      "days_since_last": 1.4,
-      "avg_interval_days": 6.2
+      "total": 68,
+      "last_reset_at": "2026-10-26T07:00:00.000Z",
+      "days_since_last": 0.2,
+      "avg_interval_days": 6
     }
   },
   "records": [
+    {
+      "id": "observed-2114588174249071102",
+      "reset_type": "regular",
+      "announced_at": "2026-10-26T07:00:00.000Z",
+      "text": "Codex usage limits have been reset. Check your limits.",
+      "source": {
+        "type": "observed",
+        "url": "https://x.com/thsottiaux/status/2114588174249071102"
+      },
+      "translationZh": "代码编码的使用限制已被重置。 请检查您的限制 。",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-26T11:00:34.326Z",
+        "sourceText": "Codex usage limits have been reset. Check your limits."
+      }
+    },
+    {
+      "id": "2114237083652882932",
+      "reset_type": "regular",
+      "announced_at": "2026-10-25T06:06:16.000Z",
+      "text": "It is all propagated. Enjoy some mad codexing tomorrow. Fun week ahead too. https://t.co/qOrzwSeIZZ https://t.co/xKaK95EAly",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2114237083652882932"
+      },
+      "translationZh": "都传播了 明天享受疯狂的密码吧 也提前一周 https://t.co/qOrzwSeIZZ https://t.co/xKaK95EAly",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-10-26T11:00:34.537Z",
+        "sourceText": "It is all propagated. Enjoy some mad codexing tomorrow. Fun week ahead too. https://t.co/qOrzwSeIZZ https://t.co/xKaK95EAly"
+      }
+    },
     {
       "id": "observed-2113492502355562875",
       "reset_type": "regular",
@@ -1204,7 +1239,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-10-25T01:34:41.516Z",
+  "capturedAt": "2026-10-26T11:00:32.867Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1212,6 +1247,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-10-25T01:34:05.739Z",
+  "historyGeneratedAt": "2026-10-26T10:56:56.121Z",
   "historyCursor": null
 }
