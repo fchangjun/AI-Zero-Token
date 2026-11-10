@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-10T11:03:34.293Z",
+  "generatedAt": "2026-11-10T11:41:56.095Z",
   "status": {
     "latest_reset": {
       "id": "2117035794678546764",
@@ -1294,7 +1294,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-11-10T11:03:44.466Z",
+  "capturedAt": "2026-11-10T11:42:16.167Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1302,6 +1302,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-11-10T11:03:44.279Z",
+  "historyGeneratedAt": "2026-11-10T11:40:30.517Z",
   "historyCursor": null
 }
