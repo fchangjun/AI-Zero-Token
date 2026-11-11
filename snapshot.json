@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-11T05:59:25.973Z",
+  "generatedAt": "2026-11-11T14:06:04.046Z",
   "status": {
     "latest_reset": {
       "id": "2117035794678546764",
@@ -21,11 +21,30 @@
       }
     },
     "scheduled_reset": null,
-    "active_watch": null,
+    "active_watch": {
+      "level": "elevated",
+      "reset_chance_percent": 65,
+      "forecast_window": "by end of Thursday",
+      "observed_at": "2026-11-11T06:57:08.000Z",
+      "expires_at": "2026-11-13T08:00:00.000Z",
+      "text": "Thursday is feeling codexy to me. Perhaps also a good time for a banked reset.",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2120410480204525936"
+      },
+      "translationZh": "星期四对我来说是种共通的感觉 也许也是重订银行的好时机",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-11-11T14:06:36.939Z",
+        "sourceText": "Thursday is feeling codexy to me. Perhaps also a good time for a banked reset."
+      }
+    },
     "stats": {
       "total": 71,
       "last_reset_at": "2026-11-01T23:27:20.000Z",
-      "days_since_last": 9.3,
+      "days_since_last": 9.6,
       "avg_interval_days": 5.9
     }
   },
@@ -1294,7 +1313,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-11-11T06:00:01.835Z",
+  "capturedAt": "2026-11-11T14:06:35.179Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1302,6 +1321,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-11-11T05:55:48.133Z",
+  "historyGeneratedAt": "2026-11-11T14:04:06.055Z",
   "historyCursor": null
 }
