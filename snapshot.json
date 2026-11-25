@@ -1,54 +1,71 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-12T18:25:35.651Z",
+  "generatedAt": "2026-11-25T00:09:52.690Z",
   "status": {
     "latest_reset": {
-      "id": "2117035794678546764",
+      "id": "2125299248782778588",
       "reset_type": "banked",
-      "announced_at": "2026-11-01T23:27:20.000Z",
-      "text": "Day 28/ Banked 2/2",
+      "announced_at": "2026-11-24T18:43:21.000Z",
+      "text": "To all the ChatGPT Business teams out there. We have two small things for you, a banked reset and fast mode at no extra charge through Dec 31. Have fun!",
       "source": {
         "type": "x_post",
         "author": "thsottiaux",
-        "url": "https://x.com/thsottiaux/status/2117035794678546764"
+        "url": "https://x.com/thsottiaux/status/2125299248782778588"
       },
-      "translationZh": "28日/ 银行银行 2/ 2/2",
+      "translationZh": "给所有查特博特商业团队 有两个小东西要给你们 银行重置和快速模式",
       "translationMeta": {
         "provider": "opus-mt-en-zh",
         "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
-        "translatedAt": "2026-11-02T02:28:13.306Z",
-        "sourceText": "Day 28/ Banked 2/2"
+        "translatedAt": "2026-11-25T00:10:27.728Z",
+        "sourceText": "To all the ChatGPT Business teams out there. We have two small things for you, a banked reset and fast mode at no extra charge through Dec 31. Have fun!"
       }
     },
     "scheduled_reset": null,
-    "active_watch": {
-      "level": "elevated",
-      "reset_chance_percent": 65,
-      "forecast_window": "by end of Thursday",
-      "observed_at": "2026-11-11T06:57:08.000Z",
-      "expires_at": "2026-11-13T08:00:00.000Z",
-      "text": "Thursday is feeling codexy to me. Perhaps also a good time for a banked reset.",
-      "source": {
-        "type": "x_post",
-        "author": "thsottiaux",
-        "url": "https://x.com/thsottiaux/status/2120410480204525936"
-      },
-      "translationZh": "星期四对我来说是种共通的感觉 也许也是重订银行的好时机",
-      "translationMeta": {
-        "provider": "opus-mt-en-zh",
-        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
-        "translatedAt": "2026-11-11T14:06:36.939Z",
-        "sourceText": "Thursday is feeling codexy to me. Perhaps also a good time for a banked reset."
-      }
-    },
+    "active_watch": null,
     "stats": {
-      "total": 71,
-      "last_reset_at": "2026-11-01T23:27:20.000Z",
-      "days_since_last": 10.8,
-      "avg_interval_days": 5.9
+      "total": 73,
+      "last_reset_at": "2026-11-24T18:43:21.000Z",
+      "days_since_last": 0.2,
+      "avg_interval_days": 6
     }
   },
   "records": [
+    {
+      "id": "2125299248782778588",
+      "reset_type": "banked",
+      "announced_at": "2026-11-24T18:43:21.000Z",
+      "text": "To all the ChatGPT Business teams out there. We have two small things for you, a banked reset and fast mode at no extra charge through Dec 31. Have fun!",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2125299248782778588"
+      },
+      "translationZh": "给所有查特博特商业团队 有两个小东西要给你们 银行重置和快速模式",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-11-25T00:10:27.728Z",
+        "sourceText": "To all the ChatGPT Business teams out there. We have two small things for you, a banked reset and fast mode at no extra charge through Dec 31. Have fun!"
+      }
+    },
+    {
+      "id": "2120999993079451919",
+      "reset_type": "banked",
+      "announced_at": "2026-11-12T21:59:39.000Z",
+      "text": "We shipped some good updates to dots today and the banked reset has been activated and should land in everyones accounts sometime soon! https://t.co/Y7Mnp6Cuu1",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2120999993079451919"
+      },
+      "translationZh": "银行重置已经启动 不久后应该把所有账户都放入! https://t.co/Y7Mnp6Cuu1",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-11-25T00:10:27.975Z",
+        "sourceText": "We shipped some good updates to dots today and the banked reset has been activated and should land in everyones accounts sometime soon! https://t.co/Y7Mnp6Cuu1"
+      }
+    },
     {
       "id": "2117035794678546764",
       "reset_type": "banked",
@@ -1313,7 +1330,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-11-12T18:26:13.481Z",
+  "capturedAt": "2026-11-25T00:10:25.433Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1321,6 +1338,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-11-12T18:21:39.860Z",
+  "historyGeneratedAt": "2026-11-25T00:09:03.305Z",
   "historyCursor": null
 }
