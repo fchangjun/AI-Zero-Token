@@ -1,35 +1,53 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-26T02:08:28.079Z",
+  "generatedAt": "2026-11-26T11:07:21.151Z",
   "status": {
     "latest_reset": {
-      "id": "2125299248782778588",
+      "id": "2125853628250599730",
       "reset_type": "banked",
-      "announced_at": "2026-11-24T18:43:21.000Z",
-      "text": "To all the ChatGPT Business teams out there. We have two small things for you, a banked reset and fast mode at no extra charge through Dec 31. Have fun!",
+      "announced_at": "2026-11-26T07:26:16.000Z",
+      "text": "Banked reset is online",
       "source": {
         "type": "x_post",
         "author": "thsottiaux",
-        "url": "https://x.com/thsottiaux/status/2125299248782778588"
+        "url": "https://x.com/thsottiaux/status/2125853628250599730"
       },
-      "translationZh": "给所有查特博特商业团队 有两个小东西要给你们 银行重置和快速模式",
+      "translationZh": "银行重设已在线",
       "translationMeta": {
         "provider": "opus-mt-en-zh",
         "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
-        "translatedAt": "2026-11-25T00:10:27.728Z",
-        "sourceText": "To all the ChatGPT Business teams out there. We have two small things for you, a banked reset and fast mode at no extra charge through Dec 31. Have fun!"
+        "translatedAt": "2026-11-26T11:07:32.899Z",
+        "sourceText": "Banked reset is online"
       }
     },
     "scheduled_reset": null,
     "active_watch": null,
     "stats": {
-      "total": 73,
-      "last_reset_at": "2026-11-24T18:43:21.000Z",
-      "days_since_last": 1.3,
+      "total": 74,
+      "last_reset_at": "2026-11-26T07:26:16.000Z",
+      "days_since_last": 0.2,
       "avg_interval_days": 6
     }
   },
   "records": [
+    {
+      "id": "2125853628250599730",
+      "reset_type": "banked",
+      "announced_at": "2026-11-26T07:26:16.000Z",
+      "text": "Banked reset is online",
+      "source": {
+        "type": "x_post",
+        "author": "thsottiaux",
+        "url": "https://x.com/thsottiaux/status/2125853628250599730"
+      },
+      "translationZh": "银行重设已在线",
+      "translationMeta": {
+        "provider": "opus-mt-en-zh",
+        "modelRevision": "4dc37afc6deb160f4c9048260d48019ee497658e",
+        "translatedAt": "2026-11-26T11:07:32.899Z",
+        "sourceText": "Banked reset is online"
+      }
+    },
     {
       "id": "2125299248782778588",
       "reset_type": "banked",
@@ -1330,7 +1348,7 @@
     }
   ],
   "historyComplete": true,
-  "capturedAt": "2026-11-26T02:08:33.413Z",
+  "capturedAt": "2026-11-26T11:07:31.261Z",
   "source": {
     "name": "Codex Resets",
     "url": "https://codex-resets.com",
@@ -1338,6 +1356,6 @@
     "statusUrl": "https://codex-resets.com/api/v1/status",
     "historyUrl": "https://codex-resets.com/api/v1/resets?limit=100&order=desc"
   },
-  "historyGeneratedAt": "2026-11-26T02:05:39.433Z",
+  "historyGeneratedAt": "2026-11-26T11:05:47.354Z",
   "historyCursor": null
 }
